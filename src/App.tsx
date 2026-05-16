@@ -3772,7 +3772,7 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
                       <div style={{ marginBottom: 20, fontSize: 12, color: '#c44' }}>{errMsg}</div>
                     )}
 
-                    <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                    <div className="ms-go-actions" style={{ display: 'flex', gap: 10, marginTop: 8 }}>
                       <button
                         onClick={handlePlayAgain}
                         disabled={endingGame}
