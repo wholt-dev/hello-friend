@@ -2019,6 +2019,14 @@ const LitDeX = (() => {
       const addrEl = el('wallet-addr');
       if (addrEl) addrEl.textContent = walletAddress.slice(0,6) + '…' + walletAddress.slice(-4);
       await loadStats();
+      if (new URLSearchParams(window.location.search).get('autostart') === '1') {
+        const ok = await startSession();
+        if (ok) {
+          firstPlay = false;
+          startScreen.classList.add('hidden');
+          beginActualGame();
+        }
+      }
     } else if (window.ethereum) {
       try {
         const accounts = await window.ethereum.request({ method: 'eth_accounts' });
