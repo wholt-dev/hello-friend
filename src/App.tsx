@@ -3442,10 +3442,11 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
     return () => clearInterval(t);
   }, [lowerAddr]);
 
-  // Listen for score from iframe and submit /simple/end
+  // Iframe owns the full game lifecycle (start + end).
+  // Parent only reacts to explicit exit, and refreshes stats after /end completes inside the iframe.
   useEffect(() => {
     if (!lowerAddr) return;
-    const onMsg = async (e: MessageEvent) => {
+    const onMsg = (e: MessageEvent) => {
       const d: any = e?.data;
       if (!d) return;
       if (d.type === 'litdex:mathslash:exit') {
@@ -3453,41 +3454,25 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
         try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
         try { (screen.orientation as any)?.unlock?.(); } catch {}
         fetchStats();
+        fetchBoard();
+        fetchGlobal();
         return;
       }
-      if (d.type !== 'litdex:mathslash:end') return;
-      const score = Number(d.score) || 0;
-      try {
-        const r = await fetch(`${SIMPLE_API}/simple/end`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wallet: lowerAddr, score }),
-        });
-        const data = await r.json().catch(() => ({}));
-        setPlaying(false);
-        try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
-        try { (screen.orientation as any)?.unlock?.(); } catch {}
-        if (r.ok && data?.success !== false) {
-          const zkltcSent = String(data?.zkltcSent ?? (score * RATE).toFixed(8));
-          const explorerUrl = data?.explorerUrl || (data?.txHash ? `https://liteforge.explorer.caldera.xyz/tx/${data.txHash}` : undefined);
-          setResult({ score: Number(data?.score ?? score), zkltcSent, explorerUrl, txHash: data?.txHash });
-          try {
-            addNotif(lowerAddr, {
-              type: 'game',
-              title: 'Game Over',
-              message: `Scored ${score} · ${zkltcSent} zkLTC sent`,
-              link: explorerUrl,
-            });
-          } catch {}
-        } else {
-          setErrMsg(data?.error || data?.message || 'Failed to submit score');
-        }
+      if (d.type === 'litdex:mathslash:end') {
+        // Iframe already submitted /simple/end and is showing reward UI internally.
+        // Do NOT auto-exit; just refresh outer stats silently.
+        const score = Number(d.score) || 0;
+        const ptsEarned = Number(d.pointsEarned) || 0;
+        try {
+          addNotif(lowerAddr, {
+            type: 'game',
+            title: 'Game Over',
+            message: `Scored ${score} · ${ptsEarned} PTS earned`,
+          });
+        } catch {}
         fetchStats();
         fetchBoard();
         fetchGlobal();
-      } catch (err: any) {
-        setPlaying(false);
-        setErrMsg(err?.message || 'Network error submitting score');
       }
     };
     window.addEventListener('message', onMsg);
