@@ -3406,6 +3406,7 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
   const [autoStart, setAutoStart] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
   const [errMsg, setErrMsg] = useState('');
+  const liveScoreRef = useRef(0);
 
   const lowerAddr = address ? address.toLowerCase() : '';
   const mask = (a: string) => a ? `${a.slice(0, 6)}...${a.slice(-4)}` : '';
