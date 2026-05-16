@@ -1399,6 +1399,7 @@
 
   function updateHUD() {
     scoreDisplay.textContent = score;
+    try { window.parent && window.parent.postMessage({ type: 'SCORE_UPDATE', score: score }, '*'); } catch {}
     livesDisplay.innerHTML = '';
     for (let i = 0; i < MAX_LIVES; i++) {
       const h = document.createElement('span');
