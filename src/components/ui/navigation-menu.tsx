@@ -7,7 +7,9 @@ import { Navigation, Menu, X, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 
-const navItems = [
+type NavItem = { name: string; id: string; locked?: boolean };
+
+const navItems: NavItem[] = [
   { name: "Swap", id: "swap" },
   { name: "Pool", id: "pool" },
   { name: "Deploy", id: "deploy" },
