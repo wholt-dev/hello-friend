@@ -3536,26 +3536,37 @@ const ConvertPopup = ({ open, onClose, address, tier, points, onConverted, initi
 
 const MATHSLASH_API_URL = 'https://game.test-hub.xyz';
 const WeeklyLeaderboard = ({ className = '' }: { className?: string }) => {
-  const [board, setBoard] = useState<any>(null);
+  const [entries, setEntries] = useState<any[] | null>(null);
   useEffect(() => {
+    let cancelled = false;
     const load = async () => {
       try {
-        const r = await fetch(`${MATHSLASH_API_URL}/game/mathslash/weekly-leaderboard`);
-        if (r.ok) setBoard(await r.json());
+        const r = await fetch(`${MATHSLASH_API_URL}/simple/leaderboard`);
+        if (r.ok) {
+          const d = await r.json();
+          if (!cancelled) setEntries(Array.isArray(d) ? d : (d?.leaderboard || []));
+        }
       } catch { /* ignore */ }
     };
     load();
     const t = setInterval(load, 60000);
-    return () => clearInterval(t);
+    return () => { cancelled = true; clearInterval(t); };
   }, []);
-  const entries: any[] = board?.leaderboard || board?.entries || board?.players || [];
-  const week = board?.week || board?.currentWeek || '';
   const mask = (a: string) => a ? `${a.slice(0, 6)}...${a.slice(-4)}` : '';
+  const weekStart = (() => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = (day === 0 ? -6 : 1 - day);
+    d.setDate(d.getDate() + diff);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  })();
   return (
     <div className={`p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border ${className}`}>
       <div className="text-[11px] uppercase text-brand-text-primary mb-1">Weekly Leaderboard</div>
-      {week && <div className="text-[10px] text-brand-text-muted mb-3">Week: {week}</div>}
-      {entries.length === 0 ? (
+      <div className="text-[10px] text-brand-text-muted mb-3">Week of {weekStart}</div>
+      {entries === null ? (
+        <div className="text-brand-text-muted text-xs">Loading...</div>
+      ) : entries.length === 0 ? (
         <div className="text-brand-text-muted text-xs">No games this week yet</div>
       ) : (
         <table className="w-full text-[11px]">
@@ -3571,7 +3582,7 @@ const WeeklyLeaderboard = ({ className = '' }: { className?: string }) => {
                 <tr key={i} className={c}>
                   <td className="py-1">{i + 1}</td>
                   <td className="py-1">{displayWallet}</td>
-                  <td className="py-1 text-right">{e.totalScore ?? e.score ?? e.points ?? 0}</td>
+                  <td className="py-1 text-right">{e.total_score ?? e.totalScore ?? e.score ?? e.points ?? 0}</td>
                 </tr>
               );
             })}
