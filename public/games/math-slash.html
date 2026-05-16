@@ -1996,10 +1996,10 @@ const LitDeX = (() => {
     activeSession = null;
 
     try {
-      const r = await fetch(`${API}/game/mathslash/end`, {
+      const r = await fetch(`${API}/simple/end`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ sessionId, score }),
+        body:    JSON.stringify({ wallet: walletAddress, score }),
       });
       const data = await r.json();
 
