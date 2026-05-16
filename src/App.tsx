@@ -185,9 +185,6 @@ const SwapPage = () => {
       className="flex flex-col items-center justify-center min-h-[80vh] px-4 w-full py-12"
     >
       <div className="flex flex-wrap justify-center items-center gap-2 mb-6">
-        <EcosystemStatPill value={`${formatStat(eco?.swap.txns)} Swaps`} label="Total Swaps" />
-        <EcosystemStatPill value={`${eco?.swap.pairs ?? '...'} Pairs`} label="Liquidity Pairs" />
-        <EcosystemStatPill value={`${formatStat(eco?.totalOnChain)} Txns`} label="Total On-chain" />
         <button
           onClick={() => { try { window.dispatchEvent(new CustomEvent('litdex:open-faucet')); } catch {} }}
           className="group flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.03] border border-white/10 hover:border-white/30 hover:bg-white/[0.06] transition-all text-[11px] font-bold uppercase tracking-[0.18em] text-white/80 backdrop-blur-xl"
