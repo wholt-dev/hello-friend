@@ -898,15 +898,6 @@ const CheckinPage = () => {
   );
   };
 
-  useEffect(() => {
-    const onNav = (e: Event) => {
-      const detail = (e as CustomEvent).detail as PageID;
-      if (detail) handlePageChange(detail);
-    };
-    window.addEventListener('app:navigate', onNav);
-    return () => window.removeEventListener('app:navigate', onNav);
-  }, []);
-
 
 // --- NFT Icon (animated rotating ring) ---
 const NFTIcon = ({ label, color }: { label: string; color: string }) => (
