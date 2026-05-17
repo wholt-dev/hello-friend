@@ -4723,6 +4723,15 @@ export default function App() {
     setActivePage(p);
   };
 
+  useEffect(() => {
+    const onNav = (e: Event) => {
+      const detail = (e as CustomEvent).detail as PageID;
+      if (detail) handlePageChange(detail);
+    };
+    window.addEventListener('app:navigate', onNav);
+    return () => window.removeEventListener('app:navigate', onNav);
+  }, [activePage]);
+
   const handleFaucetClick = () => {
     if (!walletAddr) {
       openConnectModal?.();
