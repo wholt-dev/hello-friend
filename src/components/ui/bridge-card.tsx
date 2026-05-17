@@ -658,7 +658,7 @@ export default function BridgeCard({ className = "" }: { className?: string }) {
     }
   };
 
-  const canBridge = isConnected && !!amount && parseFloat(amount) > 0 && !isBridging;
+  const canBridge = isConnected && !!amount && parseFloat(amount) > 0 && !isBridging && gamesOk;
   const wrongChain = isConnected && chainId !== CHAIN_INFO[fromChain].id;
   const pctVal = Math.min(selected.max, Number(formatEther(balance))) > 0
     ? Math.min(100, (Number(amount || 0) / Math.min(selected.max, Number(formatEther(balance)))) * 100)
