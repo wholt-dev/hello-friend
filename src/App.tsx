@@ -3435,7 +3435,7 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
   const { address, isConnected } = useAccount();
   const SIMPLE_API = 'https://game.test-hub.xyz';
   const DAILY_LIMIT = 15;
-  const RATE = 0.0000923;
+  const RATE = 0.00004615;
 
   const [stats, setStats] = useState<any>(null);
   const [board, setBoard] = useState<any[]>([]);
