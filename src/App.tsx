@@ -4055,6 +4055,16 @@ const MessengerPage = () => {
   const [sending, setSending] = useState(false);
   const [lastSentHash, setLastSentHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [backendPoints, setBackendPoints] = useState<number>(0);
+
+  const fetchBackendPoints = async () => {
+    if (!address) return;
+    try {
+      const r = await fetch(`https://api.test-hub.xyz/points/${address}`);
+      const j = await r.json();
+      setBackendPoints(Number(j?.total ?? 0));
+    } catch (err) { console.error('[Messenger] points fetch failed:', err); }
+  };
 
   const fetchStats = async () => {
     if (!address) return;
@@ -4086,6 +4096,7 @@ const MessengerPage = () => {
   useEffect(() => {
     if (isConnected && address) {
       fetchStats();
+      fetchBackendPoints();
       if (activeTab === 'inbox') fetchMessages();
     }
   }, [isConnected, address, activeTab, inboxTab]);
@@ -4098,54 +4109,34 @@ const MessengerPage = () => {
       const { sendMessage } = await import('./lib/litdex-core-logic');
       const target = msgType === 'public' ? 'public' : recipient;
 
-      let msgDailyBefore = 0n;
-      try {
-        if (address) {
-          const p = await readPoints(address);
-          msgDailyBefore = p.msgDaily;
-        }
-      } catch { /* ignore */ }
-
       const sentHash = await sendMessage(target, content);
       setLastSentHash(sentHash);
 
-      // Fetch stats
+      // Refresh stats and backend-authoritative points (backend handles all point logic)
       await fetchStats();
+      await fetchBackendPoints();
 
       const explorerUrl = `${litvmChain.blockExplorers.default.url}/tx/${sentHash}`;
       const shortHash = `${sentHash.slice(0, 6)}...${sentHash.slice(-4)}`;
 
-      const capReached = msgDailyBefore >= 20n;
-      if (capReached) {
-        showSuccess({
-          title: "MESSAGE SENT",
-          subtitle: "PROTOCOL VERIFICATION COMPLETE",
-          rows: [
-            { label: "POINTS EARNED", value: "+0 PTS" },
-            { label: "TRANSACTION", value: shortHash, href: explorerUrl },
-            { label: "STATUS", value: "DAILY CAP REACHED" },
-          ],
-        });
-      } else {
-        showSuccess({
-          title: "MESSAGE SENT",
-          subtitle: "PROTOCOL VERIFICATION COMPLETE",
-          rows: [
-            { label: "POINTS EARNED", value: "+2 PTS" },
-            { label: "TRANSACTION", value: shortHash, href: explorerUrl },
-            { label: "STATUS", value: "ON-CHAIN DELIVERED" },
-          ],
-        });
-      }
-      refreshPoints();
+      showSuccess({
+        title: "MESSAGE SENT",
+        subtitle: "PROTOCOL VERIFICATION COMPLETE",
+        rows: [
+          { label: "POINTS EARNED", value: "+2 PTS" },
+          { label: "TRANSACTION", value: shortHash, href: explorerUrl },
+          { label: "STATUS", value: "ON-CHAIN DELIVERED" },
+        ],
+      });
+
       try {
         if (address) addNotif(address, {
           type: "points",
-          title: capReached ? "Daily message cap reached" : "Message Sent",
-          message: capReached ? "No more points from messages today" : "+2 points earned from on-chain message",
+          title: "Message Sent",
+          message: "+2 points earned from on-chain message",
         });
       } catch { /* ignore */ }
-      
+
       setContent('');
       if (msgType === 'direct') setRecipient('');
     } catch (err: any) {
@@ -4189,6 +4180,11 @@ const MessengerPage = () => {
           <div className="flex flex-col">
             <span className="text-[8px] font-black text-white/20 uppercase tracking-widest">Global On-Chain</span>
             <span className="text-lg font-black text-white">{stats.total}</span>
+          </div>
+          <div className="w-px h-8 bg-white/5" />
+          <div className="flex flex-col">
+            <span className="text-[8px] font-black text-white/20 uppercase tracking-widest">Points</span>
+            <span className="text-lg font-black text-white">{backendPoints}</span>
           </div>
         </div>
       </div>
