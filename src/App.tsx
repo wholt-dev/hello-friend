@@ -3787,13 +3787,8 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><span style={{ color: '#777', textTransform: 'uppercase' }}>Best score</span><span>{gameOver.best}</span></div>
                     </div>
 
-                    {sentNotice && (
-                      <div style={{ marginBottom: 16, fontSize: 13, color: '#fff' }}>{sentNotice}</div>
-                    )}
 
-                    {errMsg && (
-                      <div style={{ marginBottom: 20, fontSize: 12, color: '#c44' }}>{errMsg}</div>
-                    )}
+
 
                     <div className="ms-go-actions" style={{ display: 'flex', gap: 10, marginTop: 8 }}>
                       <button
