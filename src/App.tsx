@@ -3551,47 +3551,27 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
     return { zkltcSent, explorerUrl };
   };
 
-  const handlePlayAgain = async () => {
-    if (!gameOver || endingGame) return;
-    const finalScore = gameOver.score;
-    setEndingGame(true);
+  const handlePlayAgain = () => {
+    if (!gameOver) return;
     setGameOver(null);
     setSentNotice('');
     setErrMsg('');
+    setEndingGame(false);
     setAutoStart(true);
     setIframeKey(k => k + 1);
-    submitFinalScore(finalScore)
-      .catch((err) => console.warn('[MathSlash] silent score submit failed:', err))
-      .finally(() => {
-        setEndingGame(false);
-        fetchStats();
-        fetchBoard();
-        fetchGlobal();
-      });
+    fetchStats();
   };
 
-  const handleGameOverExit = async () => {
-    if (!gameOver || endingGame) return;
-    setEndingGame(true);
+  const handleGameOverExit = () => {
+    setGameOver(null);
+    setSentNotice('');
     setErrMsg('');
-    try {
-      const submitted = await submitFinalScore(gameOver.score);
-      setSentNotice(`✅ ${submitted.zkltcSent} zkLTC sent to wallet!`);
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-      setPlaying(false);
-      setGameOver(null);
-      setSentNotice('');
-      setAutoStart(false);
-      try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
-      try { (screen.orientation as any)?.unlock?.(); } catch {}
-      fetchStats();
-      fetchBoard();
-      fetchGlobal();
-    } catch (err: any) {
-      setErrMsg(err?.message || 'Network error submitting score');
-    } finally {
-      setEndingGame(false);
-    }
+    setEndingGame(false);
+    setPlaying(false);
+    setAutoStart(false);
+    try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.unlock?.(); } catch {}
+    fetchStats();
   };
 
   const handleExitGame = () => {
