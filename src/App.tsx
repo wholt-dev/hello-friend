@@ -3651,6 +3651,9 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
       setEndingGame(false);
       setSentNotice('');
       setErrMsg('');
+      // Deduplicate: only call /simple/end once per session
+      if (endCalledRef.current) return;
+      endCalledRef.current = true;
       // Call /simple/end to record the score and trigger zkLTC payout
       try {
         const endRes = await fetch(`${SIMPLE_API}/simple/end`, {
