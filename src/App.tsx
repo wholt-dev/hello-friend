@@ -3431,6 +3431,130 @@ const WeeklyLeaderboard = ({ className = '' }: { className?: string }) => {
   );
 };
 
+const ConvertPointsCard = ({ wallet }: { wallet: string }) => {
+  const SIMPLE_API = 'https://game.test-hub.xyz';
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; tx?: string } | null>(null);
+  const [err, setErr] = useState('');
+
+  const fetchStatus = async () => {
+    if (!wallet) return;
+    try {
+      const r = await fetch(`${SIMPLE_API}/simple/convert/status/${wallet}`);
+      if (r.ok) setData(await r.json());
+    } catch {}
+  };
+
+  useEffect(() => {
+    fetchStatus();
+    const t = setInterval(fetchStatus, 20000);
+    return () => clearInterval(t);
+  }, [wallet]);
+
+  const handleConvert = async () => {
+    if (!wallet || loading) return;
+    setLoading(true);
+    setErr('');
+    setMsg(null);
+    try {
+      const r = await fetch(`${SIMPLE_API}/simple/convert/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j?.success === false) throw new Error(j?.message || j?.error || 'Convert failed');
+      setMsg({ text: `✅ ${j.zkltcEquiv} zkLTC sent to your wallet!`, tx: j.txHash });
+      fetchStatus();
+    } catch (e: any) {
+      setErr(e?.message || 'Network error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const totalPointsToday = Number(data?.totalPointsToday ?? 0);
+  const availablePoints = Number(data?.availablePoints ?? 0);
+  const convertsLeft = Number(data?.convertsLeft ?? 0);
+  const ratePerPoint = data?.ratePerPoint ?? 0.00000222;
+  const requests: any[] = Array.isArray(data?.requests) ? data.requests : [];
+
+  const statusColor = (s: string) => {
+    const v = String(s || '').toLowerCase();
+    if (v === 'sent') return '#22c55e';
+    if (v === 'processing' || v === 'pending') return '#f97316';
+    if (v === 'failed') return '#ef4444';
+    return '#888';
+  };
+
+  return (
+    <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
+      <div className="text-[11px] uppercase text-brand-text-muted mb-4">Convert Points</div>
+
+      <div className="space-y-2 mb-4">
+        <div className="flex justify-between text-[11px]">
+          <span className="text-brand-text-muted uppercase">Today's Points</span>
+          <span className="text-brand-text-primary">{totalPointsToday} pts</span>
+        </div>
+        <div className="flex justify-between text-[11px]">
+          <span className="text-brand-text-muted uppercase">Available</span>
+          <span className="text-brand-text-primary">{availablePoints} pts</span>
+        </div>
+        <div className="flex justify-between text-[11px]">
+          <span className="text-brand-text-muted uppercase">Rate</span>
+          <span className="text-brand-text-primary">1 pt = {ratePerPoint} zkLTC</span>
+        </div>
+        <div className="flex justify-between text-[11px]">
+          <span className="text-brand-text-muted uppercase">Converts Left</span>
+          <span className="text-brand-text-primary">{convertsLeft}/2</span>
+        </div>
+      </div>
+
+      {availablePoints > 0 && convertsLeft > 0 ? (
+        <button
+          onClick={handleConvert}
+          disabled={loading}
+          className="w-full py-2.5 rounded-lg bg-brand-text-primary text-brand-bg font-mono font-bold text-[11px] uppercase tracking-widest disabled:opacity-50"
+        >
+          {loading ? 'Converting…' : 'Convert → zkLTC'}
+        </button>
+      ) : convertsLeft <= 0 ? (
+        <button disabled className="w-full py-2.5 rounded-lg font-mono font-bold text-[11px] uppercase tracking-widest cursor-not-allowed" style={{ background: '#1a1a1a', color: '#555', border: '1px solid #2a2a2a' }}>
+          Next convert at 00:00 IST
+        </button>
+      ) : (
+        <div className="text-brand-text-muted text-[11px] text-center py-2">Play games to earn points</div>
+      )}
+
+      {msg && (
+        <div className="mt-3 text-[11px] text-brand-text-primary">
+          {msg.text}
+          {msg.tx && (
+            <div className="mt-1">
+              <a href={`https://liteforge.explorer.caldera.xyz/tx/${msg.tx}`} target="_blank" rel="noreferrer" className="underline decoration-white/30 text-brand-text-primary break-all">View tx</a>
+            </div>
+          )}
+        </div>
+      )}
+      {err && <div className="mt-3 text-[11px]" style={{ color: '#c44' }}>{err}</div>}
+
+      {requests.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-brand-border space-y-1.5">
+          {requests.slice(0, 2).map((rq: any, i: number) => (
+            <div key={i} className="text-[10px] text-brand-text-muted">
+              Convert {rq.convertNum} — {rq.pointsRequested} pts → {rq.zkltcEquiv} zkLTC —{' '}
+              <span style={{ color: statusColor(rq.status) }}>{rq.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 text-[10px] text-brand-text-muted">⚠️ Unconverted points expire at 00:00 IST daily</div>
+    </div>
+  );
+};
+
 const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
   const { address, isConnected } = useAccount();
   const SIMPLE_API = 'https://game.test-hub.xyz';
@@ -3551,47 +3675,27 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
     return { zkltcSent, explorerUrl };
   };
 
-  const handlePlayAgain = async () => {
-    if (!gameOver || endingGame) return;
-    const finalScore = gameOver.score;
-    setEndingGame(true);
+  const handlePlayAgain = () => {
+    if (!gameOver) return;
     setGameOver(null);
     setSentNotice('');
     setErrMsg('');
+    setEndingGame(false);
     setAutoStart(true);
     setIframeKey(k => k + 1);
-    submitFinalScore(finalScore)
-      .catch((err) => console.warn('[MathSlash] silent score submit failed:', err))
-      .finally(() => {
-        setEndingGame(false);
-        fetchStats();
-        fetchBoard();
-        fetchGlobal();
-      });
+    fetchStats();
   };
 
-  const handleGameOverExit = async () => {
-    if (!gameOver || endingGame) return;
-    setEndingGame(true);
+  const handleGameOverExit = () => {
+    setGameOver(null);
+    setSentNotice('');
     setErrMsg('');
-    try {
-      const submitted = await submitFinalScore(gameOver.score);
-      setSentNotice(`✅ ${submitted.zkltcSent} zkLTC sent to wallet!`);
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-      setPlaying(false);
-      setGameOver(null);
-      setSentNotice('');
-      setAutoStart(false);
-      try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
-      try { (screen.orientation as any)?.unlock?.(); } catch {}
-      fetchStats();
-      fetchBoard();
-      fetchGlobal();
-    } catch (err: any) {
-      setErrMsg(err?.message || 'Network error submitting score');
-    } finally {
-      setEndingGame(false);
-    }
+    setEndingGame(false);
+    setPlaying(false);
+    setAutoStart(false);
+    try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.unlock?.(); } catch {}
+    fetchStats();
   };
 
   const handleExitGame = () => {
@@ -3695,7 +3799,8 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
       <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {/* Stats (left) */}
         {!playing && (
-          <div className="order-2 lg:order-1 p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
+          <div className="order-2 lg:order-1 space-y-5">
+          <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
             <div className="flex items-center justify-between mb-4">
               <div className="text-[11px] uppercase text-brand-text-muted">Your Stats</div>
               <span className="text-[9px] uppercase px-2 py-0.5 rounded-full text-black bg-green-500 font-bold">Free to Play</span>
@@ -3739,6 +3844,8 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
                 </div>
               </>
             )}
+          </div>
+          {isConnected && <ConvertPointsCard wallet={lowerAddr} />}
           </div>
         )}
 
@@ -3807,13 +3914,8 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><span style={{ color: '#777', textTransform: 'uppercase' }}>Best score</span><span>{gameOver.best}</span></div>
                     </div>
 
-                    {sentNotice && (
-                      <div style={{ marginBottom: 16, fontSize: 13, color: '#fff' }}>{sentNotice}</div>
-                    )}
 
-                    {errMsg && (
-                      <div style={{ marginBottom: 20, fontSize: 12, color: '#c44' }}>{errMsg}</div>
-                    )}
+
 
                     <div className="ms-go-actions" style={{ display: 'flex', gap: 10, marginTop: 8 }}>
                       <button
