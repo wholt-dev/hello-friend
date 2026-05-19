@@ -4109,54 +4109,34 @@ const MessengerPage = () => {
       const { sendMessage } = await import('./lib/litdex-core-logic');
       const target = msgType === 'public' ? 'public' : recipient;
 
-      let msgDailyBefore = 0n;
-      try {
-        if (address) {
-          const p = await readPoints(address);
-          msgDailyBefore = p.msgDaily;
-        }
-      } catch { /* ignore */ }
-
       const sentHash = await sendMessage(target, content);
       setLastSentHash(sentHash);
 
-      // Fetch stats
+      // Refresh stats and backend-authoritative points (backend handles all point logic)
       await fetchStats();
+      await fetchBackendPoints();
 
       const explorerUrl = `${litvmChain.blockExplorers.default.url}/tx/${sentHash}`;
       const shortHash = `${sentHash.slice(0, 6)}...${sentHash.slice(-4)}`;
 
-      const capReached = msgDailyBefore >= 20n;
-      if (capReached) {
-        showSuccess({
-          title: "MESSAGE SENT",
-          subtitle: "PROTOCOL VERIFICATION COMPLETE",
-          rows: [
-            { label: "POINTS EARNED", value: "+0 PTS" },
-            { label: "TRANSACTION", value: shortHash, href: explorerUrl },
-            { label: "STATUS", value: "DAILY CAP REACHED" },
-          ],
-        });
-      } else {
-        showSuccess({
-          title: "MESSAGE SENT",
-          subtitle: "PROTOCOL VERIFICATION COMPLETE",
-          rows: [
-            { label: "POINTS EARNED", value: "+2 PTS" },
-            { label: "TRANSACTION", value: shortHash, href: explorerUrl },
-            { label: "STATUS", value: "ON-CHAIN DELIVERED" },
-          ],
-        });
-      }
-      refreshPoints();
+      showSuccess({
+        title: "MESSAGE SENT",
+        subtitle: "PROTOCOL VERIFICATION COMPLETE",
+        rows: [
+          { label: "POINTS EARNED", value: "+2 PTS" },
+          { label: "TRANSACTION", value: shortHash, href: explorerUrl },
+          { label: "STATUS", value: "ON-CHAIN DELIVERED" },
+        ],
+      });
+
       try {
         if (address) addNotif(address, {
           type: "points",
-          title: capReached ? "Daily message cap reached" : "Message Sent",
-          message: capReached ? "No more points from messages today" : "+2 points earned from on-chain message",
+          title: "Message Sent",
+          message: "+2 points earned from on-chain message",
         });
       } catch { /* ignore */ }
-      
+
       setContent('');
       if (msgType === 'direct') setRecipient('');
     } catch (err: any) {
