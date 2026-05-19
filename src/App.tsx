@@ -4121,19 +4121,55 @@ const MessengerPage = () => {
       fetchStats();
       fetchBackendPoints();
       if (activeTab === 'inbox') fetchMessages();
+
+      // Reset local count if IST date has rolled over, then load
+      setMsgCount(readLocalMsgCount());
+
+      // Try to get authoritative count from backend
+      (async () => {
+        try {
+          const r = await fetch(`https://api.test-hub.xyz/msg/count/${address}`);
+          if (r.ok) {
+            const j = await r.json();
+            const c = Number(j?.msgsToday ?? j?.count ?? NaN);
+            if (!Number.isNaN(c)) {
+              setMsgCount(c);
+              writeLocalMsgCount(c);
+            }
+          }
+        } catch { /* ignore */ }
+      })();
     }
   }, [isConnected, address, activeTab, inboxTab]);
 
   const handleSend = async () => {
     if (!content) return;
+    if (msgCount >= DAILY_MSG_LIMIT) return;
     setSending(true);
     setError(null);
     try {
       const { sendMessage } = await import('./lib/litdex-core-logic');
       const target = msgType === 'public' ? 'public' : recipient;
 
-      const sentHash = await sendMessage(target, content);
+      const result = await sendMessage(target, content);
+      const sentHash = result.hash;
       setLastSentHash(sentHash);
+
+      // Handle daily limit response from backend
+      if (result.success === false && result.reason === "daily_limit") {
+        setMsgCount(DAILY_MSG_LIMIT);
+        writeLocalMsgCount(DAILY_MSG_LIMIT);
+        setError("Daily limit reached");
+        setSending(false);
+        return;
+      }
+
+      // Determine new count: prefer backend value, otherwise increment locally
+      const nextCount = typeof result.msgsToday === "number"
+        ? result.msgsToday
+        : (readLocalMsgCount() + 1);
+      setMsgCount(nextCount);
+      writeLocalMsgCount(nextCount);
 
       // Refresh stats and backend-authoritative points (backend handles all point logic)
       await fetchStats();
@@ -4146,7 +4182,7 @@ const MessengerPage = () => {
         title: "MESSAGE SENT",
         subtitle: "PROTOCOL VERIFICATION COMPLETE",
         rows: [
-          { label: "POINTS EARNED", value: "+2 PTS" },
+          { label: "POINTS EARNED", value: "+2 PTS (+2 BONUS)" },
           { label: "TRANSACTION", value: shortHash, href: explorerUrl },
           { label: "STATUS", value: "ON-CHAIN DELIVERED" },
         ],
