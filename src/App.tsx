@@ -3573,6 +3573,7 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
   const [iframeKey, setIframeKey] = useState(0);
   const [errMsg, setErrMsg] = useState('');
   const liveScoreRef = useRef(0);
+  const endCalledRef = useRef(false);
 
   const lowerAddr = address ? address.toLowerCase() : '';
   const mask = (a: string) => a ? `${a.slice(0, 6)}...${a.slice(-4)}` : '';
@@ -3650,6 +3651,9 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
       setEndingGame(false);
       setSentNotice('');
       setErrMsg('');
+      // Deduplicate: only call /simple/end once per session
+      if (endCalledRef.current) return;
+      endCalledRef.current = true;
       // Call /simple/end to record the score and trigger zkLTC payout
       try {
         const endRes = await fetch(`${SIMPLE_API}/simple/end`, {
@@ -3763,6 +3767,7 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
     setAutoStart(false);
     setStarting(true);
     liveScoreRef.current = 0;
+    endCalledRef.current = false;
     try {
       const r = await fetch(`${SIMPLE_API}/simple/start`, {
         method: 'POST',
