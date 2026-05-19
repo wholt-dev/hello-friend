@@ -3638,6 +3638,7 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
       if (!isGameOver) return;
 
       const score = Number(d.score) || 0;
+      console.log('[MathSlash] Game ended with score:', score);
       setGameOver({
         score,
         correct: Number(d.correct ?? d.totalCorrect ?? 0),
@@ -3649,6 +3650,30 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
       setEndingGame(false);
       setSentNotice('');
       setErrMsg('');
+      // Call /simple/end to record the score and trigger zkLTC payout
+      try {
+        const endRes = await fetch(`${SIMPLE_API}/simple/end`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wallet: lowerAddr, score }),
+        });
+        const endData = await endRes.json().catch(() => ({}));
+        console.log('[MathSlash] /simple/end response:', endData);
+        if (endRes.ok && endData?.zkltcSent != null) {
+          setSentNotice(`${endData.zkltcSent} zkLTC sent`);
+          try {
+            addNotif(lowerAddr, {
+              type: 'game',
+              title: 'Game Over',
+              message: `Scored ${score} · ${endData.zkltcSent} zkLTC sent`,
+              link: endData?.explorerUrl || (endData?.txHash ? `https://liteforge.explorer.caldera.xyz/tx/${endData.txHash}` : undefined),
+            });
+          } catch {}
+        }
+        fetchStats();
+      } catch (err) {
+        console.warn('[MathSlash] /simple/end failed:', err);
+      }
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
