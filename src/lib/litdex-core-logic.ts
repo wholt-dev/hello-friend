@@ -223,7 +223,8 @@ export const LITVM_FACTORY_ABI = parseAbi([
 // ── Points System V7 ────────────────────────────────────────────────────
 export const POINTS_SYSTEM_ABI = [
   {"inputs":[{"name":"user","type":"address"}],"name":"getPoints","outputs":[{"name":"total","type":"uint256"},{"name":"deployDaily","type":"uint256"},{"name":"msgDaily","type":"uint256"}],"stateMutability":"view","type":"function"},
-  {"inputs":[{"name":"user","type":"address"}],"name":"hasCheckedInToday","outputs":[{"name":"","type":"bool"}],"stateMutability":"view","type":"function"}
+  {"inputs":[{"name":"user","type":"address"}],"name":"hasCheckedInToday","outputs":[{"name":"","type":"bool"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"name":"user","type":"address"},{"name":"amount","type":"uint256"}],"name":"spendPoints","outputs":[],"stateMutability":"nonpayable","type":"function"}
 ] as const;
 
 // ── Daily Check-in V2 ──────────────────────────────────────────────────
