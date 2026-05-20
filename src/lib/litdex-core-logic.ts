@@ -935,6 +935,13 @@ export async function syncUserPoints(user: string, points: bigint): Promise<stri
   return tx.hash as string;
 }
 
+export async function spendUserPoints(user: string, amount: bigint): Promise<string> {
+  const c = await getSignerContract(POINTS_SYSTEM_ADDRESS, POINTS_SYSTEM_ABI as never);
+  const tx = await c.spendPoints(user, amount);
+  await tx.wait();
+  return tx.hash as string;
+}
+
 export async function readNFTTotalMinted(nftType: NftTierId): Promise<number> {
   const c = new Contract(LITDEX_NFT_ADDRESS, LITDEX_NFT_ABI as never, readProvider);
   return Number(await c.totalMinted(nftType));
