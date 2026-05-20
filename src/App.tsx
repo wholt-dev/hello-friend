@@ -3574,6 +3574,47 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
   const [errMsg, setErrMsg] = useState('');
   const liveScoreRef = useRef(0);
   const endCalledRef = useRef(false);
+  const turnstileRef = useRef<HTMLDivElement>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const TURNSTILE_SITE_KEY = '0x4AAAAAADS4Y3ec8QgtPM8h';
+
+  const renderTurnstile = () => {
+    const ts: any = (window as any).turnstile;
+    if (!ts || !turnstileRef.current) return;
+    if (turnstileWidgetIdRef.current != null) return;
+    try {
+      turnstileWidgetIdRef.current = ts.render(turnstileRef.current, {
+        sitekey: TURNSTILE_SITE_KEY,
+        theme: 'dark',
+        callback: (token: string) => setTurnstileToken(token),
+        'expired-callback': () => setTurnstileToken(''),
+        'error-callback': () => setTurnstileToken(''),
+      });
+    } catch {}
+  };
+  const resetTurnstile = () => {
+    setTurnstileToken('');
+    const ts: any = (window as any).turnstile;
+    try {
+      if (ts && turnstileWidgetIdRef.current != null) ts.reset(turnstileWidgetIdRef.current);
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (playing || gameOver) return;
+    let tries = 0;
+    const iv = setInterval(() => {
+      tries++;
+      if ((window as any).turnstile) {
+        renderTurnstile();
+        clearInterval(iv);
+      } else if (tries > 50) {
+        clearInterval(iv);
+      }
+    }, 200);
+    return () => clearInterval(iv);
+  }, [playing, gameOver]);
 
   const lowerAddr = address ? address.toLowerCase() : '';
   const mask = (a: string) => a ? `${a.slice(0, 6)}...${a.slice(-4)}` : '';
@@ -3710,8 +3751,11 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
     setSentNotice('');
     setErrMsg('');
     setEndingGame(false);
-    setAutoStart(true);
-    setIframeKey(k => k + 1);
+    setPlaying(false);
+    setAutoStart(false);
+    resetTurnstile();
+    try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.unlock?.(); } catch {}
     fetchStats();
   };
 
@@ -3722,6 +3766,7 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
     setEndingGame(false);
     setPlaying(false);
     setAutoStart(false);
+    resetTurnstile();
     try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
     try { (screen.orientation as any)?.unlock?.(); } catch {}
     fetchStats();
@@ -3739,6 +3784,7 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
     setEndingGame(false);
     setSentNotice('');
     setAutoStart(false);
+    resetTurnstile();
     try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
     try { (screen.orientation as any)?.unlock?.(); } catch {}
   };
@@ -3761,6 +3807,17 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
       setErrMsg('No games left today');
       return;
     }
+    const ts: any = (window as any).turnstile;
+    let token = turnstileToken;
+    try {
+      if (!token && ts && turnstileWidgetIdRef.current != null) {
+        token = ts.getResponse(turnstileWidgetIdRef.current) || '';
+      }
+    } catch {}
+    if (!token) {
+      setErrMsg('Please complete verification');
+      return;
+    }
     setErrMsg('');
     setGameOver(null);
     setSentNotice('');
@@ -3772,12 +3829,13 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
       const r = await fetch(`${SIMPLE_API}/simple/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet: lowerAddr }),
+        body: JSON.stringify({ wallet: lowerAddr, turnstileToken: token }),
       });
       const data = await r.json().catch(() => ({}));
       console.log('[MathSlash] /simple/start response:', data);
       if (!r.ok) {
         setErrMsg(data?.error || data?.message || `Failed to start (${r.status})`);
+        resetTurnstile();
         return;
       }
       setPlaying(true);
@@ -3789,6 +3847,7 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
       try { (screen.orientation as any)?.lock?.('landscape').catch(() => {}); } catch {}
     } catch (e: any) {
       setErrMsg(e?.message || 'Network error');
+      resetTurnstile();
     } finally {
       setStarting(false);
     }
@@ -3892,11 +3951,14 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
               <div className="font-mono text-brand-text-primary text-base sm:text-lg mb-2">MATH SLASH</div>
               <div className="font-mono text-brand-text-muted text-xs mb-2">Slash the equations. zkLTC auto-sent after each game.</div>
               <div className="font-mono text-[10px] text-brand-text-muted mb-6">{DAILY_LIMIT} games/day · resets 00:00 IST</div>
+              <div className="flex justify-center mb-4">
+                <div ref={turnstileRef} className="cf-turnstile" data-sitekey={TURNSTILE_SITE_KEY} data-theme="dark"></div>
+              </div>
               <button
                 type="button"
                 onClick={startGame}
                 onTouchEnd={(e) => { e.preventDefault(); (e.currentTarget as HTMLButtonElement).click(); }}
-                disabled={!isConnected || starting || (isConnected && gamesLeft <= 0)}
+                disabled={!isConnected || starting || (isConnected && gamesLeft <= 0) || !turnstileToken}
                 className="w-full sm:w-auto min-h-12 px-8 py-3 rounded-lg bg-brand-text-primary text-brand-bg font-mono font-bold text-sm cursor-pointer touch-manipulation select-none active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ WebkitTapHighlightColor: 'transparent' }}
               >
