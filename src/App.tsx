@@ -3196,6 +3196,7 @@ const QuestsPage = () => {
   const [busy, setBusy] = useState<string | null>(null);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [threadLink, setThreadLink] = useState('');
+  const [quoteLink, setQuoteLink] = useState('');
   const [videoLink, setVideoLink] = useState('');
   const [submitBusy, setSubmitBusy] = useState<string | null>(null);
 
@@ -3254,7 +3255,7 @@ const QuestsPage = () => {
     }
   };
 
-  const submitContent = async (type: 'thread' | 'video', link: string) => {
+  const submitContent = async (type: 'thread' | 'quote_tweet' | 'video', link: string) => {
     if (!address || !link.trim()) return;
     setSubmitBusy(type);
     try {
@@ -3267,6 +3268,7 @@ const QuestsPage = () => {
       if (r.ok && d?.success !== false) {
         showInfo('Submitted! Awaiting approval.');
         if (type === 'thread') setThreadLink('');
+        else if (type === 'quote_tweet') setQuoteLink('');
         else setVideoLink('');
         await loadSubmissions();
       } else {
@@ -3282,14 +3284,15 @@ const QuestsPage = () => {
   const groups: { key: string; title: string; filter: (t: SocialTask) => boolean }[] = [
     { key: 'partnerships', title: 'Partnerships', filter: (t) => t.category === 'follow' && t.id.toLowerCase().includes('farosbeacon') },
     { key: 'follow', title: 'X Follows', filter: (t) => t.category === 'follow' && !t.id.toLowerCase().includes('farosbeacon') },
-    { key: 'tweet', title: 'Like, Retweet & Quote', filter: (t) => t.category === 'tweet' },
+    { key: 'tweet', title: 'Likes & Retweets', filter: (t) => t.category === 'tweet' && !t.id.toLowerCase().includes('quote') },
     { key: 'telegram', title: 'Telegram', filter: (t) => t.category === 'telegram' },
   ];
 
   const totalEarned = tasks.reduce((acc, t) => acc + (t.claimed ? t.points : 0), 0);
-  const totalPossible = tasks.reduce((acc, t) => acc + t.points, 0);
+  const totalPossible = 820;
 
   const threadSub = submissions.find(s => s.type === 'thread');
+  const quoteSub = submissions.find(s => s.type === 'quote_tweet');
   const videoSub = submissions.find(s => s.type === 'video');
 
   const renderIcon = (t: SocialTask) => t.category === 'telegram' ? '✈' : '𝕏';
@@ -3426,7 +3429,7 @@ const QuestsPage = () => {
                   <p className="text-xs text-brand-text-muted mt-1">Write a thread explaining how LitDeX works and post it on X</p>
                   <ul className="mt-3 space-y-1 text-[11px] text-white/80">
                     <li>• Regular account: <span className="font-mono text-white">500 pts + 0.1 zkLTC</span></li>
-                    <li>• Verified X (blue tick): <span className="font-mono text-white">1000 pts + 1 zkLTC</span></li>
+                    <li>• ✅ Verified X account: <span className="font-mono text-white">1000 pts + 1 zkLTC</span></li>
                   </ul>
                 </div>
               </div>
@@ -3438,7 +3441,7 @@ const QuestsPage = () => {
                     type="text"
                     value={threadLink}
                     onChange={(e) => setThreadLink(e.target.value)}
-                    placeholder="Paste your tweet/thread link"
+                    placeholder="Paste your thread link"
                     className="flex-1 px-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-white/30"
                   />
                   <button
@@ -3455,16 +3458,53 @@ const QuestsPage = () => {
               )}
             </Card>
 
-            {/* Card 2 — Video */}
+            {/* Card 2 — Quote Tweet */}
+            <Card className="p-5 bg-black/20 border-white/5">
+              <div className="flex items-start gap-4 mb-4">
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center text-xl shrink-0 border bg-white/5 border-white/10 text-white">𝕏</div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-white">Quote Tweet a LitDeX Post</h3>
+                  <p className="text-xs text-brand-text-muted mt-1">Quote any LitDeX tweet with your thoughts and submit the link for review</p>
+                  <ul className="mt-3 space-y-1 text-[11px] text-white/80">
+                    <li>• Reward: <span className="font-mono text-white">50 pts per approved quote tweet</span></li>
+                  </ul>
+                </div>
+              </div>
+              {quoteSub && !canResubmit(quoteSub) ? (
+                <div>{renderSubmissionStatus(quoteSub)}</div>
+              ) : (
+                <div className="flex flex-col md:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={quoteLink}
+                    onChange={(e) => setQuoteLink(e.target.value)}
+                    placeholder="Paste your quote tweet link"
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                  />
+                  <button
+                    onClick={() => submitContent('quote_tweet', quoteLink)}
+                    disabled={!quoteLink.trim() || submitBusy === 'quote_tweet'}
+                    className="px-6 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-white text-black hover:opacity-90 disabled:opacity-40 transition-all"
+                  >
+                    {submitBusy === 'quote_tweet' ? 'Submitting…' : 'Submit'}
+                  </button>
+                </div>
+              )}
+              {quoteSub && canResubmit(quoteSub) && quoteSub.status === 'rejected' && (
+                <div className="mt-3">{renderSubmissionStatus(quoteSub)}</div>
+              )}
+            </Card>
+
+            {/* Card 3 — Video */}
             <Card className="p-5 bg-black/20 border-white/5">
               <div className="flex items-start gap-4 mb-4">
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center text-xl shrink-0 border bg-white/5 border-white/10 text-white">🎬</div>
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-semibold text-white">Post a Video/Post explaining LitDeX on X or YouTube</h3>
-                  <p className="text-xs text-brand-text-muted mt-1">Create a video or detailed post explaining LitDeX. Minimum 1000 views required for approval.</p>
+                  <h3 className="font-semibold text-white">Record & Explain LitDeX</h3>
+                  <p className="text-xs text-brand-text-muted mt-1">Post a video or detailed post explaining LitDeX on X or YouTube</p>
                   <ul className="mt-3 space-y-1 text-[11px] text-white/80">
-                    <li>• Reward on approval: <span className="font-mono text-white">3000 pts + 1 zkLTC + Rare NFT 🎖️</span></li>
-                    <li className="text-yellow-400/80">⚠️ Minimum 1000 views required</li>
+                    <li>• Reward: <span className="font-mono text-white">6000 pts + 1 zkLTC</span></li>
+                    <li className="text-yellow-400/80">⚠️ Minimum 1000 views required for approval</li>
                   </ul>
                 </div>
               </div>
