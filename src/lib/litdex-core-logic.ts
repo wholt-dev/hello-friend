@@ -94,9 +94,9 @@ export const LITVM_FACTORY_ADDRESS   = "0xdd56517bFfDf6915918DbEDf1124b5F21D26f6
 // ── Points / Check-in / NFT ─────────────────────────────────────────────
 export const POINTS_SYSTEM_ADDRESS  = "0x526B0629C81d3314929dB8166372F792F3da3419";
 export const DAILY_CHECKIN_ADDRESS  = "0xBFcdf8b8bb7e779E382c65ca171fa1ee603E9BEa";
-export const LITDEX_NFT_ADDRESS     = "0x63C40F0F6A7D4AcE71f6Ccaf1BB588De9701b251";
+export const LITDEX_NFT_ADDRESS     = "0xF14caf1937177814441f53c83046570aee5B3d5B";
 export const MESSENGER_CONTRACT     = "0x9624FBBD6931b9D75961994E13604c1DC2c56225";
-export const NFT_POINTS_ADDRESS      = "0x63C40F0F6A7D4AcE71f6Ccaf1BB588De9701b251";
+export const NFT_POINTS_ADDRESS      = "0xF14caf1937177814441f53c83046570aee5B3d5B";
 
 // ── Reward / utility tokens ─────────────────────────────────────────────
 export const LDEX_TOKEN_ADDRESS = "0xBAaba603e6298fbb76325a6B0d47Cd57154ca641";
