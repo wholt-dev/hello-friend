@@ -3574,6 +3574,47 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
   const [errMsg, setErrMsg] = useState('');
   const liveScoreRef = useRef(0);
   const endCalledRef = useRef(false);
+  const turnstileRef = useRef<HTMLDivElement>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const TURNSTILE_SITE_KEY = '0x4AAAAAADS4Y3ec8QgtPM8h';
+
+  const renderTurnstile = () => {
+    const ts: any = (window as any).turnstile;
+    if (!ts || !turnstileRef.current) return;
+    if (turnstileWidgetIdRef.current != null) return;
+    try {
+      turnstileWidgetIdRef.current = ts.render(turnstileRef.current, {
+        sitekey: TURNSTILE_SITE_KEY,
+        theme: 'dark',
+        callback: (token: string) => setTurnstileToken(token),
+        'expired-callback': () => setTurnstileToken(''),
+        'error-callback': () => setTurnstileToken(''),
+      });
+    } catch {}
+  };
+  const resetTurnstile = () => {
+    setTurnstileToken('');
+    const ts: any = (window as any).turnstile;
+    try {
+      if (ts && turnstileWidgetIdRef.current != null) ts.reset(turnstileWidgetIdRef.current);
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (playing || gameOver) return;
+    let tries = 0;
+    const iv = setInterval(() => {
+      tries++;
+      if ((window as any).turnstile) {
+        renderTurnstile();
+        clearInterval(iv);
+      } else if (tries > 50) {
+        clearInterval(iv);
+      }
+    }, 200);
+    return () => clearInterval(iv);
+  }, [playing, gameOver]);
 
   const lowerAddr = address ? address.toLowerCase() : '';
   const mask = (a: string) => a ? `${a.slice(0, 6)}...${a.slice(-4)}` : '';
