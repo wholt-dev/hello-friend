@@ -3946,11 +3946,14 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
               <div className="font-mono text-brand-text-primary text-base sm:text-lg mb-2">MATH SLASH</div>
               <div className="font-mono text-brand-text-muted text-xs mb-2">Slash the equations. zkLTC auto-sent after each game.</div>
               <div className="font-mono text-[10px] text-brand-text-muted mb-6">{DAILY_LIMIT} games/day · resets 00:00 IST</div>
+              <div className="flex justify-center mb-4">
+                <div ref={turnstileRef} className="cf-turnstile" data-sitekey={TURNSTILE_SITE_KEY} data-theme="dark"></div>
+              </div>
               <button
                 type="button"
                 onClick={startGame}
                 onTouchEnd={(e) => { e.preventDefault(); (e.currentTarget as HTMLButtonElement).click(); }}
-                disabled={!isConnected || starting || (isConnected && gamesLeft <= 0)}
+                disabled={!isConnected || starting || (isConnected && gamesLeft <= 0) || !turnstileToken}
                 className="w-full sm:w-auto min-h-12 px-8 py-3 rounded-lg bg-brand-text-primary text-brand-bg font-mono font-bold text-sm cursor-pointer touch-manipulation select-none active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ WebkitTapHighlightColor: 'transparent' }}
               >
