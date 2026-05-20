@@ -3173,85 +3173,142 @@ contract LitVMTokenFactory is Ownable {
   );
 };
 // --- Page: Quests / Socials ---
+const SOCIAL_API = 'https://game.test-hub.xyz';
+
+type SocialTask = {
+  id: string;
+  title: string;
+  description?: string;
+  url: string;
+  points: number;
+  icon?: string;
+  category: string;
+  claimed?: boolean;
+};
+
+type Submission = { type: string; link: string; status: string; admin_note?: string };
+
 const QuestsPage = () => {
   const { address, isConnected } = useAccount();
-  const [completed, setCompleted] = useState<Record<string, boolean>>({});
+  const [tasks, setTasks] = useState<SocialTask[]>([]);
+  const [loading, setLoading] = useState(false);
   const [visited, setVisited] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string | null>(null);
-  const [QUESTS_LIST, setQuestsList] = useState<any[]>([]);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [threadLink, setThreadLink] = useState('');
+  const [videoLink, setVideoLink] = useState('');
+  const [submitBusy, setSubmitBusy] = useState<string | null>(null);
 
-  const cacheKey = address ? `litdex_quests_${address.toLowerCase()}` : null;
-
-  // Load static QUESTS list from logic module
-  useEffect(() => {
-    (async () => {
-      const mod = await import('./lib/litdex-core-logic');
-      setQuestsList(mod.QUESTS || []);
-    })();
-  }, []);
-
-  // Load cache first, then verify with API in background
-  useEffect(() => {
-    if (!address || !cacheKey) return;
+  const loadTasks = async () => {
+    if (!address) return;
+    setLoading(true);
     try {
-      const raw = localStorage.getItem(cacheKey);
-      if (raw) setCompleted(JSON.parse(raw));
-    } catch { /* ignore */ }
+      const r = await fetch(`${SOCIAL_API}/social/tasks/${address}`);
+      const d = await r.json();
+      setTasks(Array.isArray(d?.tasks) ? d.tasks : []);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
 
-    (async () => {
-      try {
-        const { questApi } = await import('./lib/litdex-core-logic');
-        const status = await questApi.getStatus(address);
-        setCompleted(prev => {
-          // Never reset: keep any locally-completed true
-          const merged: Record<string, boolean> = { ...prev };
-          Object.keys(status).forEach(k => { if (status[k]) merged[k] = true; });
-          try { localStorage.setItem(cacheKey, JSON.stringify(merged)); } catch { /* ignore */ }
-          return merged;
-        });
-      } catch (e) { console.error(e); }
-    })();
-  }, [address, cacheKey]);
-
-  const markDone = async (questId: string) => {
-    if (!address || completed[questId]) return;
-    setBusy(questId);
+  const loadSubmissions = async () => {
+    if (!address) return;
     try {
-      const { questApi } = await import('./lib/litdex-core-logic');
-      try { await questApi.complete(address, questId); } catch { /* tolerate */ }
-      const quest = QUESTS_LIST.find(q => q.id === questId);
-      setCompleted(prev => {
-        const next = { ...prev, [questId]: true };
-        if (cacheKey) {
-          try { localStorage.setItem(cacheKey, JSON.stringify(next)); } catch { /* ignore */ }
-        }
-        return next;
+      const r = await fetch(`${SOCIAL_API}/social/submissions/${address}`);
+      const d = await r.json();
+      setSubmissions(Array.isArray(d) ? d : (d?.submissions || []));
+    } catch (e) { console.error(e); }
+  };
+
+  useEffect(() => {
+    if (!address) return;
+    loadTasks();
+    loadSubmissions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
+
+  const claimTask = async (task: SocialTask) => {
+    if (!address || task.claimed) return;
+    setBusy(task.id);
+    try {
+      const r = await fetch(`${SOCIAL_API}/social/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: address, task_id: task.id }),
       });
-      if (quest) {
-        addNotif(address, {
-          type: "quest",
-          title: "Quest Completed",
-          message: `${quest.title} completed! +${quest.pts} points`,
-        });
-        addNotif(address, {
-          type: "points",
-          title: "Points Earned",
-          message: `+${quest.pts} points earned from quest`,
-        });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d?.success !== false) {
+        setTasks(prev => prev.map(t => t.id === task.id ? { ...t, claimed: true } : t));
+        showInfo(`+${task.points} PTS earned!`);
+      } else {
+        const msg = String(d?.error || d?.message || '').toLowerCase();
+        if (msg.includes('already')) {
+          setTasks(prev => prev.map(t => t.id === task.id ? { ...t, claimed: true } : t));
+        } else {
+          showError(d?.error || d?.message || 'Failed to claim');
+        }
       }
+    } catch (e: any) {
+      showError(e?.message || 'Failed to claim');
     } finally {
       setBusy(null);
     }
   };
 
-  const groups: { key: string; title: string; subtitle: string }[] = [
-    { key: 'follow', title: 'X Follows',  subtitle: '' },
-    { key: 'like',   title: 'Like & Retweet', subtitle: '' },
-    { key: 'tg',     title: 'Telegram',   subtitle: '' },
+  const submitContent = async (type: 'thread' | 'video', link: string) => {
+    if (!address || !link.trim()) return;
+    setSubmitBusy(type);
+    try {
+      const r = await fetch(`${SOCIAL_API}/social/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: address, type, link: link.trim() }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d?.success !== false) {
+        showInfo('Submitted! Awaiting approval.');
+        if (type === 'thread') setThreadLink('');
+        else setVideoLink('');
+        await loadSubmissions();
+      } else {
+        showError(d?.error || d?.message || 'Failed to submit');
+      }
+    } catch (e: any) {
+      showError(e?.message || 'Failed to submit');
+    } finally {
+      setSubmitBusy(null);
+    }
+  };
+
+  const groups: { key: string; title: string; filter: (t: SocialTask) => boolean }[] = [
+    { key: 'partnerships', title: 'Partnerships', filter: (t) => t.category === 'follow' && t.id.toLowerCase().includes('farosbeacon') },
+    { key: 'follow', title: 'X Follows', filter: (t) => t.category === 'follow' && !t.id.toLowerCase().includes('farosbeacon') },
+    { key: 'tweet', title: 'Like, Retweet & Quote', filter: (t) => t.category === 'tweet' },
+    { key: 'telegram', title: 'Telegram', filter: (t) => t.category === 'telegram' },
   ];
 
-  const totalEarned = QUESTS_LIST.reduce((acc, q) => acc + (completed[q.id] ? q.pts : 0), 0);
-  const totalPossible = QUESTS_LIST.reduce((acc, q) => acc + q.pts, 0);
+  const totalEarned = tasks.reduce((acc, t) => acc + (t.claimed ? t.points : 0), 0);
+  const totalPossible = tasks.reduce((acc, t) => acc + t.points, 0);
+
+  const threadSub = submissions.find(s => s.type === 'thread');
+  const videoSub = submissions.find(s => s.type === 'video');
+
+  const renderIcon = (t: SocialTask) => t.category === 'telegram' ? '✈' : '𝕏';
+
+  const renderSubmissionStatus = (sub?: Submission) => {
+    if (!sub) return null;
+    if (sub.status === 'pending') {
+      return <div className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full border border-white/15 text-white bg-white/5 inline-block">⏳ Approval Pending</div>;
+    }
+    if (sub.status === 'approved') {
+      return <div className="text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full border border-green-500/30 text-green-400 bg-green-500/10 inline-block">✅ Approved</div>;
+    }
+    if (sub.status === 'rejected') {
+      return <div className="text-[10px] font-bold uppercase tracking-widest text-red-400">❌ Rejected{sub.admin_note ? `: ${sub.admin_note}` : ''}</div>;
+    }
+    return null;
+  };
+
+  const canResubmit = (sub?: Submission) => !sub || sub.status === 'rejected';
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-12 max-w-4xl mx-auto px-4">
@@ -3281,23 +3338,24 @@ const QuestsPage = () => {
         </div>
       )}
 
+      {isConnected && loading && tasks.length === 0 && (
+        <div className="p-12 text-center text-brand-text-muted text-xs uppercase tracking-widest">Loading tasks…</div>
+      )}
+
       {groups.map(group => {
-        const items = QUESTS_LIST.filter(q => q.group === group.key);
+        const items = tasks.filter(group.filter);
         if (!items.length) return null;
         return (
           <div key={group.key} className="mb-10">
             <div className="flex items-end justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-bold text-white tracking-tight">{group.title}</h2>
-                {group.subtitle && <p className="text-[10px] text-brand-text-muted uppercase tracking-widest">{group.subtitle}</p>}
-              </div>
+              <h2 className="text-lg font-bold text-white tracking-tight">{group.title}</h2>
             </div>
             <div className="space-y-3">
-              {items.map(q => {
-                const isDone = !!completed[q.id];
-                const hasVisited = !!visited[q.id];
+              {items.map(t => {
+                const isDone = !!t.claimed;
+                const hasVisited = !!visited[t.id];
                 return (
-                  <Card key={q.id} className={cn(
+                  <Card key={t.id} className={cn(
                     "p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all",
                     isDone ? "bg-white/[0.02] border-white/5 opacity-60" : "bg-black/20 border-white/5 hover:bg-white/[0.03]"
                   )}>
@@ -3306,48 +3364,43 @@ const QuestsPage = () => {
                         "w-12 h-12 rounded-xl flex items-center justify-center text-xl shrink-0 border",
                         isDone ? "bg-white/[0.02] border-white/5 text-white/30" : "bg-white/5 border-white/10 text-white"
                       )}>
-                        {q.icon === 'tg' ? '✈' : '𝕏'}
+                        {renderIcon(t)}
                       </div>
                       <div className="min-w-0">
-                        <h3 className={cn("font-semibold truncate", isDone ? "text-white/40" : "text-white")}>{q.title}</h3>
+                        <h3 className={cn("font-semibold truncate", isDone ? "text-white/40" : "text-white")}>{t.title}</h3>
                         <div className="flex items-center gap-2 mt-1">
                           <span className={cn(
                             "text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border",
                             isDone ? "border-white/5 text-white/30" : "border-white/15 text-white bg-white/5"
                           )}>
-                            +{q.pts} pts
+                            +{t.points} PTS
                           </span>
                           <span className="text-[10px] text-brand-text-muted uppercase tracking-widest">{group.title}</span>
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 w-full md:w-auto">
-                      <a
-                        href={q.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={() => setVisited(prev => ({ ...prev, [q.id]: true }))}
-                        className={cn(
-                          "flex-1 md:flex-none inline-flex items-center justify-center gap-1.5 px-5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border",
-                          isDone
-                            ? "border-white/5 text-white/30 pointer-events-none"
-                            : "border-white/15 text-white hover:bg-white/10"
-                        )}
-                      >
-                        Go <ExternalLink size={11} />
-                      </a>
-                      {(hasVisited || isDone) && (
-                        <button
-                          onClick={() => markDone(q.id)}
-                          disabled={isDone || busy === q.id || !isConnected}
-                          className={cn(
-                            "flex-1 md:flex-none px-5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all",
-                            isDone
-                              ? "bg-white/10 text-white/30 cursor-not-allowed"
-                              : "bg-white text-black hover:opacity-90 disabled:opacity-40"
-                          )}
+                      {isDone ? (
+                        <span className="px-5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-white/5 border border-white/5 text-white/40">
+                          Completed
+                        </span>
+                      ) : !hasVisited ? (
+                        <a
+                          href={t.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={() => setVisited(prev => ({ ...prev, [t.id]: true }))}
+                          className="flex-1 md:flex-none inline-flex items-center justify-center gap-1.5 px-5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest border border-white/15 text-white hover:bg-white/10 transition-all"
                         >
-                          {isDone ? "Completed" : busy === q.id ? "Saving…" : "Complete"}
+                          Go <ExternalLink size={11} />
+                        </a>
+                      ) : (
+                        <button
+                          onClick={() => claimTask(t)}
+                          disabled={busy === t.id || !isConnected}
+                          className="flex-1 md:flex-none px-5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-white text-black hover:opacity-90 disabled:opacity-40 transition-all"
+                        >
+                          {busy === t.id ? "Claiming…" : "Claim"}
                         </button>
                       )}
                     </div>
@@ -3358,6 +3411,90 @@ const QuestsPage = () => {
           </div>
         );
       })}
+
+      {/* Content Submission Section */}
+      {isConnected && (
+        <div className="mb-10">
+          <h2 className="text-lg font-bold text-white tracking-tight mb-4">Content Submissions</h2>
+          <div className="space-y-3">
+            {/* Card 1 — Thread */}
+            <Card className="p-5 bg-black/20 border-white/5">
+              <div className="flex items-start gap-4 mb-4">
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center text-xl shrink-0 border bg-white/5 border-white/10 text-white">𝕏</div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-white">Explain LitDeX on X (Thread)</h3>
+                  <p className="text-xs text-brand-text-muted mt-1">Write a thread explaining how LitDeX works and post it on X</p>
+                  <ul className="mt-3 space-y-1 text-[11px] text-white/80">
+                    <li>• Regular account: <span className="font-mono text-white">500 pts + 0.1 zkLTC</span></li>
+                    <li>• Verified X (blue tick): <span className="font-mono text-white">1000 pts + 1 zkLTC</span></li>
+                  </ul>
+                </div>
+              </div>
+              {threadSub && !canResubmit(threadSub) ? (
+                <div>{renderSubmissionStatus(threadSub)}</div>
+              ) : (
+                <div className="flex flex-col md:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={threadLink}
+                    onChange={(e) => setThreadLink(e.target.value)}
+                    placeholder="Paste your tweet/thread link"
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                  />
+                  <button
+                    onClick={() => submitContent('thread', threadLink)}
+                    disabled={!threadLink.trim() || submitBusy === 'thread'}
+                    className="px-6 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-white text-black hover:opacity-90 disabled:opacity-40 transition-all"
+                  >
+                    {submitBusy === 'thread' ? 'Submitting…' : 'Submit'}
+                  </button>
+                </div>
+              )}
+              {threadSub && canResubmit(threadSub) && threadSub.status === 'rejected' && (
+                <div className="mt-3">{renderSubmissionStatus(threadSub)}</div>
+              )}
+            </Card>
+
+            {/* Card 2 — Video */}
+            <Card className="p-5 bg-black/20 border-white/5">
+              <div className="flex items-start gap-4 mb-4">
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center text-xl shrink-0 border bg-white/5 border-white/10 text-white">🎬</div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-white">Post a Video/Post explaining LitDeX on X or YouTube</h3>
+                  <p className="text-xs text-brand-text-muted mt-1">Create a video or detailed post explaining LitDeX. Minimum 1000 views required for approval.</p>
+                  <ul className="mt-3 space-y-1 text-[11px] text-white/80">
+                    <li>• Reward on approval: <span className="font-mono text-white">3000 pts + 1 zkLTC + Rare NFT 🎖️</span></li>
+                    <li className="text-yellow-400/80">⚠️ Minimum 1000 views required</li>
+                  </ul>
+                </div>
+              </div>
+              {videoSub && !canResubmit(videoSub) ? (
+                <div>{renderSubmissionStatus(videoSub)}</div>
+              ) : (
+                <div className="flex flex-col md:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={videoLink}
+                    onChange={(e) => setVideoLink(e.target.value)}
+                    placeholder="Paste your video/post link"
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                  />
+                  <button
+                    onClick={() => submitContent('video', videoLink)}
+                    disabled={!videoLink.trim() || submitBusy === 'video'}
+                    className="px-6 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-white text-black hover:opacity-90 disabled:opacity-40 transition-all"
+                  >
+                    {submitBusy === 'video' ? 'Submitting…' : 'Submit'}
+                  </button>
+                </div>
+              )}
+              {videoSub && canResubmit(videoSub) && videoSub.status === 'rejected' && (
+                <div className="mt-3">{renderSubmissionStatus(videoSub)}</div>
+              )}
+            </Card>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 };
