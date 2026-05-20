@@ -94,9 +94,9 @@ export const LITVM_FACTORY_ADDRESS   = "0xdd56517bFfDf6915918DbEDf1124b5F21D26f6
 // ── Points / Check-in / NFT ─────────────────────────────────────────────
 export const POINTS_SYSTEM_ADDRESS  = "0x526B0629C81d3314929dB8166372F792F3da3419";
 export const DAILY_CHECKIN_ADDRESS  = "0xBFcdf8b8bb7e779E382c65ca171fa1ee603E9BEa";
-export const LITDEX_NFT_ADDRESS     = "0xF14caf1937177814441f53c83046570aee5B3d5B";
+export const LITDEX_NFT_ADDRESS     = "0x63C40F0F6A7D4AcE71f6Ccaf1BB588De9701b251";
 export const MESSENGER_CONTRACT     = "0x9624FBBD6931b9D75961994E13604c1DC2c56225";
-export const NFT_POINTS_ADDRESS      = "0xF14caf1937177814441f53c83046570aee5B3d5B";
+export const NFT_POINTS_ADDRESS      = "0x63C40F0F6A7D4AcE71f6Ccaf1BB588De9701b251";
 
 // ── Reward / utility tokens ─────────────────────────────────────────────
 export const LDEX_TOKEN_ADDRESS = "0xBAaba603e6298fbb76325a6B0d47Cd57154ca641";
@@ -223,7 +223,8 @@ export const LITVM_FACTORY_ABI = parseAbi([
 // ── Points System V7 ────────────────────────────────────────────────────
 export const POINTS_SYSTEM_ABI = [
   {"inputs":[{"name":"user","type":"address"}],"name":"getPoints","outputs":[{"name":"total","type":"uint256"},{"name":"deployDaily","type":"uint256"},{"name":"msgDaily","type":"uint256"}],"stateMutability":"view","type":"function"},
-  {"inputs":[{"name":"user","type":"address"}],"name":"hasCheckedInToday","outputs":[{"name":"","type":"bool"}],"stateMutability":"view","type":"function"}
+  {"inputs":[{"name":"user","type":"address"}],"name":"hasCheckedInToday","outputs":[{"name":"","type":"bool"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"name":"user","type":"address"},{"name":"amount","type":"uint256"}],"name":"spendPoints","outputs":[],"stateMutability":"nonpayable","type":"function"}
 ] as const;
 
 // ── Daily Check-in V2 ──────────────────────────────────────────────────
@@ -930,6 +931,13 @@ export async function readNFTAvailablePoints(user: string): Promise<bigint> {
 export async function syncUserPoints(user: string, points: bigint): Promise<string> {
   const c = await getSignerContract(LITDEX_NFT_ADDRESS, LITDEX_NFT_ABI as never);
   const tx = await c.setUserPoints(user, points);
+  await tx.wait();
+  return tx.hash as string;
+}
+
+export async function spendUserPoints(user: string, amount: bigint): Promise<string> {
+  const c = await getSignerContract(POINTS_SYSTEM_ADDRESS, POINTS_SYSTEM_ABI as never);
+  const tx = await c.spendPoints(user, amount);
   await tx.wait();
   return tx.hash as string;
 }
