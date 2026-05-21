@@ -5385,7 +5385,7 @@ export default function App() {
       <footer ref={footerRef} className="border-t border-brand-border py-12 relative z-50 bg-brand-bg">
         <div className="container mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center text-white text-sm font-bold">
+            <div className="w-7 h-7 rounded-lg bg-neutral-300 dark:bg-white flex items-center justify-center text-white text-sm font-bold">
               <LogoLD size={14} />
             </div>
             <span className="text-brand-text-muted text-xs font-mono">LitDEX Testnet</span>
