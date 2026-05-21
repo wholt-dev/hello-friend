@@ -51,7 +51,7 @@ import type * as lib from './lib/litdex-core-logic';
 import SwapCard from './components/ui/crypto-swap-card';
 import BridgeCard from './components/ui/bridge-card';
 import { AnimatedNavFramer } from './components/ui/navigation-menu';
-import { litvmChain, errMsg, LITDEX_DEPLOYER_ADDRESS, readTotalDeployed, deployTokenLitDEX, shortAddr, readDeployments, readDeployFee, readLegacyDeployFee, deployTokenLegacy, getLegacyTokenInfo, getLegacyTokensByCreator, getLegacyTotalDeployedDisplay, readPoints, readCheckinInfo, readCurrentDay, checkinToday, claimNFTRewardsByType, claimNFTRewards, readUserNFTs, readNFTPendingByType, readNFTCurrentDay, readNFTTotalMinted, readNFTAvailablePoints, syncUserPoints, mintRewardNFT, spendUserPoints } from './lib/litdex-core-logic';
+import { litvmChain, errMsg, LITDEX_DEPLOYER_ADDRESS, readTotalDeployed, deployTokenLitDeX, shortAddr, readDeployments, readDeployFee, readLegacyDeployFee, deployTokenLegacy, getLegacyTokenInfo, getLegacyTokensByCreator, getLegacyTotalDeployedDisplay, readPoints, readCheckinInfo, readCurrentDay, checkinToday, claimNFTRewardsByType, claimNFTRewards, readUserNFTs, readNFTPendingByType, readNFTCurrentDay, readNFTTotalMinted, readNFTAvailablePoints, syncUserPoints, mintRewardNFT, spendUserPoints } from './lib/litdex-core-logic';
 import { showSuccess, showError, showInfo, refreshPoints } from './lib/feedback';
 
 // --- Types ---
@@ -1587,7 +1587,7 @@ const ERC20Form = ({ onDeployed }: any) => {
     } catch { /* ignore */ }
 
     try {
-      const result = await deployTokenLitDEX({
+      const result = await deployTokenLitDeX({
         name,
         symbol,
         totalSupply: supply
@@ -2019,8 +2019,8 @@ contract MNFT is ERC721, Ownable {
     setTxStatus(null);
     setTxHash(null);
     try {
-      const { deployNFTLitDEX } = await import('./lib/litdex-core-logic');
-      const result = await deployNFTLitDEX({
+      const { deployNFTLitDeX } = await import('./lib/litdex-core-logic');
+      const result = await deployNFTLitDeX({
         name,
         symbol,
         maxSupply: parseInt(maxSupply),
