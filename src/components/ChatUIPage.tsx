@@ -658,7 +658,15 @@ export default function ChatUIPage() {
                           </button>
                           <button
                             aria-label="Reply"
-                            onClick={() => setCommentOpen(commentOpen === post.id ? null : post.id)}
+                            onClick={() => {
+                              setReplyTo({
+                                postId: post.id,
+                                name: post.name || short(post.author),
+                                authorAddr: post.author,
+                                content: post.content,
+                              });
+                              setTimeout(() => inputRef.current?.focus(), 0);
+                            }}
                             className="p-2 rounded-full hover:bg-white/10 transition-colors"
                           >
                             <Reply size={16} />
