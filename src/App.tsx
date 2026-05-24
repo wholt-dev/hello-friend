@@ -5202,6 +5202,7 @@ export default function App() {
       case 'games': return <GamesPage />;
       case 'faucet': return <FaucetPage />;
       case 'hub': return <HubPage />;
+      case 'chatui': return <ChatUIPage />;
       default: return <SwapPage />;
     }
   };
