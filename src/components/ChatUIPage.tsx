@@ -375,12 +375,29 @@ export default function ChatUIPage() {
     bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight });
   }, [messages, posts, commentOpen]);
 
+  const refreshPost = useCallback(async (postId: string) => {
+    try {
+      const r = await fetch(`${API}/hub/posts/${postId}`);
+      const j = await r.json();
+      const p = j.post || j.data || j;
+      if (!p) return;
+      setPosts((list) => list.map((it) => it.id === postId ? {
+        ...it,
+        content: p.content ?? it.content,
+        likeCount: Number(p.likeCount ?? p.likes ?? it.likeCount),
+        commentCount: Number(p.commentCount ?? p.comments ?? it.commentCount),
+        bountyActive: Boolean(p.bountyActive ?? p.hasBounty ?? it.bountyActive),
+      } : it));
+    } catch (err) { console.error("[ChatUI] refreshPost error:", err); }
+  }, []);
+
   const likePost = async (post: Post) => {
     if (post.liked) return;
     setBusy(true);
     try {
       await writeContract(HUB_POSTS_ADDRESS, encodeCall(SELECTOR.likePost, [{ type: "uint", value: post.postId }]));
-      setPosts((list) => list.map((p) => p.id === post.id ? { ...p, liked: true, likeCount: p.likeCount + 1 } : p));
+      setPosts((list) => list.map((p) => p.id === post.id ? { ...p, liked: true } : p));
+      await refreshPost(post.postId);
     } finally { setBusy(false); }
   };
 
@@ -390,9 +407,18 @@ export default function ChatUIPage() {
     setBusy(true);
     try {
       await writeContract(HUB_POSTS_ADDRESS, encodeCall(SELECTOR.commentPost, [{ type: "uint", value: postId }, { type: "string", value: text }]));
-      setPosts((list) => list.map((p) => p.id === postId ? { ...p, commentCount: p.commentCount + 1 } : p));
       setCommentDraft("");
       setCommentOpen(null);
+      await refreshPost(postId);
+      try {
+        if (wallet) {
+          const r = await fetch(`${API}/hub/posts/${postId}/status/${wallet}`);
+          const j = await r.json();
+          if (j?.hasCommented || j?.commented) {
+            setCommentedPosts((m) => ({ ...m, [postId]: true }));
+          }
+        }
+      } catch (err) { console.error("[ChatUI] post status error:", err); }
     } finally { setBusy(false); }
   };
 
