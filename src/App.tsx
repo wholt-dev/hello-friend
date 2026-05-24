@@ -55,8 +55,9 @@ import { litvmChain, errMsg, LITDEX_DEPLOYER_ADDRESS, readTotalDeployed, deployT
 import { showSuccess, showError, showInfo, refreshPoints } from './lib/feedback';
 
 // --- Types ---
-type PageID = 'swap' | 'pool' | 'deploy' | 'points' | 'checkin' | 'nfts' | 'messenger' | 'quests' | 'games' | 'faucet' | 'hub';
+type PageID = 'swap' | 'pool' | 'deploy' | 'points' | 'checkin' | 'nfts' | 'messenger' | 'quests' | 'games' | 'faucet' | 'hub' | 'chatui';
 import HubPage from './components/HubPage';
+import ChatUIPage from './components/ChatUIPage';
 
 interface NavItemProps {
   icon: any;
@@ -5201,6 +5202,7 @@ export default function App() {
       case 'games': return <GamesPage />;
       case 'faucet': return <FaucetPage />;
       case 'hub': return <HubPage />;
+      case 'chatui': return <ChatUIPage />;
       default: return <SwapPage />;
     }
   };
