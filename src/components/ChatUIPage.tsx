@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const API = "http://155.133.23.14:3005";
+const API = "https://hub.test-hub.xyz";
 const CHAIN_ID_HEX = "0x1159";
 const RPC_URL = "https://liteforge.rpc.caldera.xyz/http";
 const HUB_POSTS_ADDRESS = "0x33690545061cF3759350dd2C5A0d1080D9A14D73";
