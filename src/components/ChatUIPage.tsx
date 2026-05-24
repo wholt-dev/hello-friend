@@ -744,12 +744,52 @@ export default function ChatUIPage() {
               })}
             </div>
 
-            <div className="flex items-center gap-1 px-2 py-2 border-t border-brand-border">
-              <IconBtn aria-label="Emoji"><Smile size={18} /></IconBtn>
-              <IconBtn aria-label="Attach"><Paperclip size={18} /></IconBtn>
-              {tab === "private" && <IconBtn aria-label="Send zkLTC" disabled={!current} onClick={() => setTipOpen(true)}><DollarSign size={18} /></IconBtn>}
-              <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") (tab === "global" ? openCreatePost() : sendPrivate()); }} disabled={!showChat || busy} placeholder={showChat ? (tab === "global" ? "Create a global post" : "Type a message") : "Select a chat first"} className="flex-grow h-10 px-3 bg-transparent border-0 outline-none text-sm text-brand-text-primary placeholder:text-brand-text-muted disabled:opacity-50" />
-              <IconBtn aria-label="Send" disabled={!showChat || busy} onClick={tab === "global" ? openCreatePost : sendPrivate}><Send size={18} /></IconBtn>
+            <div className="border-t border-brand-border">
+              {replyTo && tab === "global" && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-white/[0.04] border-b border-brand-border text-xs text-brand-text-muted">
+                  <span className="text-brand-text-primary">↩</span>
+                  <span className="truncate">
+                    Replying to <span className="font-semibold text-brand-text-primary">@{replyTo.name}</span>
+                  </span>
+                  <span className="truncate opacity-60 hidden sm:inline">— {replyTo.content.length > 60 ? `${replyTo.content.slice(0, 60)}…` : replyTo.content}</span>
+                  <button aria-label="Cancel reply" onClick={() => setReplyTo(null)} className="ml-auto p-1 rounded hover:bg-white/10 text-brand-text-muted hover:text-brand-text-primary">
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+              <div className="flex items-center gap-1 px-2 py-2">
+                <IconBtn aria-label="Emoji"><Smile size={18} /></IconBtn>
+                <IconBtn aria-label="Attach"><Paperclip size={18} /></IconBtn>
+                {tab === "private" && <IconBtn aria-label="Send zkLTC" disabled={!current} onClick={() => setTipOpen(true)}><DollarSign size={18} /></IconBtn>}
+                <input
+                  ref={inputRef}
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      if (tab === "global" && replyTo) sendReply();
+                      else if (tab === "global") openCreatePost();
+                      else sendPrivate();
+                    } else if (e.key === "Escape" && replyTo) {
+                      setReplyTo(null);
+                    }
+                  }}
+                  disabled={!showChat || busy}
+                  placeholder={
+                    !showChat ? "Select a chat first" :
+                    tab === "global" ? (replyTo ? `Reply to @${replyTo.name}` : "Create a global post") :
+                    "Type a message"
+                  }
+                  className="flex-grow h-10 px-3 bg-transparent border-0 outline-none text-sm text-brand-text-primary placeholder:text-brand-text-muted disabled:opacity-50"
+                />
+                <IconBtn
+                  aria-label="Send"
+                  disabled={!showChat || busy}
+                  onClick={tab === "global" ? (replyTo ? sendReply : openCreatePost) : sendPrivate}
+                >
+                  <Send size={18} />
+                </IconBtn>
+              </div>
             </div>
           </section>
         </div>
