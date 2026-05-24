@@ -725,28 +725,6 @@ export default function ChatUIPage() {
                         </div>
                       )}
 
-                      {/* Reply input */}
-                      {commentOpen === post.id && (
-                        <div className="mt-3 border-t border-brand-border pt-3">
-                          <div className="mb-2 pl-3 border-l-2 border-gray-400/60 bg-white/[0.03] rounded-r-md py-1.5">
-                            <div className="flex items-center gap-1.5 text-[11px] text-brand-text-muted truncate">
-                              <Avatar name={post.name || post.author} size={16} />
-                              <span className="font-medium">{post.name || short(post.author)}</span>
-                              <span className="truncate opacity-70">{quotedPreview}</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <input
-                              value={commentDraft}
-                              onChange={(e) => setCommentDraft(e.target.value)}
-                              onKeyDown={(e) => { if (e.key === "Enter") commentPost(post.id); }}
-                              placeholder={`Reply to ${post.name || short(post.author)}`}
-                              className="min-w-0 flex-1 h-9 rounded-md bg-brand-bg border border-brand-border px-3 text-sm text-brand-text-primary placeholder:text-brand-text-muted outline-none"
-                            />
-                            <IconBtn aria-label="Send reply" disabled={busy} onClick={() => commentPost(post.id)}><Send size={16} /></IconBtn>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
                 );
