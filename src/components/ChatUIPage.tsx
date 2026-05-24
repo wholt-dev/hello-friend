@@ -19,7 +19,6 @@ import {
   User2,
   X,
 } from "lucide-react";
-import { BrowserProvider, Contract, parseEther } from "ethers";
 import { cn } from "@/lib/utils";
 
 const API = "http://155.133.23.14:3005";
@@ -29,28 +28,20 @@ const HUB_POSTS_ADDRESS = "0x33690545061cF3759350dd2C5A0d1080D9A14D73";
 const LIT_REGISTRY_ADDRESS = "0x3E3aEE6d154f881A7418b2dA50c915C34664C2A8";
 const MESSENGER_ADDRESS = "0x69405b51963D592C6CA9350F774045d4E76c89B8";
 
-const HUB_POSTS_ABI = [
-  "function createPost(string content, uint256 likeReward, uint256 commentReward) external payable returns (uint256)",
-  "function likePost(uint256 postId) external",
-  "function commentPost(uint256 postId, string text) external",
-  "function hasLiked(uint256, address) external view returns (bool)",
-  "function postCount() external view returns (uint256)",
-];
-
-const LIT_REGISTRY_ABI = ["function reverseResolve(address wallet) external view returns (string)"];
-
-const MESSENGER_ABI = [
-  "function sendFriendRequest(address to) external",
-  "function acceptFriendRequest(uint256 reqId) external",
-  "function rejectFriendRequest(uint256 reqId) external",
-  "function sendMessage(address to, string contentHash, string msgType) external",
-  "function sendZkLTC(address to, string note) external payable",
-  "function getFriends(address user) external view returns (address[])",
-  "function getPendingRequests(address user) external view returns (uint256)",
-  "function isFriend(address, address) external view returns (bool)",
-  "function requestCount() external view returns (uint256)",
-  "function friendRequests(uint256) external view returns (address from, address to, uint8 status, uint256 sentAt)",
-];
+const SELECTOR = {
+  createPost: "0xbf95fe57",
+  likePost: "0x725009d3",
+  commentPost: "0x0418e5ff",
+  hasLiked: "0x8fb7092c",
+  reverseResolve: "0x9af8b7aa",
+  sendFriendRequest: "0x837b770a",
+  acceptFriendRequest: "0x2b5aeab7",
+  rejectFriendRequest: "0xd1b5b906",
+  sendMessage: "0xcea14c26",
+  sendZkLTC: "0x096a0efb",
+  getPendingRequests: "0xf05bfa7b",
+  friendRequests: "0xdc5bd536",
+};
 
 type Contact = { address: string; name: string; message?: string };
 type Msg = { id?: string | number; from?: string; wallet?: string; to?: string; message?: string; content?: string; text?: string; contentHash?: string; ts?: number; timestamp?: number | string; createdAt?: string };
