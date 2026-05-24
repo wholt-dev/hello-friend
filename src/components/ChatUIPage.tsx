@@ -588,14 +588,14 @@ export default function ChatUIPage() {
           <textarea value={postContent} onChange={(e) => setPostContent(e.target.value)} className="h-28 w-full rounded-md bg-brand-bg border border-brand-border p-3 text-sm text-brand-text-primary outline-none" />
           <label className="mt-3 flex items-center gap-2 text-sm text-brand-text-primary"><input type="checkbox" checked={addBounty} onChange={(e) => setAddBounty(e.target.checked)} /> Add Bounty?</label>
           {addBounty && <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2"><Field label="Like reward" value={likeReward} setValue={setLikeReward} /><Field label="Comment reward" value={commentReward} setValue={setCommentReward} /><div><div className="mb-1 text-xs text-brand-text-muted">Total budget</div><div className="h-10 rounded-md border border-brand-border bg-white/5 px-3 text-sm text-brand-text-primary flex items-center">{totalBudget} zkLTC</div></div></div>}
-          <button disabled={busy} onClick={createPost} className="mt-4 w-full h-10 rounded-md bg-white text-black text-sm font-semibold disabled:opacity-50">Submit</button>
+          <button disabled={busy} onClick={createPost} className="mt-4 w-full h-10 rounded-md bg-brand-teal text-brand-bg text-sm font-semibold disabled:opacity-50">Submit</button>
         </Modal>
       )}
 
       {addFriendOpen && (
         <Modal title="Add Friend" onClose={() => setAddFriendOpen(false)}>
           <input value={friendName} onChange={(e) => setFriendName(e.target.value)} placeholder="name.lit" className="w-full h-10 rounded-md bg-brand-bg border border-brand-border px-3 text-sm text-brand-text-primary placeholder:text-brand-text-muted outline-none" />
-          <button disabled={busy} onClick={addFriend} className="mt-4 w-full h-10 rounded-md bg-white text-black text-sm font-semibold disabled:opacity-50">Send request</button>
+          <button disabled={busy} onClick={addFriend} className="mt-4 w-full h-10 rounded-md bg-brand-teal text-brand-bg text-sm font-semibold disabled:opacity-50">Send request</button>
         </Modal>
       )}
 
@@ -603,7 +603,7 @@ export default function ChatUIPage() {
         <Modal title="Send zkLTC" onClose={() => setTipOpen(false)}>
           <Field label="Amount" value={tipAmount} setValue={setTipAmount} />
           <div className="mt-3"><div className="mb-1 text-xs text-brand-text-muted">Note</div><input value={tipNote} onChange={(e) => setTipNote(e.target.value)} className="w-full h-10 rounded-md bg-brand-bg border border-brand-border px-3 text-sm text-brand-text-primary outline-none" /></div>
-          <button disabled={busy} onClick={sendTip} className="mt-4 w-full h-10 rounded-md bg-white text-black text-sm font-semibold disabled:opacity-50">Send</button>
+          <button disabled={busy} onClick={sendTip} className="mt-4 w-full h-10 rounded-md bg-brand-teal text-brand-bg text-sm font-semibold disabled:opacity-50">Send</button>
         </Modal>
       )}
     </div>
