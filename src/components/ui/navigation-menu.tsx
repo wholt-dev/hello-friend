@@ -13,6 +13,7 @@ const navItems: NavItem[] = [
   { name: "Swap", id: "swap" },
   { name: "Pool", id: "pool" },
   { name: "Deploy", id: "deploy" },
+  { name: "Hub", id: "hub" },
   { name: "Points", id: "points" },
   { name: "NFTs", id: "nfts" },
   { name: "Messenger", id: "messenger" },
