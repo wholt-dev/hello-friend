@@ -471,28 +471,37 @@ export default function ChatUIPage() {
     } finally { setBusy(false); }
   };
 
-  const sendReply = async () => {
-    if (!replyTo) return;
+  const sendGlobal = async () => {
     const body = draft.trim();
     if (!body) return;
-    const mention = `@${short(replyTo.authorAddr)} `;
-    const full = body.startsWith("@") ? body : mention + body;
+    const content = replyTo
+      ? (body.startsWith("@") ? body : `@${short(replyTo.authorAddr)} ${body}`)
+      : body;
+    const useBounty = inlineBountyActive && (Number(inlineLikeReward || 0) > 0 || Number(inlineCommentReward || 0) > 0);
+    const likeWei = useBounty ? parseAmount(inlineLikeReward || "0") : 0n;
+    const commentWei = useBounty ? parseAmount(inlineCommentReward || "0") : 0n;
+    const budgetWei = useBounty ? (likeWei + commentWei) : 0n;
     setBusy(true);
     try {
       await writeContract(
         HUB_POSTS_ADDRESS,
         encodeCall(SELECTOR.createPost, [
-          { type: "string", value: full },
-          { type: "uint", value: 0n },
-          { type: "uint", value: 0n },
+          { type: "string", value: content },
+          { type: "uint", value: likeWei },
+          { type: "uint", value: commentWei },
         ]),
-        0n,
+        budgetWei,
       );
       setDraft("");
       setReplyTo(null);
+      setInlineBountyActive(false);
+      setInlineLikeReward("");
+      setInlineCommentReward("");
+      setBountyPopupOpen(false);
       await loadPosts();
     } finally { setBusy(false); }
   };
+
 
   const openCreatePost = () => {
     const text = draft.trim();
