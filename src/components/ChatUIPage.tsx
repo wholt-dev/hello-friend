@@ -8,8 +8,9 @@ import {
   Heart,
   Menu,
   MessageCircle,
-  MessageSquare,
+  MoreHorizontal,
   Paperclip,
+  Reply,
   Search,
   Send,
   Settings,
@@ -45,6 +46,7 @@ const SELECTOR = {
 
 type Contact = { address: string; name: string; message?: string };
 type Msg = { id?: string | number; from?: string; wallet?: string; to?: string; message?: string; content?: string; text?: string; contentHash?: string; ts?: number; timestamp?: number | string; createdAt?: string };
+type Comment = { commenter: string; text: string; timestamp?: number | string; name?: string };
 type Post = {
   id: string;
   postId: string;
@@ -56,6 +58,7 @@ type Post = {
   commentCount: number;
   bountyActive: boolean;
   liked?: boolean;
+  comments?: Comment[];
 };
 type PendingRequest = { id: string; from: string; to?: string; status?: number; sentAt?: number; name?: string };
 
@@ -277,6 +280,13 @@ export default function ChatUIPage() {
             liked = decodeBool(await readContract(HUB_POSTS_ADDRESS, data));
           } catch { /* keep backend value */ }
         }
+        const commentsRaw = Array.isArray(p.comments) ? p.comments : [];
+        const comments: Comment[] = commentsRaw.map((c: any) => ({
+          commenter: c.commenter || c.from || c.wallet || c.author || "",
+          text: c.text || c.content || c.message || "",
+          timestamp: c.timestamp || c.createdAt || c.ts,
+          name: c.name || c.litName,
+        }));
         return {
           id,
           postId: id,
@@ -285,9 +295,10 @@ export default function ChatUIPage() {
           content: p.content || p.message || p.text || "",
           timestamp: p.timestamp || p.createdAt || p.ts,
           likeCount: Number(p.likeCount ?? p.likes ?? 0),
-          commentCount: Number(p.commentCount ?? p.comments ?? 0),
+          commentCount: Number(p.commentCount ?? p.comments?.length ?? 0),
           bountyActive: Boolean(p.bountyActive || p.hasBounty || p.bounty),
           liked,
+          comments,
         };
       }));
       console.log("[ChatUI] mapped posts:", mapped);
@@ -381,12 +392,22 @@ export default function ChatUIPage() {
       const j = await r.json();
       const p = j.post || j.data || j;
       if (!p) return;
+      const commentsRaw = Array.isArray(p.comments) ? p.comments : null;
+      const comments: Comment[] | undefined = commentsRaw
+        ? commentsRaw.map((c: any) => ({
+            commenter: c.commenter || c.from || c.wallet || c.author || "",
+            text: c.text || c.content || c.message || "",
+            timestamp: c.timestamp || c.createdAt || c.ts,
+            name: c.name || c.litName,
+          }))
+        : undefined;
       setPosts((list) => list.map((it) => it.id === postId ? {
         ...it,
         content: p.content ?? it.content,
         likeCount: Number(p.likeCount ?? p.likes ?? it.likeCount),
-        commentCount: Number(p.commentCount ?? p.comments ?? it.commentCount),
+        commentCount: Number(p.commentCount ?? (comments ? comments.length : it.commentCount)),
         bountyActive: Boolean(p.bountyActive ?? p.hasBounty ?? it.bountyActive),
+        comments: comments ?? it.comments,
       } : it));
     } catch (err) { console.error("[ChatUI] refreshPost error:", err); }
   }, []);
@@ -587,29 +608,120 @@ export default function ChatUIPage() {
             <div ref={bodyRef} className="flex-1 bg-brand-bg overflow-y-auto px-4 py-4 space-y-3">
               {!showChat && <div className="h-full flex items-center justify-center text-brand-text-muted text-sm">Select a chat to start messaging</div>}
 
-              {tab === "global" && [...posts].sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0)).map((post) => (
-                <div key={post.id} className="flex justify-start">
-                  <div className="relative max-w-[760px] w-fit rounded-lg border border-brand-border bg-brand-surface px-3 py-3 text-sm text-brand-text-primary">
-                    {post.bountyActive && <div className="absolute right-3 top-3 text-emerald-400" title="Bounty active">💰</div>}
-                    <div className="flex items-center gap-2 pr-8">
-                      <Avatar name={post.name || post.author} size={34} />
-                      <div className="min-w-0"><span className="font-semibold">{post.name || short(post.author)}</span><span className="ml-2 text-xs text-brand-text-muted">{displayTime(post.timestamp)}</span></div>
-                    </div>
-                    <div className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{post.content}</div>
-                    <div className="mt-3 flex items-center gap-3 text-xs text-brand-text-muted">
-                      <button disabled={busy || post.liked} onClick={() => likePost(post)} className={cn("inline-flex items-center gap-1 hover:text-brand-text-primary disabled:cursor-default", post.liked && "opacity-50")}><Heart size={14} /> {post.likeCount}</button>
-                      <button disabled={busy || commentedPosts[post.id]} onClick={() => setCommentOpen(commentOpen === post.id ? null : post.id)} className={cn("inline-flex items-center gap-1 hover:text-brand-text-primary disabled:cursor-default", commentedPosts[post.id] && "opacity-50")}><MessageSquare size={14} /> {post.commentCount}</button>
-                      <button onClick={() => sharePost(post)} className="inline-flex items-center gap-1 hover:text-brand-text-primary"><Share2 size={14} /> Share</button>
-                    </div>
-                    {commentOpen === post.id && !commentedPosts[post.id] && (
-                      <div className="mt-3 flex items-center gap-2 border-t border-brand-border pt-3">
-                        <input value={commentDraft} onChange={(e) => setCommentDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") commentPost(post.id); }} placeholder="Write a comment" className="min-w-0 flex-1 h-9 rounded-md bg-brand-bg border border-brand-border px-3 text-sm text-brand-text-primary placeholder:text-brand-text-muted outline-none" />
-                        <IconBtn aria-label="Send comment" disabled={busy} onClick={() => commentPost(post.id)}><Send size={16} /></IconBtn>
+              {tab === "global" && [...posts].sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0)).map((post) => {
+                const walletLc = wallet.toLowerCase();
+                const myLitName = walletLc ? (namesRef.current[walletLc] || "").toLowerCase() : "";
+                const tagged = !!walletLc && (post.comments || []).some((c) => {
+                  const t = (c.text || "").toLowerCase();
+                  return t.includes(walletLc) || (myLitName && myLitName.endsWith(".lit") && t.includes(myLitName));
+                });
+                const quotedPreview = post.content.length > 60 ? `${post.content.slice(0, 60)}…` : post.content;
+                return (
+                  <div key={post.id} className="flex justify-start">
+                    <div className={cn(
+                      "group relative max-w-[760px] w-fit rounded-lg border bg-brand-surface px-3 py-3 text-sm text-brand-text-primary",
+                      tagged ? "border-l-4 border-l-blue-500 border-brand-border" : "border-brand-border"
+                    )}>
+                      {post.bountyActive && <div className="absolute right-3 top-3 text-emerald-400" title="Bounty active">💰</div>}
+
+                      {/* Discord-style hover action bar */}
+                      <div className="absolute -top-4 right-4 z-10 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-0.5 rounded-full border border-brand-border bg-brand-surface-2 px-1 py-1 shadow-lg">
+                          <button
+                            aria-label="Like"
+                            disabled={busy || post.liked}
+                            onClick={() => likePost(post)}
+                            className={cn("p-2 rounded-full hover:bg-white/10 transition-colors disabled:cursor-default", post.liked && "opacity-50")}
+                          >
+                            <Heart size={16} className={post.liked ? "fill-current" : ""} />
+                          </button>
+                          <button
+                            aria-label="Reply"
+                            onClick={() => setCommentOpen(commentOpen === post.id ? null : post.id)}
+                            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+                          >
+                            <Reply size={16} />
+                          </button>
+                          <button
+                            aria-label="Share"
+                            onClick={() => sharePost(post)}
+                            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+                          >
+                            <Share2 size={16} />
+                          </button>
+                          <button
+                            aria-label="More"
+                            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+                          >
+                            <MoreHorizontal size={16} />
+                          </button>
+                        </div>
                       </div>
-                    )}
+
+                      <div className="flex items-center gap-2 pr-8">
+                        <Avatar name={post.name || post.author} size={34} />
+                        <div className="min-w-0">
+                          <span className="font-semibold">{post.name || short(post.author)}</span>
+                          <span className="ml-2 text-xs text-brand-text-muted">{displayTime(post.timestamp)}</span>
+                          <span className="ml-2 text-xs text-brand-text-muted">· ♥ {post.likeCount} · 💬 {post.commentCount}</span>
+                          {post.bountyActive && commentedPosts[post.id] && (
+                            <span className="ml-2 text-[11px] text-emerald-400">✓ Bounty claimed</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{post.content}</div>
+
+                      {/* Existing replies */}
+                      {post.comments && post.comments.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          {post.comments.map((c, idx) => (
+                            <div key={idx} className="reply-bubble pl-3 border-l-2 border-gray-400/60 bg-white/[0.03] rounded-r-md py-1.5">
+                              <div className="quoted-preview flex items-center gap-1.5 text-[11px] text-brand-text-muted mb-1 truncate">
+                                <Avatar name={post.name || post.author} size={16} />
+                                <span className="font-medium">{post.name || short(post.author)}</span>
+                                <span className="quoted-text truncate opacity-70">{quotedPreview}</span>
+                              </div>
+                              <div className="reply-content flex items-start gap-2">
+                                <Avatar name={c.name || c.commenter} size={22} />
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-xs">
+                                    <span className="font-semibold">{c.name || short(c.commenter)}</span>
+                                    <span className="ml-2 text-[10px] text-brand-text-muted">{displayTime(c.timestamp)}</span>
+                                  </div>
+                                  <div className="text-sm break-words whitespace-pre-wrap">{c.text}</div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Reply input */}
+                      {commentOpen === post.id && (
+                        <div className="mt-3 border-t border-brand-border pt-3">
+                          <div className="mb-2 pl-3 border-l-2 border-gray-400/60 bg-white/[0.03] rounded-r-md py-1.5">
+                            <div className="flex items-center gap-1.5 text-[11px] text-brand-text-muted truncate">
+                              <Avatar name={post.name || post.author} size={16} />
+                              <span className="font-medium">{post.name || short(post.author)}</span>
+                              <span className="truncate opacity-70">{quotedPreview}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              value={commentDraft}
+                              onChange={(e) => setCommentDraft(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") commentPost(post.id); }}
+                              placeholder={`Reply to ${post.name || short(post.author)}`}
+                              className="min-w-0 flex-1 h-9 rounded-md bg-brand-bg border border-brand-border px-3 text-sm text-brand-text-primary placeholder:text-brand-text-muted outline-none"
+                            />
+                            <IconBtn aria-label="Send reply" disabled={busy} onClick={() => commentPost(post.id)}><Send size={16} /></IconBtn>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {tab === "private" && showChat && [...messages].sort((a, b) => Number(a.timestamp || a.ts || 0) - Number(b.timestamp || b.ts || 0)).map((m, i) => {
                 const fromAddr = (m.from || m.wallet || (m as any).fromWallet || (m as any).sender || "").toString();
