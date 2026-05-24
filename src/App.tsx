@@ -647,7 +647,7 @@ const CheckinPage = () => {
         if (week === 1) zkLTCBonus = "0.001";
         else if (week === 2) zkLTCBonus = "0.05";
         else if (week === 3) zkLTCBonus = "0.01";
-        else if (week === 4) zkLTCBonus = "0.1";
+        else if (week === 4) zkLTCBonus = "0.01";
       }
 
       setSuccessMsg({ 
@@ -661,7 +661,7 @@ const CheckinPage = () => {
         { label: "BASE POINTS", value: "+10 PTS" },
         { label: "INCENTIVE YIELD", value: `+${Number(ldexVal).toLocaleString()} LDEX` },
       ];
-      if (zkLTCBonus) rows.push({ label: "SUNDAY BONUS", value: `+${zkLTCBonus} zkLTC 🎁` });
+      if (zkLTCBonus) rows.push({ label: "STREAK BONUS", value: `+${zkLTCBonus} zkLTC 🎁` });
       rows.push({ label: "STREAK", value: `Day ${Number(newInfo.streak)}` });
       showSuccess({
         title: "MISSION SUCCESS",
