@@ -721,12 +721,6 @@ export default function ChatUIPage() {
                               >
                                 <Share2 size={16} />
                               </button>
-                              <button
-                                aria-label="More"
-                                className="p-2 rounded-full hover:bg-white/10 transition-colors"
-                              >
-                                <MoreHorizontal size={16} />
-                              </button>
                             </div>
                           </div>
 
