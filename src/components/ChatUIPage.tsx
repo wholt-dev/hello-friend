@@ -188,6 +188,16 @@ export default function ChatUIPage() {
   const namesRef = useRef<Record<string, string>>({});
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const postRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+
+  const scrollToPost = useCallback((id: string) => {
+    const el = postRefs.current[id];
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedId(id);
+    setTimeout(() => setHighlightedId((h) => (h === id ? null : h)), 1500);
+  }, []);
 
   const totalBudget = useMemo(() => {
     if (!addBounty) return "0";
