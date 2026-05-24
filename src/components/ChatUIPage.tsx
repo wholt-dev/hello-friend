@@ -611,8 +611,9 @@ export default function ChatUIPage() {
                 </div>
               ))}
 
-              {tab === "private" && showChat && messages.map((m, i) => {
-                const mine = (m.from || m.wallet || "").toLowerCase() === wallet.toLowerCase();
+              {tab === "private" && showChat && [...messages].sort((a, b) => Number(a.timestamp || a.ts || 0) - Number(b.timestamp || b.ts || 0)).map((m, i) => {
+                const fromAddr = (m.from || m.wallet || (m as any).fromWallet || (m as any).sender || "").toString();
+                const mine = fromAddr.toLowerCase() === wallet.toLowerCase();
                 return (
                   <div key={m.id || i} className={cn("flex", mine ? "justify-end" : "justify-start")}>
                     <div className={cn("max-w-[70%] rounded-lg px-3 py-2 text-sm border", mine ? "bg-white/10 border-white/10 text-brand-text-primary" : "bg-brand-surface border-brand-border text-brand-text-primary")}>
