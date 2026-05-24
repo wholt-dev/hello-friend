@@ -46,6 +46,7 @@ const SELECTOR = {
 
 type Contact = { address: string; name: string; message?: string };
 type Msg = { id?: string | number; from?: string; wallet?: string; to?: string; message?: string; content?: string; text?: string; contentHash?: string; ts?: number; timestamp?: number | string; createdAt?: string };
+type Comment = { commenter: string; text: string; timestamp?: number | string; name?: string };
 type Post = {
   id: string;
   postId: string;
@@ -57,6 +58,7 @@ type Post = {
   commentCount: number;
   bountyActive: boolean;
   liked?: boolean;
+  comments?: Comment[];
 };
 type PendingRequest = { id: string; from: string; to?: string; status?: number; sentAt?: number; name?: string };
 
