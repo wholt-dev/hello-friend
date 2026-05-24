@@ -396,51 +396,71 @@ const CreatePostModal: React.FC<{ onClose: () => void; onCreated: () => void }> 
 };
 
 // ============================================================
-// PRIVATE Tab — Friends + DM
+// PRIVATE Tab — WhatsApp-style chat UI
 // ============================================================
+type PendingReq = { id: number; from: string; name: string };
+
 const PrivateTab: React.FC<{ wallet: string }> = ({ wallet }) => {
-  const [friends, setFriends] = useState<{ address: string; name: string }[]>([]);
-  const [pending, setPending] = useState(0);
+  const [friends, setFriends] = useState<{ address: string; name: string; lastMsg?: string }[]>([]);
+  const [pendingReqs, setPendingReqs] = useState<PendingReq[]>([]);
   const [active, setActive] = useState<{ address: string; name: string } | null>(null);
   const [messages, setMessages] = useState<HubMessage[]>([]);
   const [draft, setDraft] = useState("");
-  const [amount, setAmount] = useState("");
+  const [search, setSearch] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
   const [addInput, setAddInput] = useState("");
+  const [zkOpen, setZkOpen] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [zkNote, setZkNote] = useState("");
+  const [showPending, setShowPending] = useState(false);
   const [busy, setBusy] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const loadFriends = useCallback(async () => {
     const data = await hubApi.friends(wallet);
-    if (data) {
-      setFriends(data.friends || []);
-      setPending(data.pendingRequests || 0);
-    } else {
+    let list: { address: string; name: string }[] = [];
+    if (data) list = data.friends || [];
+    else {
       try {
         const c = getReadContract(HUB_ADDR.messenger, MESSENGER_ABI);
         const addrs: string[] = await c.getFriends(wallet);
         const reg = getReadContract(HUB_ADDR.registry, REGISTRY_ABI);
-        const list = await Promise.all(addrs.map(async (a) => ({
+        list = await Promise.all(addrs.map(async (a) => ({
           address: a, name: await reg.reverseResolve(a).catch(() => "")
         })));
-        setFriends(list);
-        setPending(Number(await c.getPendingRequests(wallet)));
       } catch { /* ignore */ }
     }
+    setFriends(list.map((f) => ({ ...f })));
+  }, [wallet]);
+
+  const loadPending = useCallback(async () => {
+    try {
+      const c = getReadContract(HUB_ADDR.messenger, MESSENGER_ABI);
+      const reg = getReadContract(HUB_ADDR.registry, REGISTRY_ABI);
+      const total = Number(await c.requestCount().catch(() => 0));
+      const out: PendingReq[] = [];
+      const max = Math.min(total, 200);
+      for (let i = total; i > total - max && i > 0; i--) {
+        try {
+          const r = await c.friendRequests(i);
+          // status 0 = pending; tuple: from, to, status, sentAt
+          if (String(r.to).toLowerCase() === wallet.toLowerCase() && Number(r.status) === 0) {
+            const name = await reg.reverseResolve(r.from).catch(() => "");
+            out.push({ id: i, from: r.from, name });
+          }
+        } catch { /* skip */ }
+      }
+      setPendingReqs(out);
+    } catch { /* ignore */ }
   }, [wallet]);
 
   const loadMessages = useCallback(async () => {
     if (!active) return;
     const data = await hubApi.conversation(wallet, active.address);
     if (data?.messages) setMessages(data.messages);
-    else {
-      try {
-        const c = getReadContract(HUB_ADDR.messenger, MESSENGER_ABI);
-        // Need signer call; skip fallback to keep simple
-        setMessages([]);
-      } catch { /* ignore */ }
-    }
   }, [active, wallet]);
 
-  useEffect(() => { loadFriends(); }, [loadFriends]);
+  useEffect(() => { loadFriends(); loadPending(); }, [loadFriends, loadPending]);
   useEffect(() => {
     loadMessages();
     if (!active) return;
@@ -448,21 +468,45 @@ const PrivateTab: React.FC<{ wallet: string }> = ({ wallet }) => {
     return () => clearInterval(t);
   }, [active, loadMessages]);
 
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages]);
+
   const addFriend = async () => {
-    const name = addInput.replace(/\.lit$/i, "").toLowerCase();
+    const name = addInput.replace(/\.lit$/i, "").toLowerCase().trim();
     if (!name) return;
     setBusy(true);
     try {
-      let addr = "";
       const api = await hubApi.resolve(name);
-      addr = api?.address || (await chainResolveName(name));
+      const addr = api?.address || (await chainResolveName(name));
       if (!addr || addr === "0x0000000000000000000000000000000000000000") throw new Error("Name not found");
       const c = await getHubContract(HUB_ADDR.messenger, MESSENGER_ABI);
       const tx = await c.sendFriendRequest(addr);
       await tx.wait();
       showSuccess({ title: "FRIEND REQUEST SENT", rows: [{ label: "TO", value: `${name}.lit` }, { label: "TX", value: tx.hash.slice(0,10)+"..." }] });
-      setAddInput("");
+      setAddInput(""); setAddOpen(false);
       loadFriends();
+    } catch (e: any) { showError(e?.shortMessage || e?.message || "Failed"); }
+    finally { setBusy(false); }
+  };
+
+  const acceptReq = async (id: number) => {
+    setBusy(true);
+    try {
+      const c = await getHubContract(HUB_ADDR.messenger, MESSENGER_ABI);
+      const tx = await c.acceptFriendRequest(id); await tx.wait();
+      showSuccess({ title: "FRIEND REQUEST ACCEPTED", rows: [] });
+      loadFriends(); loadPending();
+    } catch (e: any) { showError(e?.shortMessage || e?.message || "Failed"); }
+    finally { setBusy(false); }
+  };
+
+  const rejectReq = async (id: number) => {
+    setBusy(true);
+    try {
+      const c = await getHubContract(HUB_ADDR.messenger, MESSENGER_ABI);
+      const tx = await c.rejectFriendRequest(id); await tx.wait();
+      loadPending();
     } catch (e: any) { showError(e?.shortMessage || e?.message || "Failed"); }
     finally { setBusy(false); }
   };
@@ -487,122 +531,263 @@ const PrivateTab: React.FC<{ wallet: string }> = ({ wallet }) => {
     setBusy(true);
     try {
       const c = await getHubContract(HUB_ADDR.messenger, MESSENGER_ABI);
-      const tx = await c.sendZkLTC(active.address, "", { value: parseEther(amount) });
+      const tx = await c.sendZkLTC(active.address, zkNote || "", { value: parseEther(amount) });
       await tx.wait();
-      showSuccess({ title: "ZKLTC SENT", rows: [{ label: "AMOUNT", value: `${amount} zkLTC` }, { label: "TX", value: tx.hash.slice(0,10)+"..." }] });
-      setAmount("");
+      showSuccess({ title: "ZKLTC SENT", rows: [{ label: "AMOUNT", value: `${amount} zkLTC` }, { label: "TO", value: active.name ? `${active.name}.lit` : shortHubAddr(active.address) }] });
+      setAmount(""); setZkNote(""); setZkOpen(false);
       loadMessages();
     } catch (e: any) { showError(e?.shortMessage || e?.message || "Failed"); }
     finally { setBusy(false); }
   };
 
+  const filteredFriends = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return friends;
+    return friends.filter((f) =>
+      (f.name && f.name.toLowerCase().includes(q)) || f.address.toLowerCase().includes(q)
+    );
+  }, [friends, search]);
+
+  const initials = (s: string) => (s || "?").slice(0, 2).toUpperCase();
+  const displayName = (f: { address: string; name: string }) => f.name ? `${f.name}.lit` : shortHubAddr(f.address);
+
   return (
-    <div className="grid md:grid-cols-[280px_1fr] gap-4 min-h-[60vh]">
-      <div className="bg-brand-surface border border-brand-border rounded-2xl p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-black uppercase tracking-tight text-white">Friends</h3>
-          {pending > 0 && (
-            <span className="text-[10px] font-black bg-red-500 text-white px-2 py-0.5 rounded-full">{pending}</span>
+    <div className="bg-brand-surface border border-brand-border rounded-2xl overflow-hidden grid md:grid-cols-[320px_1fr] min-h-[70vh] h-[70vh]">
+      {/* LEFT — Contacts */}
+      <div className="flex flex-col border-r border-white/10 bg-black/40 min-h-0">
+        <div className="px-4 py-3 flex items-center justify-between border-b border-white/10">
+          <h3 className="text-sm font-black uppercase tracking-tight text-white">Chats</h3>
+          <div className="flex items-center gap-2">
+            {pendingReqs.length > 0 && (
+              <button
+                onClick={() => setShowPending((v) => !v)}
+                className="relative text-white/70 hover:text-white"
+                title="Pending requests"
+              >
+                <Users size={16}/>
+                <span className="absolute -top-1.5 -right-2 text-[9px] font-black bg-red-500 text-white px-1.5 rounded-full">{pendingReqs.length}</span>
+              </button>
+            )}
+            <button onClick={() => setAddOpen(true)} className="text-white/70 hover:text-white" title="Add friend">
+              <UserPlus size={16}/>
+            </button>
+          </div>
+        </div>
+
+        <div className="p-3 border-b border-white/10">
+          <div className="relative">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40"/>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search or start new chat"
+              className="w-full bg-black/50 border border-white/10 rounded-lg pl-8 pr-3 py-2 text-xs text-white placeholder:text-white/30 outline-none focus:border-white/30"
+            />
+          </div>
+        </div>
+
+        {showPending && pendingReqs.length > 0 && (
+          <div className="px-3 py-2 border-b border-white/10 space-y-2 max-h-40 overflow-y-auto">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-white/50">Pending Requests</div>
+            {pendingReqs.map((r) => (
+              <div key={r.id} className="flex items-center gap-2 bg-black/40 rounded-lg p-2">
+                <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-black text-white">{initials(r.name || r.from)}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold text-white truncate">{r.name ? `${r.name}.lit` : shortHubAddr(r.from)}</div>
+                </div>
+                <button onClick={() => acceptReq(r.id)} disabled={busy} className="px-2 py-1 rounded bg-emerald-500 text-black text-[10px] font-black disabled:opacity-50">
+                  <Check size={11}/>
+                </button>
+                <button onClick={() => rejectReq(r.id)} disabled={busy} className="px-2 py-1 rounded bg-white/10 text-white text-[10px] font-black disabled:opacity-50">
+                  <X size={11}/>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto">
+          {filteredFriends.length === 0 && (
+            <div className="text-[11px] text-brand-text-muted font-mono py-6 text-center px-4">
+              No friends yet. Add one by .lit name.
+            </div>
           )}
-        </div>
-        <div className="flex gap-2">
-          <input
-            value={addInput}
-            onChange={(e)=>setAddInput(e.target.value)}
-            placeholder="name.lit"
-            className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white/30"
-          />
-          <button onClick={addFriend} disabled={busy} className="px-3 rounded-lg bg-white text-black text-xs font-black disabled:opacity-50">
-            <UserPlus size={13}/>
-          </button>
-        </div>
-        <div className="space-y-1.5 max-h-[50vh] overflow-y-auto">
-          {friends.length === 0 && <div className="text-[11px] text-brand-text-muted font-mono py-4 text-center">No friends yet</div>}
-          {friends.map((f) => (
+          {filteredFriends.map((f) => (
             <button
               key={f.address}
               onClick={() => setActive(f)}
               className={cn(
-                "w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-left transition-all",
-                active?.address === f.address ? "bg-white/10 text-white" : "bg-black/30 text-brand-text-muted hover:bg-white/5"
+                "w-full flex items-center gap-3 px-4 py-3 text-left border-b border-white/5 transition-colors",
+                active?.address === f.address ? "bg-white/10" : "hover:bg-white/5"
               )}
             >
-              <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-black text-white shrink-0">
-                {(f.name || f.address).slice(0, 2).toUpperCase()}
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center text-xs font-black text-white shrink-0">
+                {initials(f.name || f.address)}
               </div>
-              <div className="min-w-0">
-                <div className="text-xs font-bold truncate">{f.name ? `${f.name}.lit` : shortHubAddr(f.address)}</div>
-                {f.name && <div className="text-[9px] opacity-60 font-mono truncate">{shortHubAddr(f.address)}</div>}
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-bold text-white truncate">{displayName(f)}</div>
+                <div className="text-[10px] text-white/40 font-mono truncate">{f.lastMsg || shortHubAddr(f.address)}</div>
               </div>
             </button>
           ))}
         </div>
       </div>
 
-      <div className="bg-brand-surface border border-brand-border rounded-2xl flex flex-col">
+      {/* RIGHT — Chat panel */}
+      <div className="flex flex-col min-h-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.04),transparent_70%)]">
         {!active ? (
-          <div className="flex-1 flex items-center justify-center text-brand-text-muted text-sm font-mono">
-            Select a friend to start chatting
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
+            <MessageCircle size={42} className="text-white/20 mb-3"/>
+            <div className="text-sm font-bold text-white/70">Select a chat</div>
+            <div className="text-[11px] text-white/40 font-mono mt-1">Pick a friend on the left to start messaging</div>
           </div>
         ) : (
           <>
-            <div className="px-4 py-3 border-b border-white/10 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-black text-white">
-                {(active.name || active.address).slice(0,2).toUpperCase()}
+            {/* Header */}
+            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between bg-black/30">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center text-xs font-black text-white">
+                  {initials(active.name || active.address)}
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-white">{displayName(active)}</div>
+                  <div className="text-[10px] text-white/40 font-mono">{shortHubAddr(active.address)}</div>
+                </div>
               </div>
-              <div>
-                <div className="text-sm font-bold text-white">{active.name ? `${active.name}.lit` : shortHubAddr(active.address)}</div>
-                <div className="text-[9px] text-brand-text-muted font-mono">{shortHubAddr(active.address)}</div>
-              </div>
+              <button
+                onClick={() => setZkOpen(true)}
+                className="px-3 py-1.5 rounded-lg bg-emerald-500 text-black text-[11px] font-black flex items-center gap-1.5 hover:bg-emerald-400"
+              >
+                <Coins size={12}/> Send zkLTC
+              </button>
             </div>
-            <div className="flex-1 p-4 overflow-y-auto space-y-2 max-h-[50vh] min-h-[200px]">
-              {messages.length === 0 && <div className="text-center text-xs text-brand-text-muted font-mono py-8">No messages yet</div>}
+
+            {/* Messages */}
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2">
+              {messages.length === 0 && (
+                <div className="text-center text-xs text-brand-text-muted font-mono py-10">
+                  No messages yet — say hi 👋
+                </div>
+              )}
               {messages.map((m) => {
                 const mine = m.from.toLowerCase() === wallet.toLowerCase();
+                const isZk = m.msgType === "zkltc" || Number(m.amount) > 0;
                 return (
                   <div key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
                     <div className={cn(
-                      "max-w-[75%] px-3 py-2 rounded-2xl text-xs",
-                      mine ? "bg-white text-black" : "bg-white/5 text-white border border-white/10"
+                      "max-w-[75%] px-3 py-2 rounded-2xl text-xs shadow-sm",
+                      mine
+                        ? "bg-emerald-500 text-black rounded-br-sm"
+                        : "bg-white/10 text-white border border-white/5 rounded-bl-sm"
                     )}>
-                      {m.msgType === "zkltc" || Number(m.amount) > 0 ? (
-                        <span className="font-black">💸 {formatEther(BigInt(m.amount))} zkLTC</span>
+                      {isZk ? (
+                        <span className="font-black">💸 {formatEther(BigInt(m.amount || "0"))} zkLTC</span>
                       ) : (
-                        <span className="break-words">{m.contentHash}</span>
+                        <span className="break-words whitespace-pre-wrap">{m.contentHash}</span>
                       )}
-                      <div className={cn("text-[9px] mt-1 font-mono", mine ? "text-black/50" : "text-white/40")}>
-                        {new Date(m.sentAt * 1000).toLocaleTimeString()}
+                      <div className={cn("text-[9px] mt-1 font-mono", mine ? "text-black/60" : "text-white/40")}>
+                        {new Date(m.sentAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </div>
                     </div>
                   </div>
                 );
               })}
             </div>
-            <div className="border-t border-white/10 p-3 space-y-2">
-              <div className="flex gap-2">
-                <input
-                  value={draft} onChange={(e)=>setDraft(e.target.value)}
-                  onKeyDown={(e)=>e.key==="Enter"&&sendText()}
-                  placeholder="Message…"
-                  className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white/30"
-                />
-                <button onClick={sendText} disabled={busy || !draft.trim()} className="px-3 rounded-lg bg-white text-black text-xs font-black disabled:opacity-50">
-                  <Send size={13}/>
+
+            {/* Input */}
+            <div className="border-t border-white/10 p-3 bg-black/40">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setZkOpen(true)}
+                  className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 text-white flex items-center justify-center"
+                  title="Send zkLTC"
+                >
+                  💸
                 </button>
-              </div>
-              <div className="flex gap-2">
                 <input
-                  value={amount} onChange={(e)=>setAmount(e.target.value)} placeholder="0.0 zkLTC"
-                  className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white/30"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), sendText())}
+                  placeholder="Type a message"
+                  className="flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2.5 text-sm text-white placeholder:text-white/30 outline-none focus:border-white/30"
                 />
-                <button onClick={sendZk} disabled={busy || !amount} className="px-3 rounded-lg bg-emerald-500 text-black text-xs font-black disabled:opacity-50">
-                  <Coins size={13}/>
+                <button
+                  onClick={sendText}
+                  disabled={busy || !draft.trim()}
+                  className="w-10 h-10 rounded-full bg-emerald-500 text-black flex items-center justify-center disabled:opacity-50 hover:bg-emerald-400"
+                >
+                  {busy ? <Loader2 size={15} className="animate-spin"/> : <Send size={15}/>}
                 </button>
               </div>
             </div>
           </>
         )}
       </div>
+
+      {/* Add Friend Modal */}
+      {addOpen && (
+        <div className="fixed inset-0 z-[10002] bg-black/80 backdrop-blur-md flex items-center justify-center p-4" onClick={() => setAddOpen(false)}>
+          <div className="w-full max-w-sm bg-brand-surface border border-brand-border rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-black uppercase tracking-tight text-white">Add Friend</h3>
+              <button onClick={() => setAddOpen(false)} className="text-white/50 hover:text-white"><X size={16}/></button>
+            </div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">.lit Name</label>
+            <input
+              value={addInput}
+              onChange={(e) => setAddInput(e.target.value)}
+              placeholder="alice"
+              className="mt-2 w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-white/30"
+              autoFocus
+            />
+            <button
+              onClick={addFriend}
+              disabled={busy || !addInput.trim()}
+              className="mt-4 w-full py-2.5 rounded-lg bg-white text-black text-xs font-black uppercase tracking-widest disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {busy ? <Loader2 size={13} className="animate-spin"/> : <UserPlus size={13}/>}
+              Send Friend Request
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Send zkLTC Modal */}
+      {zkOpen && active && (
+        <div className="fixed inset-0 z-[10002] bg-black/80 backdrop-blur-md flex items-center justify-center p-4" onClick={() => setZkOpen(false)}>
+          <div className="w-full max-w-sm bg-brand-surface border border-brand-border rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-black uppercase tracking-tight text-white">Send zkLTC</h3>
+              <button onClick={() => setZkOpen(false)} className="text-white/50 hover:text-white"><X size={16}/></button>
+            </div>
+            <div className="text-[11px] text-white/60 font-mono mb-3">To: {displayName(active)}</div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">Amount (zkLTC)</label>
+            <input
+              type="number" step="0.0001" min="0"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.01"
+              className="mt-2 w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-white/30"
+              autoFocus
+            />
+            <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 mt-3 block">Note (optional)</label>
+            <input
+              value={zkNote}
+              onChange={(e) => setZkNote(e.target.value)}
+              placeholder="gm"
+              className="mt-2 w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-white/30"
+            />
+            <button
+              onClick={sendZk}
+              disabled={busy || !amount}
+              className="mt-4 w-full py-2.5 rounded-lg bg-emerald-500 text-black text-xs font-black uppercase tracking-widest disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {busy ? <Loader2 size={13} className="animate-spin"/> : <Coins size={13}/>}
+              Send
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
