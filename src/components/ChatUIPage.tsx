@@ -639,106 +639,134 @@ export default function ChatUIPage() {
             <div ref={bodyRef} className="flex-1 bg-brand-bg overflow-y-auto px-4 py-4 space-y-3">
               {!showChat && <div className="h-full flex items-center justify-center text-brand-text-muted text-sm">Select a chat to start messaging</div>}
 
-              {tab === "global" && [...posts].sort((a, b) => Number(a.timestamp || 0) - Number(b.timestamp || 0)).map((post) => {
+              {tab === "global" && (() => {
+                type FeedItem =
+                  | { kind: "post"; id: string; ts: number; post: Post }
+                  | { kind: "reply"; id: string; ts: number; parent: Post; commenter: string; name?: string; text: string; timestamp?: number | string };
+                const items: FeedItem[] = [];
+                posts.forEach((post, pi) => {
+                  const pts = Number(post.timestamp || 0) || pi;
+                  items.push({ kind: "post", id: `p-${post.id}`, ts: pts, post });
+                  (post.comments || []).forEach((c, ci) => {
+                    const cts = Number(c.timestamp || 0) || pts + ci + 1;
+                    items.push({ kind: "reply", id: `r-${post.id}-${ci}`, ts: cts, parent: post, commenter: c.commenter, name: c.name, text: c.text, timestamp: c.timestamp });
+                  });
+                });
+                items.sort((a, b) => a.ts - b.ts);
                 const walletLc = wallet.toLowerCase();
                 const myLitName = walletLc ? (namesRef.current[walletLc] || "").toLowerCase() : "";
-                const tagged = !!walletLc && (post.comments || []).some((c) => {
-                  const t = (c.text || "").toLowerCase();
-                  return t.includes(walletLc) || (myLitName && myLitName.endsWith(".lit") && t.includes(myLitName));
-                });
-                const quotedPreview = post.content.length > 60 ? `${post.content.slice(0, 60)}…` : post.content;
-                return (
-                  <div key={post.id} className="flex justify-start">
-                    <div className={cn(
-                      "group relative max-w-[760px] w-fit rounded-lg border bg-brand-surface px-3 py-3 text-sm text-brand-text-primary",
-                      tagged ? "border-l-4 border-l-blue-500 border-brand-border" : "border-brand-border"
-                    )}>
-                      {post.bountyActive && <div className="absolute right-3 top-3 text-emerald-400" title="Bounty active">💰</div>}
 
-                      {/* Discord-style hover action bar */}
-                      <div className="absolute -top-4 right-4 z-10 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                        <div className="flex items-center gap-0.5 rounded-full border border-brand-border bg-brand-surface-2 px-1 py-1 shadow-lg">
-                          <button
-                            aria-label="Like"
-                            disabled={busy || post.liked}
-                            onClick={() => likePost(post)}
-                            className={cn("p-2 rounded-full hover:bg-white/10 transition-colors disabled:cursor-default", post.liked && "opacity-50")}
-                          >
-                            <Heart size={16} className={post.liked ? "fill-current" : ""} />
-                          </button>
-                          <button
-                            aria-label="Reply"
-                            onClick={() => {
-                              setReplyTo({
-                                postId: post.id,
-                                name: post.name || short(post.author),
-                                authorAddr: post.author,
-                                content: post.content,
-                              });
-                              setTimeout(() => inputRef.current?.focus(), 0);
-                            }}
-                            className="p-2 rounded-full hover:bg-white/10 transition-colors"
-                          >
-                            <Reply size={16} />
-                          </button>
-                          <button
-                            aria-label="Share"
-                            onClick={() => sharePost(post)}
-                            className="p-2 rounded-full hover:bg-white/10 transition-colors"
-                          >
-                            <Share2 size={16} />
-                          </button>
-                          <button
-                            aria-label="More"
-                            className="p-2 rounded-full hover:bg-white/10 transition-colors"
-                          >
-                            <MoreHorizontal size={16} />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 pr-8">
-                        <Avatar name={post.name || post.author} size={34} />
-                        <div className="min-w-0">
-                          <span className="font-semibold">{post.name || short(post.author)}</span>
-                          <span className="ml-2 text-xs text-brand-text-muted">{displayTime(post.timestamp)}</span>
-                          <span className="ml-2 text-xs text-brand-text-muted">· ♥ {post.likeCount} · 💬 {post.commentCount}</span>
-                          {post.bountyActive && commentedPosts[post.id] && (
-                            <span className="ml-2 text-[11px] text-emerald-400">✓ Bounty claimed</span>
+                return items.map((item) => {
+                  if (item.kind === "post") {
+                    const post = item.post;
+                    const tagged = !!walletLc && (post.comments || []).some((c) => {
+                      const t = (c.text || "").toLowerCase();
+                      return t.includes(walletLc) || (myLitName && myLitName.endsWith(".lit") && t.includes(myLitName));
+                    });
+                    const isHighlighted = highlightedId === post.id;
+                    return (
+                      <div key={item.id} className="flex justify-start">
+                        <div
+                          ref={(el) => { postRefs.current[post.id] = el; }}
+                          className={cn(
+                            "group relative max-w-[760px] w-fit rounded-lg border bg-brand-surface px-3 py-3 text-sm text-brand-text-primary transition-all",
+                            tagged ? "border-l-4 border-l-blue-500 border-brand-border" : "border-brand-border",
+                            isHighlighted && "ring-2 ring-brand-teal"
                           )}
+                        >
+                          {post.bountyActive && <div className="absolute right-3 top-3 text-emerald-400" title="Bounty active">💰</div>}
+
+                          {/* Discord-style hover action bar */}
+                          <div className="absolute -top-4 right-4 z-10 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                            <div className="flex items-center gap-0.5 rounded-full border border-brand-border bg-brand-surface-2 px-1 py-1 shadow-lg">
+                              <button
+                                aria-label="Like"
+                                disabled={busy || post.liked}
+                                onClick={() => likePost(post)}
+                                className={cn("p-2 rounded-full hover:bg-white/10 transition-colors disabled:cursor-default", post.liked && "opacity-50")}
+                              >
+                                <Heart size={16} className={post.liked ? "fill-current" : ""} />
+                              </button>
+                              <button
+                                aria-label="Reply"
+                                onClick={() => {
+                                  setReplyTo({
+                                    postId: post.id,
+                                    name: post.name || short(post.author),
+                                    authorAddr: post.author,
+                                    content: post.content,
+                                  });
+                                  setTimeout(() => inputRef.current?.focus(), 0);
+                                }}
+                                className="p-2 rounded-full hover:bg-white/10 transition-colors"
+                              >
+                                <Reply size={16} />
+                              </button>
+                              <button
+                                aria-label="Share"
+                                onClick={() => sharePost(post)}
+                                className="p-2 rounded-full hover:bg-white/10 transition-colors"
+                              >
+                                <Share2 size={16} />
+                              </button>
+                              <button
+                                aria-label="More"
+                                className="p-2 rounded-full hover:bg-white/10 transition-colors"
+                              >
+                                <MoreHorizontal size={16} />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 pr-8">
+                            <Avatar name={post.name || post.author} size={34} />
+                            <div className="min-w-0">
+                              <span className="font-semibold">{post.name || short(post.author)}</span>
+                              <span className="ml-2 text-xs text-brand-text-muted">{displayTime(post.timestamp)}</span>
+                              <span className="ml-2 text-xs text-brand-text-muted">· ♥ {post.likeCount} · 💬 {post.commentCount}</span>
+                              {post.bountyActive && commentedPosts[post.id] && (
+                                <span className="ml-2 text-[11px] text-emerald-400">✓ Bounty claimed</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{post.content}</div>
                         </div>
                       </div>
-                      <div className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{post.content}</div>
+                    );
+                  }
 
-                      {/* Existing replies */}
-                      {post.comments && post.comments.length > 0 && (
-                        <div className="mt-3 space-y-2">
-                          {post.comments.map((c, idx) => (
-                            <div key={idx} className="reply-bubble pl-3 border-l-2 border-gray-400/60 bg-white/[0.03] rounded-r-md py-1.5">
-                              <div className="quoted-preview flex items-center gap-1.5 text-[11px] text-brand-text-muted mb-1 truncate">
-                                <Avatar name={post.name || post.author} size={16} />
-                                <span className="font-medium">{post.name || short(post.author)}</span>
-                                <span className="quoted-text truncate opacity-70">{quotedPreview}</span>
-                              </div>
-                              <div className="reply-content flex items-start gap-2">
-                                <Avatar name={c.name || c.commenter} size={22} />
-                                <div className="min-w-0 flex-1">
-                                  <div className="text-xs">
-                                    <span className="font-semibold">{c.name || short(c.commenter)}</span>
-                                    <span className="ml-2 text-[10px] text-brand-text-muted">{displayTime(c.timestamp)}</span>
-                                  </div>
-                                  <div className="text-sm break-words whitespace-pre-wrap">{c.text}</div>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
+                  // reply as its own feed item
+                  const parent = item.parent;
+                  const quotedPreview = parent.content.length > 80 ? `${parent.content.slice(0, 80)}…` : parent.content;
+                  return (
+                    <div key={item.id} className="flex justify-start">
+                      <div className="max-w-[760px] w-fit rounded-lg border border-brand-border bg-brand-surface px-3 py-3 text-sm text-brand-text-primary">
+                        <button
+                          type="button"
+                          onClick={() => scrollToPost(parent.id)}
+                          className="block w-full text-left pl-2 border-l-2 border-brand-teal/60 bg-white/[0.03] rounded-r-md py-1 mb-2 hover:bg-white/[0.06] transition-colors"
+                        >
+                          <div className="flex items-center gap-1.5 text-[11px] text-brand-text-muted truncate">
+                            <Reply size={11} />
+                            <Avatar name={parent.name || parent.author} size={14} />
+                            <span className="font-medium">@{parent.name || short(parent.author)}</span>
+                          </div>
+                          <div className="text-[12px] text-brand-text-muted/80 truncate mt-0.5">{quotedPreview}</div>
+                        </button>
+                        <div className="flex items-center gap-2">
+                          <Avatar name={item.name || item.commenter} size={30} />
+                          <div className="min-w-0">
+                            <span className="font-semibold">{item.name || short(item.commenter)}</span>
+                            <span className="ml-2 text-xs text-brand-text-muted">{displayTime(item.timestamp)}</span>
+                          </div>
                         </div>
-                      )}
-
+                        <div className="mt-1.5 whitespace-pre-wrap break-words leading-relaxed">{item.text}</div>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
+
 
               {tab === "private" && showChat && [...messages].sort((a, b) => Number(a.timestamp || a.ts || 0) - Number(b.timestamp || b.ts || 0)).map((m, i) => {
                 const fromAddr = (m.from || m.wallet || (m as any).fromWallet || (m as any).sender || "").toString();
