@@ -679,10 +679,12 @@ export default function ChatUIPage() {
                 return items.map((item) => {
                   if (item.kind === "post") {
                     const post = item.post;
-                    const tagged = !!walletLc && (post.comments || []).some((c) => {
-                      const t = (c.text || "").toLowerCase();
-                      return t.includes(walletLc) || (myLitName && myLitName.endsWith(".lit") && t.includes(myLitName));
-                    });
+                    const shortMe = walletLc ? short(wallet).toLowerCase() : "";
+                    const contentLc = (post.content || "").toLowerCase();
+                    const tagged = !!walletLc && (
+                      (shortMe && contentLc.includes(`@${shortMe}`)) ||
+                      (myLitName && contentLc.includes(`@${myLitName}`))
+                    );
                     const isHighlighted = highlightedId === post.id;
                     return (
                       <div key={item.id} className="flex justify-start">
@@ -690,7 +692,7 @@ export default function ChatUIPage() {
                           ref={(el) => { postRefs.current[post.id] = el; }}
                           className={cn(
                             "group relative max-w-[760px] w-fit rounded-lg border bg-brand-surface px-3 py-3 text-sm text-brand-text-primary transition-all",
-                            tagged ? "border-l-4 border-l-blue-500 border-brand-border" : "border-brand-border",
+                            tagged ? "border-l-4 border-l-gray-400 border-brand-border bg-gray-700/40" : "border-brand-border",
                             isHighlighted && "ring-2 ring-brand-teal"
                           )}
                         >
