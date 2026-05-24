@@ -402,8 +402,7 @@ export default function ChatUIPage() {
       const j = await r.json();
       const resolved = j.address || j.wallet || j.walletAddress || j.data?.address;
       if (!resolved) throw new Error("Name not found");
-      const messenger = await getSignerContract(MESSENGER_ADDRESS, MESSENGER_ABI);
-      await (await messenger.sendFriendRequest(resolved)).wait();
+      await writeContract(MESSENGER_ADDRESS, encodeCall(SELECTOR.sendFriendRequest, [{ type: "address", value: resolved }]));
       setFriendName("");
       setAddFriendOpen(false);
     } finally { setBusy(false); }
@@ -412,9 +411,7 @@ export default function ChatUIPage() {
   const respondRequest = async (reqId: string, accept: boolean) => {
     setBusy(true);
     try {
-      const messenger = await getSignerContract(MESSENGER_ADDRESS, MESSENGER_ABI);
-      const tx = accept ? await messenger.acceptFriendRequest(reqId) : await messenger.rejectFriendRequest(reqId);
-      await tx.wait();
+      await writeContract(MESSENGER_ADDRESS, encodeCall(accept ? SELECTOR.acceptFriendRequest : SELECTOR.rejectFriendRequest, [{ type: "uint", value: reqId }]));
       setPending((list) => list.filter((req) => req.id !== reqId));
       loadPrivate();
     } finally { setBusy(false); }
@@ -425,8 +422,7 @@ export default function ChatUIPage() {
     if (!text || !current?.address) return;
     setBusy(true);
     try {
-      const messenger = await getSignerContract(MESSENGER_ADDRESS, MESSENGER_ABI);
-      await (await messenger.sendMessage(current.address, text, "text")).wait();
+      await writeContract(MESSENGER_ADDRESS, encodeCall(SELECTOR.sendMessage, [{ type: "address", value: current.address }, { type: "string", value: text }, { type: "string", value: "text" }]));
       setDraft("");
       loadConversation();
     } finally { setBusy(false); }
@@ -436,8 +432,7 @@ export default function ChatUIPage() {
     if (!current?.address) return;
     setBusy(true);
     try {
-      const messenger = await getSignerContract(MESSENGER_ADDRESS, MESSENGER_ABI);
-      await (await messenger.sendZkLTC(current.address, tipNote || "zkLTC", { value: parseEther(tipAmount || "0") })).wait();
+      await writeContract(MESSENGER_ADDRESS, encodeCall(SELECTOR.sendZkLTC, [{ type: "address", value: current.address }, { type: "string", value: tipNote || "zkLTC" }]), parseAmount(tipAmount || "0"));
       setTipOpen(false);
       setTipNote("");
     } finally { setBusy(false); }
