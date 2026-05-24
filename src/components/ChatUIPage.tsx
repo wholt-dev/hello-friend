@@ -190,6 +190,14 @@ export default function ChatUIPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const postRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [bountyPopupOpen, setBountyPopupOpen] = useState(false);
+  const [inlineBountyActive, setInlineBountyActive] = useState(false);
+  const [inlineLikeReward, setInlineLikeReward] = useState("");
+  const [inlineCommentReward, setInlineCommentReward] = useState("");
+  const inlineBountyTotal = useMemo(() => {
+    const t = Number(inlineLikeReward || 0) + Number(inlineCommentReward || 0);
+    return Number.isFinite(t) ? t.toFixed(4) : "0";
+  }, [inlineLikeReward, inlineCommentReward]);
 
   const scrollToPost = useCallback((id: string) => {
     const el = postRefs.current[id];
