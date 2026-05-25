@@ -990,6 +990,28 @@ export default function ChatUIPage() {
               {!showChat && <div className="h-full flex items-center justify-center text-brand-text-muted text-sm">Select a chat to start messaging</div>}
 
 
+              {tab === "global" && postsLoading && posts.length === 0 && (
+                <div className="space-y-3">
+                  {[0,1,2,3,4].map((i) => (
+                    <div key={`sk-${i}`} className="flex justify-start">
+                      <div className="max-w-[760px] w-[420px] rounded-lg border border-brand-border bg-brand-surface px-3 py-3 animate-pulse">
+                        <div className="flex items-center gap-2">
+                          <div className="h-8 w-8 rounded-full bg-white/10" />
+                          <div className="flex-1 space-y-2">
+                            <div className="h-3 w-32 bg-white/10 rounded" />
+                            <div className="h-2 w-20 bg-white/5 rounded" />
+                          </div>
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          <div className="h-3 w-full bg-white/10 rounded" />
+                          <div className="h-3 w-4/5 bg-white/10 rounded" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {tab === "global" && (() => {
                 type FeedItem =
                   | { kind: "post"; id: string; ts: number; post: Post }
