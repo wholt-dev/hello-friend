@@ -1305,7 +1305,7 @@ export default function ChatUIPage() {
                             "group relative max-w-[760px] w-fit rounded-lg border bg-brand-surface px-3 py-3 text-sm text-brand-text-primary transition-all",
                             tagged ? "border-l-4 border-l-gray-400 border-brand-border bg-gray-700/40" : "border-brand-border",
                             isHighlighted && "ring-2 ring-yellow-400 bg-yellow-400/10",
-                            post.pending && "opacity-50 italic"
+                            post.pending && "opacity-60"
                           )}
                         >
                           {post.bountyActive && <div className="absolute right-3 top-3 text-emerald-400" title="Bounty active">💰</div>}
@@ -1448,11 +1448,12 @@ export default function ChatUIPage() {
               {tab === "private" && showChat && [...messages].sort((a, b) => Number(a.timestamp || a.ts || 0) - Number(b.timestamp || b.ts || 0)).map((m, i) => {
                 const fromAddr = (m.from || m.wallet || (m as any).fromWallet || (m as any).sender || "").toString();
                 const mine = fromAddr.toLowerCase() === wallet.toLowerCase();
+                const pending = typeof m.id === "string" && m.id.startsWith("opt-");
                 return (
                   <div key={m.id || i} className={cn("flex", mine ? "justify-end" : "justify-start")}>
-                    <div className={cn("max-w-[70%] rounded-lg px-3 py-2 text-sm border", mine ? "bg-white/10 border-white/10 text-brand-text-primary" : "bg-brand-surface border-brand-border text-brand-text-primary")}>
+                    <div className={cn("max-w-[70%] rounded-lg px-3 py-2 text-sm border", mine ? "bg-white/10 border-white/10 text-brand-text-primary" : "bg-brand-surface border-brand-border text-brand-text-primary", pending && "opacity-60")}>
                       <div className="break-words whitespace-pre-wrap">{getMessageText(m)}</div>
-                      <div className="mt-1 text-[10px] text-brand-text-muted text-right">{displayTime(m.timestamp || m.createdAt || m.ts)}</div>
+                      <div className="mt-1 text-[10px] text-brand-text-muted text-right">{pending ? "sending…" : displayTime(m.timestamp || m.createdAt || m.ts)}</div>
                     </div>
                   </div>
                 );
