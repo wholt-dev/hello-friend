@@ -1272,8 +1272,7 @@ export default function ChatUIPage() {
                 </>
               )}
               <div className="relative flex items-center gap-1 px-2 py-2">
-                <IconBtn aria-label="Emoji"><Smile size={18} /></IconBtn>
-                <IconBtn aria-label="Attach"><Paperclip size={18} /></IconBtn>
+                <IconBtn aria-label="Emoji" onClick={() => setEmojiOpen((v) => !v)}><Smile size={18} /></IconBtn>
                 {tab === "global" && (
                   <button
                     type="button"
@@ -1317,17 +1316,17 @@ export default function ChatUIPage() {
                       placeholder="0.01"
                       className="w-full h-8 px-2 mb-2 rounded-md bg-brand-bg border border-brand-border text-xs text-brand-text-primary outline-none"
                     />
-                    <label className="block text-[11px] text-brand-text-muted mb-1">💬 Reply reward (zkLTC)</label>
+                    <label className="block text-[11px] text-brand-text-muted mb-1">Total bounty to place (zkLTC)</label>
                     <input
-                      value={inlineCommentReward}
-                      onChange={(e) => setInlineCommentReward(e.target.value)}
-                      placeholder="0.01"
+                      value={inlineTotalBounty}
+                      onChange={(e) => setInlineTotalBounty(e.target.value)}
+                      placeholder="1.00"
                       className="w-full h-8 px-2 mb-2 rounded-md bg-brand-bg border border-brand-border text-xs text-brand-text-primary outline-none"
                     />
-                    <div className="text-[11px] text-brand-text-muted mb-2">Total bounty: <span className="text-brand-text-primary font-medium">{inlineBountyTotal} zkLTC</span></div>
+                    <div className="text-[11px] text-brand-text-muted mb-2">ℹ️ Bounty lasts for <span className="text-brand-text-primary font-medium">{inlineBountyLikes}</span> likes</div>
                     <button
                       onClick={() => {
-                        const hasVal = Number(inlineLikeReward || 0) > 0 || Number(inlineCommentReward || 0) > 0;
+                        const hasVal = Number(inlineLikeReward || 0) > 0 && Number(inlineTotalBounty || 0) > 0;
                         setInlineBountyActive(hasVal);
                         setBountyPopupOpen(false);
                       }}
@@ -1340,7 +1339,7 @@ export default function ChatUIPage() {
                         onClick={() => {
                           setInlineBountyActive(false);
                           setInlineLikeReward("");
-                          setInlineCommentReward("");
+                          setInlineTotalBounty("");
                           setBountyPopupOpen(false);
                         }}
                         className="mt-2 w-full h-7 rounded-md border border-brand-border text-[11px] text-brand-text-muted hover:text-brand-text-primary"
