@@ -954,7 +954,39 @@ export default function ChatUIPage() {
                               )}
                             </div>
                           </div>
-                          <div className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{renderPostContent(post.content)}</div>
+                          {(() => {
+                            const replyMatch = (post.content || "").match(REPLY_TAG_RE);
+                            if (!replyMatch) {
+                              return <div className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{renderPostContent(post.content)}</div>;
+                            }
+                            const tagBody = replyMatch[1].toLowerCase();
+                            const replyBody = post.content.slice(replyMatch[0].length);
+                            const original = posts.find((p) =>
+                              short(p.author).toLowerCase() === tagBody ||
+                              p.author.toLowerCase() === tagBody ||
+                              (p.name || "").toLowerCase() === tagBody
+                            );
+                            const previewName = original ? (original.name || short(original.author)) : replyMatch[1];
+                            const previewText = original ? original.content : "Original post not found";
+                            const previewShort = previewText.length > 100 ? `${previewText.slice(0, 100)}…` : previewText;
+                            return (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => original && scrollToPost(original.id)}
+                                  disabled={!original}
+                                  className="mt-2 block w-full text-left pl-2 pr-2 py-1.5 border-l-4 border-gray-400 bg-gray-700/40 rounded-r-md hover:bg-gray-700/60 transition-colors disabled:cursor-default"
+                                >
+                                  <div className="flex items-center gap-1.5 text-[11px] text-brand-text-muted truncate">
+                                    <Avatar name={previewName} size={14} />
+                                    <span className="font-medium">{previewName}</span>
+                                  </div>
+                                  <div className="text-[12px] text-brand-text-muted/90 truncate mt-0.5">{previewShort}</div>
+                                </button>
+                                <div className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{renderPostContent(replyBody)}</div>
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     );
