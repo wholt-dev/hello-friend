@@ -488,7 +488,7 @@ export default function ChatUIPage() {
       // 2) Points — same endpoint the top navbar uses so numbers match.
       (async () => {
         try {
-          const r = await fetch(`https://api.test-hub.xyz/points/${profileAddr}`);
+          const r = await fetch(`https://api.test-hub.xyz/points/${profileAddr.toLowerCase()}`);
           const j = await r.json();
           if (!cancelled) {
             const val = String(j?.total ?? j?.points ?? j?.balance ?? 0);
@@ -547,7 +547,9 @@ export default function ChatUIPage() {
   const loadListings = useCallback(async () => {
     try {
       const r = await fetch(`${API}/hub/marketplace/listings`);
+      if (!r.ok) return; // keep prior state on 5xx
       const j = await r.json();
+      if (j && typeof j.error === "string") return; // RPC hiccup, keep cached
       const arr = readArray(j, ["listings", "data", "items"]);
       const mapped = arr.map((l: any) => ({
         name: l.name || l.domain || "",
@@ -557,7 +559,9 @@ export default function ChatUIPage() {
       })).filter((l: any) => l.name);
       setListings(mapped);
       setListingsFull(mapped);
-    } catch { setListings([]); setListingsFull([]); }
+    } catch {
+      // Network error — preserve last good state instead of clearing.
+    }
   }, []);
 
   // Recently Sold history — backend indexes the marketplace `Sold` event
@@ -567,8 +571,9 @@ export default function ChatUIPage() {
   const loadSold = useCallback(async () => {
     try {
       const r = await fetch(`${API}/hub/marketplace/sold`);
-      if (!r.ok) { setSoldItems([]); return; }
+      if (!r.ok) return;
       const j = await r.json();
+      if (j && typeof j.error === "string") return;
       const arr = readArray(j, ["sold", "items", "history", "data"]);
       const mapped = arr
         .map((s: any) => ({
@@ -581,7 +586,9 @@ export default function ChatUIPage() {
         .filter((s: any) => s.domain)
         .sort((a: any, b: any) => b.soldAt - a.soldAt);
       setSoldItems(mapped);
-    } catch { setSoldItems([]); }
+    } catch {
+      // Preserve last good state on transient errors.
+    }
   }, []);
 
   const loadMyDomains = useCallback(async () => {
@@ -589,10 +596,14 @@ export default function ChatUIPage() {
     try {
       // Always lower-case — the backend rejects mixed-case checksums.
       const r = await fetch(`${API}/hub/names/owned/${wallet.toLowerCase()}`);
+      if (!r.ok) return;
       const j = await r.json();
+      if (j && typeof j.error === "string") return;
       const arr = readArray(j, ["names", "domains", "owned", "data"]);
       setMyDomains(arr.map((d: any) => (typeof d === "string" ? d : d.name || d.domain)).filter(Boolean));
-    } catch { setMyDomains([]); }
+    } catch {
+      // Preserve last good state.
+    }
   }, [wallet]);
 
   // Buy .lit — keep price in sync with chosen duration
@@ -687,9 +698,10 @@ export default function ChatUIPage() {
   const loadBidsForOwner = useCallback(async () => {
     if (!wallet) { setBidsForOwner([]); return; }
     try {
-      const r = await fetch(`${API}/hub/marketplace/bids/seller/${wallet}`);
-      if (!r.ok) { setBidsForOwner([]); return; }
+      const r = await fetch(`${API}/hub/marketplace/bids/seller/${wallet.toLowerCase()}`);
+      if (!r.ok) return;
       const j = await r.json();
+      if (j && typeof j.error === "string") return;
       const arr = readArray(j, ["bids", "data", "items"]);
       const mapped = arr.map((b: any) => ({
         domain: b.domain || b.name || "",
@@ -699,7 +711,9 @@ export default function ChatUIPage() {
         bidAt: Number(b.bidAt ?? b.placedAt ?? b.timestamp ?? b.createdAt ?? 0),
       })).filter((b: any) => b.domain && b.bidder);
       setBidsForOwner(mapped);
-    } catch { setBidsForOwner([]); }
+    } catch {
+      // preserve last good state
+    }
   }, [wallet]);
 
   // All active bids grouped by domain — used to show bid count on each market
@@ -708,8 +722,9 @@ export default function ChatUIPage() {
   const loadBidsByDomain = useCallback(async () => {
     try {
       const r = await fetch(`${API}/hub/marketplace/all-bids`);
-      if (!r.ok) { setBidsByDomain({}); return; }
+      if (!r.ok) return;
       const j = await r.json();
+      if (j && typeof j.error === "string") return;
       const raw = (j && (j.bidsByDomain || j.data)) || {};
       const grouped: Record<string, Array<{ bidder: string; amount: string; bidAt: number }>> = {};
       for (const [name, list] of Object.entries(raw)) {
@@ -1035,10 +1050,17 @@ export default function ChatUIPage() {
     console.log("[ChatUI] connectedWallet:", connectedWallet);
     if (!connectedWallet) { setContacts([]); setPending([]); return; }
     try {
-      const url = `${API}/hub/messenger/friends/${connectedWallet}`;
+      const url = `${API}/hub/messenger/friends/${connectedWallet.toLowerCase()}`;
       console.log("[ChatUI] fetching friends:", url);
       const response = await fetch(url);
+      if (!response.ok) throw new Error(`friends ${response.status}`);
       const data = await response.json();
+      // Backend bubbles RPC errors as {"error": "..."} 200 — keep last
+      // known state so the contact list isn't wiped during a hiccup.
+      if (data && typeof data.error === "string") {
+        console.warn("[ChatUI] friends transient error, keeping last state:", data.error);
+        return;
+      }
       console.log("[ChatUI] /hub/messenger/friends response:", data);
       const arr = readArray(data, ["friends", "contacts", "data"]);
       console.log("[ChatUI] data.friends:", arr);
@@ -1047,7 +1069,7 @@ export default function ChatUIPage() {
       setContacts(mapped);
     } catch (err) {
       console.error("[ChatUI] loadPrivate friends error:", err);
-      setContacts([]);
+      // Keep prior contacts on error — don't blank the sidebar.
     }
 
     try {
@@ -1063,8 +1085,16 @@ export default function ChatUIPage() {
   const loadConversation = useCallback(async () => {
     if (!wallet || !current?.address) return;
     try {
-      const r = await fetch(`${API}/hub/messenger/conversation/${wallet}/${current.address}`);
+      const r = await fetch(`${API}/hub/messenger/conversation/${wallet.toLowerCase()}/${current.address.toLowerCase()}`);
+      if (!r.ok) {
+        // Server-side error (RPC rate limit, contract revert) — keep last
+        // known state so optimistic + previously fetched msgs stay visible.
+        return;
+      }
       const j = await r.json();
+      // Backend may return {"error": "..."} as 200 in some failure modes
+      // (e.g. RPC bandwidth exceeded). Treat that as transient and skip.
+      if (j && typeof j.error === "string") return;
       const serverMsgs = readArray(j, ["messages", "conversation", "data"]) as Msg[];
       // Preserve last known state when the backend returns nothing — this
       // commonly happens before the `getConversation({from})` override is
