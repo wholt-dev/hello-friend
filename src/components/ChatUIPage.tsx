@@ -27,7 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { addNotif } from "@/lib/notifications";
 import zkltcLogo from "@/assets/zkltc.jpg";
-import { BrowserProvider, Contract } from "ethers";
+import { BrowserProvider, Contract, parseEther } from "ethers";
 
 const API = "https://hub.test-hub.xyz";
 const CHAIN_ID_HEX = "0x1159";
@@ -35,6 +35,24 @@ const RPC_URL = "https://liteforge.rpc.caldera.xyz/http";
 const HUB_POSTS_ADDRESS = "0x33690545061cF3759350dd2C5A0d1080D9A14D73";
 const LIT_REGISTRY_ADDRESS = "0x3E3aEE6d154f881A7418b2dA50c915C34664C2A8";
 const MESSENGER_ADDRESS = "0x69405b51963D592C6CA9350F774045d4E76c89B8";
+const MARKETPLACE_ADDRESS = "0x9cc6e4BB66EC19475d9db8082482Eb272cf6eA02";
+
+const MARKETPLACE_ABI = [
+  "function listName(string name, uint256 price) external",
+  "function unlistName(string name) external",
+  "function buyName(string name) external payable",
+  "function placeBid(string name) external payable",
+  "function cancelBid(string name) external",
+  "function acceptBid(string name, address bidder) external",
+] as const;
+
+async function getMarketplaceContract() {
+  const eth = (window as any).ethereum;
+  if (!eth) throw new Error("No wallet detected");
+  const provider = new BrowserProvider(eth);
+  const signer = await provider.getSigner();
+  return new Contract(MARKETPLACE_ADDRESS, MARKETPLACE_ABI, signer);
+}
 
 const SELECTOR = {
   createPost: "0xbf95fe57",
@@ -361,7 +379,7 @@ export default function ChatUIPage() {
   // FIX 6 — load market listings
   const loadListings = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/hub/market/listings`);
+      const r = await fetch(`${API}/hub/marketplace/listings`);
       const j = await r.json();
       const arr = readArray(j, ["listings", "data", "items"]);
       const mapped = arr.map((l: any) => ({
@@ -375,37 +393,28 @@ export default function ChatUIPage() {
     } catch { setListings([]); setListingsFull([]); }
   }, []);
 
+  // No /hub/market/sold endpoint exists yet — marketplace history would need
+  // contract event indexing. Render gracefully with an empty list so the
+  // "Recently Sold" tab/ticker just stays blank instead of breaking.
   const loadSold = useCallback(async () => {
-    try {
-      const r = await fetch(`${API}/hub/market/sold`);
-      const j = await r.json();
-      const arr = readArray(j, ["sold", "items", "data", "sales"]);
-      setSoldItems(arr.map((s: any) => ({
-        buyer: s.buyer || s.to || "",
-        seller: s.seller || s.from || "",
-        domain: s.domain || s.name || "",
-        price: String(s.price ?? "0"),
-        soldAt: Number(s.soldAt ?? s.timestamp ?? s.createdAt ?? 0),
-      })).filter((s: any) => s.domain));
-    } catch { setSoldItems([]); }
+    setSoldItems([]);
   }, []);
 
   const loadMyDomains = useCallback(async () => {
     if (!wallet) { setMyDomains([]); return; }
     try {
-      const r = await fetch(`${API}/hub/domains/${wallet}`);
+      const r = await fetch(`${API}/hub/names/owned/${wallet}`);
       const j = await r.json();
-      const arr = readArray(j, ["domains", "names", "data"]);
+      const arr = readArray(j, ["names", "domains", "owned", "data"]);
       setMyDomains(arr.map((d: any) => (typeof d === "string" ? d : d.name || d.domain)).filter(Boolean));
     } catch { setMyDomains([]); }
   }, [wallet]);
 
-  // Bids on listings the connected wallet is selling. Backend may not yet
-  // expose this, in which case we render an empty state instead of breaking.
+  // Bids on listings the connected wallet is selling.
   const loadBidsForOwner = useCallback(async () => {
     if (!wallet) { setBidsForOwner([]); return; }
     try {
-      const r = await fetch(`${API}/hub/market/bids/seller/${wallet}`);
+      const r = await fetch(`${API}/hub/marketplace/bids/seller/${wallet}`);
       if (!r.ok) { setBidsForOwner([]); return; }
       const j = await r.json();
       const arr = readArray(j, ["bids", "data", "items"]);
@@ -414,33 +423,31 @@ export default function ChatUIPage() {
         bidder: b.bidder || b.from || "",
         bidderName: b.bidderName || b.litName || undefined,
         amount: String(b.amount ?? b.price ?? 0),
-        bidAt: Number(b.bidAt ?? b.timestamp ?? b.createdAt ?? 0),
+        bidAt: Number(b.bidAt ?? b.placedAt ?? b.timestamp ?? b.createdAt ?? 0),
       })).filter((b: any) => b.domain && b.bidder);
       setBidsForOwner(mapped);
     } catch { setBidsForOwner([]); }
   }, [wallet]);
 
-  // All bids grouped by domain — used to show bid count on each market card
-  // and to populate the bid history inside the listing detail view.
+  // All active bids grouped by domain — used to show bid count on each market
+  // card and to populate the bid history inside the listing detail view.
+  // Backend returns { bidsByDomain: { name: [{bidder, amount, placedAt}] } }
   const loadBidsByDomain = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/hub/market/bids`);
+      const r = await fetch(`${API}/hub/marketplace/all-bids`);
       if (!r.ok) { setBidsByDomain({}); return; }
       const j = await r.json();
-      const arr = readArray(j, ["bids", "data", "items"]);
+      const raw = (j && (j.bidsByDomain || j.data)) || {};
       const grouped: Record<string, Array<{ bidder: string; amount: string; bidAt: number }>> = {};
-      for (const b of arr) {
-        const d = b.domain || b.name;
-        if (!d) continue;
-        if (!grouped[d]) grouped[d] = [];
-        grouped[d].push({
+      for (const [name, list] of Object.entries(raw)) {
+        if (!Array.isArray(list)) continue;
+        grouped[name] = (list as any[]).map((b) => ({
           bidder: b.bidder || b.from || "",
           amount: String(b.amount ?? b.price ?? 0),
-          bidAt: Number(b.bidAt ?? b.timestamp ?? b.createdAt ?? 0),
-        });
+          bidAt: Number(b.placedAt ?? b.bidAt ?? b.timestamp ?? 0),
+        }));
+        grouped[name].sort((a, b) => b.bidAt - a.bidAt);
       }
-      // newest first
-      Object.values(grouped).forEach((list) => list.sort((a, b) => b.bidAt - a.bidAt));
       setBidsByDomain(grouped);
     } catch { /* ignore */ }
   }, []);
@@ -449,13 +456,12 @@ export default function ChatUIPage() {
     if (!wallet) return;
     setBusy(true);
     try {
-      const r = await fetch(`${API}/hub/market/accept-bid`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: domain, seller: wallet, bidder, amount }),
-      });
-      if (!r.ok) throw new Error("Accept failed");
-      // Local notifications for both parties (best-effort).
+      const c = await getMarketplaceContract();
+      console.log("[Market] acceptBid()", { domain, bidder });
+      const tx = await c.acceptBid(domain, bidder);
+      console.log("[Market] acceptBid: tx submitted", tx.hash);
+      await tx.wait();
+      console.log("[Market] acceptBid: confirmed");
       addNotif(wallet, {
         type: "gf",
         title: `Bid accepted`,
@@ -468,33 +474,28 @@ export default function ChatUIPage() {
         message: `${short(wallet)} accepted your ${amount} zkLTC bid on ${domain}`,
         link: `/chat`,
       });
-      await Promise.all([loadListings(), loadSold(), loadMyDomains(), loadBidsForOwner(), loadBidsByDomain()]);
+      await Promise.all([loadListings(), loadMyDomains(), loadBidsForOwner(), loadBidsByDomain()]);
     } catch (err: any) {
-      try { (await import("sonner")).toast.error(err?.message || "Accept failed"); } catch { /* ignore */ }
+      const msg = err?.shortMessage || err?.reason || err?.message || "Accept failed";
+      console.error("[Market] acceptBid failed", err);
+      try { (await import("sonner")).toast.error(msg); } catch { /* ignore */ }
     } finally { setBusy(false); }
-  }, [wallet, loadListings, loadSold, loadMyDomains, loadBidsForOwner, loadBidsByDomain]);
+  }, [wallet, loadListings, loadMyDomains, loadBidsForOwner, loadBidsByDomain]);
 
+  // The marketplace contract has no on-chain "seller rejects" function — only
+  // the bidder can cancelBid (gets refund). So Reject is purely a UX signal:
+  // notify the bidder that the seller declined and ask them to cancel the bid
+  // on their side to recover their funds.
   const rejectBid = useCallback(async (domain: string, bidder: string) => {
     if (!wallet) return;
-    setBusy(true);
-    try {
-      const r = await fetch(`${API}/hub/market/reject-bid`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: domain, seller: wallet, bidder }),
-      });
-      if (!r.ok) throw new Error("Reject failed");
-      addNotif(bidder, {
-        type: "gf",
-        title: `Bid rejected`,
-        message: `${short(wallet)} declined your bid on ${domain}`,
-        link: `/chat`,
-      });
-      await Promise.all([loadBidsForOwner(), loadBidsByDomain()]);
-    } catch (err: any) {
-      try { (await import("sonner")).toast.error(err?.message || "Reject failed"); } catch { /* ignore */ }
-    } finally { setBusy(false); }
-  }, [wallet, loadBidsForOwner, loadBidsByDomain]);
+    addNotif(bidder, {
+      type: "gf",
+      title: `Bid declined`,
+      message: `${short(wallet)} declined your bid on ${domain}. Cancel from your bids to recover funds.`,
+      link: `/chat`,
+    });
+    try { (await import("sonner")).toast.success("Bidder notified — they can now cancel for refund"); } catch { /* ignore */ }
+  }, [wallet]);
 
   useEffect(() => {
     if (view !== "market") return;
@@ -2199,16 +2200,16 @@ export default function ChatUIPage() {
                                       onClick={async () => {
                                         setBusy(true);
                                         try {
-                                          const r = await fetch(`${API}/hub/market/unlist`, {
-                                            method: "POST",
-                                            headers: { "Content-Type": "application/json" },
-                                            body: JSON.stringify({ name: l.name, seller: wallet }),
-                                          });
-                                          if (!r.ok) throw new Error("Unlist failed");
+                                          const c = await getMarketplaceContract();
+                                          console.log("[Market] unlistName()", l.name);
+                                          const tx = await c.unlistName(l.name);
+                                          await tx.wait();
+                                          console.log("[Market] unlist confirmed");
                                           addNotif(wallet, { type: "gf", title: "Listing removed", message: `${l.name} unlisted from market`, link: "/chat" });
                                           await loadListings();
                                         } catch (err: any) {
-                                          try { (await import("sonner")).toast.error(err?.message || "Unlist failed"); } catch { /* ignore */ }
+                                          const msg = err?.shortMessage || err?.reason || err?.message || "Unlist failed";
+                                          try { (await import("sonner")).toast.error(msg); } catch { /* ignore */ }
                                         } finally { setBusy(false); }
                                       }}
                                       className="flex-1 h-9 rounded-md border border-brand-border text-xs font-semibold text-brand-text-primary hover:bg-white/5 disabled:opacity-50 transition-colors"
@@ -2408,12 +2409,12 @@ export default function ChatUIPage() {
                               onClick={async () => {
                                 setBusy(true);
                                 try {
-                                  const r = await fetch(`${API}/hub/market/list`, {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ name: d, price: listPriceFor[d], seller: wallet }),
-                                  });
-                                  if (!r.ok) throw new Error("List failed");
+                                  const c = await getMarketplaceContract();
+                                  const priceWei = parseEther(listPriceFor[d]);
+                                  console.log("[Market] listName()", { name: d, price: listPriceFor[d] });
+                                  const tx = await c.listName(d, priceWei);
+                                  await tx.wait();
+                                  console.log("[Market] list confirmed");
                                   addNotif(wallet, {
                                     type: "gf",
                                     title: "Domain listed",
@@ -2423,7 +2424,8 @@ export default function ChatUIPage() {
                                   setListPriceFor((p) => ({ ...p, [d]: "" }));
                                   await loadListings();
                                 } catch (err: any) {
-                                  try { (await import("sonner")).toast.error(err?.message || "List failed"); } catch { /* ignore */ }
+                                  const msg = err?.shortMessage || err?.reason || err?.message || "List failed";
+                                  try { (await import("sonner")).toast.error(msg); } catch { /* ignore */ }
                                 } finally { setBusy(false); }
                               }}
                               className="h-9 px-3 rounded-md bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold disabled:opacity-50 transition-colors"
@@ -2438,16 +2440,16 @@ export default function ChatUIPage() {
                               onClick={async () => {
                                 setBusy(true);
                                 try {
-                                  const r = await fetch(`${API}/hub/market/unlist`, {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ name: d, seller: wallet }),
-                                  });
-                                  if (!r.ok) throw new Error("Unlist failed");
+                                  const c = await getMarketplaceContract();
+                                  console.log("[Market] unlistName()", d);
+                                  const tx = await c.unlistName(d);
+                                  await tx.wait();
+                                  console.log("[Market] unlist confirmed");
                                   addNotif(wallet, { type: "gf", title: "Listing removed", message: `${d} unlisted`, link: "/chat" });
                                   await loadListings();
                                 } catch (err: any) {
-                                  try { (await import("sonner")).toast.error(err?.message || "Unlist failed"); } catch { /* ignore */ }
+                                  const msg = err?.shortMessage || err?.reason || err?.message || "Unlist failed";
+                                  try { (await import("sonner")).toast.error(msg); } catch { /* ignore */ }
                                 } finally { setBusy(false); }
                               }}
                               className="flex-1 h-9 rounded-md border border-brand-border text-xs font-semibold text-brand-text-primary hover:bg-white/5 disabled:opacity-50 transition-colors"
@@ -2614,19 +2616,20 @@ export default function ChatUIPage() {
                                   onClick={async () => {
                                     setBusy(true);
                                     try {
-                                      const r = await fetch(`${API}/hub/market/buy`, {
-                                        method: "POST",
-                                        headers: { "Content-Type": "application/json" },
-                                        body: JSON.stringify({ name: l.name, buyer: wallet, price: l.price }),
-                                      });
-                                      if (!r.ok) throw new Error("Buy failed");
+                                      const c = await getMarketplaceContract();
+                                      const priceWei = parseEther(l.price);
+                                      console.log("[Market] buyName()", { name: l.name, price: l.price });
+                                      const tx = await c.buyName(l.name, { value: priceWei });
+                                      await tx.wait();
+                                      console.log("[Market] buy confirmed");
                                       setSendToast(`✅ You bought ${l.name}!`);
                                       setTimeout(() => setSendToast(null), 4000);
                                       addNotif(wallet, { type: "gf", title: "Domain purchased", message: `Bought ${l.name} for ${l.price} zkLTC`, link: "/chat" });
                                       addNotif(l.seller, { type: "gf", title: "Domain sold", message: `${short(wallet)} bought ${l.name} for ${l.price} zkLTC`, link: "/chat" });
-                                      await Promise.all([loadListings(), loadSold(), loadMyDomains(), loadBidsByDomain()]);
+                                      await Promise.all([loadListings(), loadMyDomains(), loadBidsByDomain()]);
                                     } catch (err: any) {
-                                      try { (await import("sonner")).toast.error(err?.message || "Buy failed"); } catch { /* ignore */ }
+                                      const msg = err?.shortMessage || err?.reason || err?.message || "Buy failed";
+                                      try { (await import("sonner")).toast.error(msg); } catch { /* ignore */ }
                                     } finally { setBusy(false); }
                                   }}
                                   className="flex-1 h-9 rounded-md bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold disabled:opacity-40 transition-colors"
@@ -2667,18 +2670,19 @@ export default function ChatUIPage() {
                                       const amount = bidInputs[l.name];
                                       setBusy(true);
                                       try {
-                                        const r = await fetch(`${API}/hub/market/bid`, {
-                                          method: "POST",
-                                          headers: { "Content-Type": "application/json" },
-                                          body: JSON.stringify({ domain: l.name, bidder: wallet, amount }),
-                                        });
-                                        if (!r.ok) throw new Error("Bid failed");
+                                        const c = await getMarketplaceContract();
+                                        const amountWei = parseEther(amount);
+                                        console.log("[Market] placeBid()", { name: l.name, amount });
+                                        const tx = await c.placeBid(l.name, { value: amountWei });
+                                        await tx.wait();
+                                        console.log("[Market] bid confirmed");
                                         addNotif(wallet, { type: "gf", title: "Bid placed", message: `Bid ${amount} zkLTC on ${l.name}`, link: "/chat" });
                                         addNotif(l.seller, { type: "gf", title: "New bid received", message: `${short(wallet)} bid ${amount} zkLTC on ${l.name}`, link: "/chat" });
                                         setBidInputs((p) => { const n = { ...p }; delete n[l.name]; return n; });
                                         await loadBidsByDomain();
                                       } catch (err: any) {
-                                        try { (await import("sonner")).toast.error(err?.message || "Bid failed"); } catch { /* ignore */ }
+                                        const msg = err?.shortMessage || err?.reason || err?.message || "Bid failed";
+                                        try { (await import("sonner")).toast.error(msg); } catch { /* ignore */ }
                                       } finally { setBusy(false); }
                                     }}
                                     className="h-8 px-3 rounded-md bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold disabled:opacity-40 transition-colors"
