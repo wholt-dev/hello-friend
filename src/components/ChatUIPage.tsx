@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { addNotif } from "@/lib/notifications";
+import { showSuccess, showError } from "@/lib/feedback";
 import zkltcLogo from "@/assets/zkltc.jpg";
 import { BrowserProvider, Contract, parseEther } from "ethers";
 
@@ -153,8 +154,20 @@ const initials = (name: string) => {
   return label.split(/\s+/).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "?";
 };
 const displayTime = (value?: number | string) => {
-  if (!value) return "";
-  const raw = typeof value === "number" && value < 10_000_000_000 ? value * 1000 : value;
+  if (value === undefined || value === null || value === "") return "";
+  // Server returns timestamps as numeric strings (e.g. "1779730991") — coerce
+  // numerics first so the bubble shows a real time after page navigation,
+  // not just at the moment of send. Falls back to ISO/date strings.
+  let raw: number | string = value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (/^\d+$/.test(trimmed)) raw = Number(trimmed);
+    else raw = trimmed;
+  }
+  if (typeof raw === "number") {
+    // Treat anything < 1e11 as seconds (unix), else ms.
+    raw = raw < 10_000_000_000 ? raw * 1000 : raw;
+  }
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -287,7 +300,19 @@ export default function ChatUIPage() {
   const [localTransfers, setLocalTransfers] = useState<Array<{
     id: string; ts: number; from: string; fromName: string; to: string; toName: string;
     amount: string; token: string; txHash: string; createdAt: number;
-  }>>([]);
+  }>>(() => {
+    // Hydrate from localStorage so the in-feed transfer notification stays
+    // visible after page navigation that unmounts ChatUIPage.
+    try {
+      const raw = typeof window !== "undefined" ? localStorage.getItem("litdex:globalTransfers") : null;
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      // Drop entries older than 7 days so the feed doesn't grow forever.
+      const cutoff = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7;
+      return arr.filter((t: any) => t && Number(t.ts) > cutoff);
+    } catch { return []; }
+  });
   const [fetchedReplyPosts, setFetchedReplyPosts] = useState<Record<string, { id: string; author: string; name?: string; content: string }>>({});
   const [inlineBountyActive, setInlineBountyActive] = useState(false);
   const [inlineLikeReward, setInlineLikeReward] = useState("");
@@ -409,6 +434,14 @@ export default function ChatUIPage() {
     } catch { /* ignore */ }
   }, [messages, pendingMsgs, wallet, current?.address]);
 
+  // Persist global-feed transfer notifications. The funds-send message in
+  // global must stay visible across navigations (per UX request).
+  useEffect(() => {
+    try {
+      safeSet("litdex:globalTransfers", JSON.stringify(localTransfers));
+    } catch { /* ignore quota */ }
+  }, [localTransfers]);
+
   // FIX 5 — load profile data when entering profile view
   useEffect(() => {
     if (view !== "profile" || !profileAddr) return;
@@ -482,11 +515,14 @@ export default function ChatUIPage() {
       })(),
       // 4) Owned .lit domains — backend route is /hub/names/owned/:addr
       // (the old /hub/domains/:addr was a 404, which is why this card was
-      // stuck at 0). Fall back to the legacy URL for resilience.
+      // stuck at 0). Fall back to the legacy URL for resilience. The
+      // backend rejects mixed-case addresses with a "bad address checksum"
+      // error, so always use lower-case.
       (async () => {
+        const addr = profileAddr.toLowerCase();
         const tryUrls = [
-          `${API}/hub/names/owned/${profileAddr}`,
-          `${API}/hub/domains/${profileAddr}`,
+          `${API}/hub/names/owned/${addr}`,
+          `${API}/hub/domains/${addr}`,
         ];
         for (const url of tryUrls) {
           try {
@@ -551,7 +587,8 @@ export default function ChatUIPage() {
   const loadMyDomains = useCallback(async () => {
     if (!wallet) { setMyDomains([]); return; }
     try {
-      const r = await fetch(`${API}/hub/names/owned/${wallet}`);
+      // Always lower-case — the backend rejects mixed-case checksums.
+      const r = await fetch(`${API}/hub/names/owned/${wallet.toLowerCase()}`);
       const j = await r.json();
       const arr = readArray(j, ["names", "domains", "owned", "data"]);
       setMyDomains(arr.map((d: any) => (typeof d === "string" ? d : d.name || d.domain)).filter(Boolean));
@@ -617,13 +654,22 @@ export default function ChatUIPage() {
         message: `${name}.lit is yours${buyDuration === 99 ? " forever" : ` for ${buyDuration} year${buyDuration > 1 ? "s" : ""}`}`,
         link: "/chat",
       });
+      showSuccess({
+        title: `${name}.lit REGISTERED`,
+        subtitle: "WELCOME TO LITDEX",
+        rows: [
+          { label: "DURATION", value: buyDuration === 99 ? "Forever" : `${buyDuration} year${buyDuration > 1 ? "s" : ""}` },
+          { label: "PRICE", value: `${buyPrice} zkLTC` },
+          { label: "TX", value: `${tx.hash.slice(0, 10)}...` },
+        ],
+      });
       // Refresh profile + market caches so it shows up immediately.
       setBuyName("");
       setBuyAvailable("idle");
       await loadMyDomains();
       // Refetch profile domains for the side panel and profile view.
       try {
-        const r = await fetch(`${API}/hub/names/owned/${wallet}`);
+        const r = await fetch(`${API}/hub/names/owned/${wallet.toLowerCase()}`);
         const j = await r.json();
         const arr = readArray(j, ["domains", "names", "data"]);
         setProfileDomains(arr.map((d: any) => (typeof d === "string" ? d : d.name || d.domain)).filter(Boolean));
@@ -631,7 +677,7 @@ export default function ChatUIPage() {
     } catch (err: any) {
       const msg = err?.shortMessage || err?.reason || err?.message || "Registration failed";
       console.error("[BuyLit] failed:", msg);
-      try { (await import("sonner")).toast.error(msg); } catch { /* ignore */ }
+      showError(msg);
     } finally {
       setBuyBusy(false);
     }
@@ -702,10 +748,20 @@ export default function ChatUIPage() {
         link: `/chat`,
       });
       await Promise.all([loadListings(), loadMyDomains(), loadBidsForOwner(), loadBidsByDomain()]);
+      showSuccess({
+        title: "BID ACCEPTED",
+        subtitle: "DOMAIN SOLD",
+        rows: [
+          { label: "NAME", value: `${domain}.lit` },
+          { label: "BUYER", value: short(bidder) },
+          { label: "AMOUNT", value: `${amount} zkLTC` },
+          { label: "TX", value: `${tx.hash.slice(0, 10)}...` },
+        ],
+      });
     } catch (err: any) {
       const msg = err?.shortMessage || err?.reason || err?.message || "Accept failed";
       console.error("[Market] acceptBid failed", err);
-      try { (await import("sonner")).toast.error(msg); } catch { /* ignore */ }
+      showError(msg);
     } finally { setBusy(false); }
   }, [wallet, loadListings, loadMyDomains, loadBidsForOwner, loadBidsByDomain]);
 
@@ -721,7 +777,14 @@ export default function ChatUIPage() {
       message: `${short(wallet)} declined your bid on ${domain}. Cancel from your bids to recover funds.`,
       link: `/chat`,
     });
-    try { (await import("sonner")).toast.success("Bidder notified — they can now cancel for refund"); } catch { /* ignore */ }
+    showSuccess({
+      title: "BID DECLINED",
+      subtitle: "BIDDER NOTIFIED",
+      rows: [
+        { label: "NAME", value: `${domain}.lit` },
+        { label: "BIDDER", value: short(bidder) },
+      ],
+    });
   }, [wallet]);
 
   useEffect(() => {
@@ -1182,6 +1245,8 @@ export default function ChatUIPage() {
   const sendGlobal = async () => {
     const body = draft.trim();
     if (!body) return;
+    const isReply = !!replyTo;
+    const replyToName = replyTo?.name || (replyTo ? short(replyTo.authorAddr) : "");
     const content = replyTo
       ? `[replyTo:${replyTo.postId}] @${replyTo.name || short(replyTo.authorAddr)} ${body}`
       : body;
@@ -1207,7 +1272,7 @@ export default function ChatUIPage() {
     setPosts((prev) => [...prev, optimisticPost]);
     setBusy(true);
     try {
-      await writeContract(
+      const txHash = await writeContract(
         HUB_POSTS_ADDRESS,
         encodeCall(SELECTOR.createPost, [
           { type: "string", value: content },
@@ -1224,10 +1289,21 @@ export default function ChatUIPage() {
       setInlineBountyMultiplier("");
       setBountyPopupOpen(false);
       await loadPosts();
-    } catch (err) {
+      // Wallet-style popup so global posts/replies feel the same as Swap/Pool.
+      const rows: Array<{ label: string; value: string }> = [];
+      if (isReply) rows.push({ label: "REPLY TO", value: `@${replyToName}` });
+      if (useBounty) rows.push({ label: "BOUNTY", value: `${inlineTotalBounty} zkLTC` });
+      rows.push({ label: "TX", value: `${String(txHash).slice(0, 10)}...` });
+      showSuccess({
+        title: isReply ? "REPLY POSTED" : "POST PUBLISHED",
+        subtitle: "ON-CHAIN CONFIRMATION",
+        rows,
+      });
+    } catch (err: any) {
       console.error("[ChatUI] sendGlobal error:", err);
       setPosts((prev) => prev.filter((p) => p.id !== optimisticId));
-      try { (await import("sonner")).toast.error("Failed to send post"); } catch { /* ignore */ }
+      const msg = err?.shortMessage || err?.reason || err?.message || "Failed to send post";
+      showError(msg);
     } finally { setBusy(false); }
   };
 
@@ -1256,17 +1332,46 @@ export default function ChatUIPage() {
   };
 
   const addFriend = async () => {
-    const clean = friendName.trim().replace(/^@/, "");
-    if (!clean) return;
+    let clean = friendName.trim().replace(/^@/, "").toLowerCase();
+    // Strip optional ".lit" suffix so the resolver gets the bare name.
+    if (clean.endsWith(".lit")) clean = clean.slice(0, -4);
+    if (!clean) {
+      showError("Enter a .lit name");
+      return;
+    }
     setBusy(true);
     try {
+      // Resolve .lit -> wallet. Empty / zero / null means the name isn't
+      // registered, so we refuse to send the request and tell the user.
       const r = await fetch(`${API}/hub/name/resolve/${encodeURIComponent(clean)}`);
-      const j = await r.json();
-      const resolved = j.address || j.wallet || j.walletAddress || j.data?.address;
-      if (!resolved) throw new Error("Name not found");
-      await writeContract(MESSENGER_ADDRESS, encodeCall(SELECTOR.sendFriendRequest, [{ type: "address", value: resolved }]));
+      let resolved = "";
+      if (r.ok) {
+        const j = await r.json();
+        resolved = j?.address || j?.wallet || j?.walletAddress || j?.data?.address || "";
+      }
+      const ZERO = "0x0000000000000000000000000000000000000000";
+      if (!resolved || resolved.toLowerCase() === ZERO) {
+        showError(`${clean}.lit is not registered on LitDEX`);
+        return;
+      }
+      if (resolved.toLowerCase() === wallet.toLowerCase()) {
+        showError("You can't friend yourself");
+        return;
+      }
+      const txHash = await writeContract(MESSENGER_ADDRESS, encodeCall(SELECTOR.sendFriendRequest, [{ type: "address", value: resolved }]));
       setFriendName("");
       setAddFriendOpen(false);
+      showSuccess({
+        title: "FRIEND REQUEST SENT",
+        subtitle: "WAITING FOR ACCEPTANCE",
+        rows: [
+          { label: "TO", value: `${clean}.lit` },
+          { label: "TX", value: `${String(txHash).slice(0, 10)}...` },
+        ],
+      });
+    } catch (err: any) {
+      const msg = err?.shortMessage || err?.reason || err?.message || "Failed to send friend request";
+      showError(msg);
     } finally { setBusy(false); }
   };
 
@@ -1357,11 +1462,22 @@ export default function ChatUIPage() {
         timestamp: chainTs,
         confirmed: true,
       } as any : m));
+      // Wallet-style success popup (consistent with Swap/Pool flows).
+      const friendLabel = current.name ? `${current.name}` : short(current.address);
+      showSuccess({
+        title: "MESSAGE SENT",
+        subtitle: "ON-CHAIN CONFIRMATION",
+        rows: [
+          { label: "TO", value: friendLabel },
+          { label: "TX", value: `${tx.hash.slice(0, 10)}...` },
+        ],
+      });
     } catch (err) {
       console.error("[ChatUI] sendPrivate: failed", err);
       // User rejected or RPC/contract error — drop the optimistic msg.
       setPendingMsgs((prev) => prev.filter((m) => m.id !== optimisticId));
-      try { (await import("sonner")).toast.error("Failed to send message"); } catch { /* ignore */ }
+      const msg = (err as any)?.shortMessage || (err as any)?.reason || (err as any)?.message || "Failed to send message";
+      showError(msg);
       setBusy(false);
       return;
     } finally {
@@ -1467,7 +1583,10 @@ export default function ChatUIPage() {
   const executeSend = async () => {
     const amount = sendAmount.trim();
     const recipient = sendRecipient.trim();
-    if (!amount || !recipient) { alert("Enter amount and recipient"); return; }
+    if (!amount || !recipient) {
+      showError("Enter amount and recipient");
+      return;
+    }
     const token = TOKENS[sendTokenKey];
     if (!token) return;
     setBusy(true);
@@ -1499,14 +1618,23 @@ export default function ChatUIPage() {
         amount, token: token.symbol,
         txHash, createdAt: now,
       }]);
-      setSendToast(`✅ Sent ${amount} ${token.symbol} to ${toName}!`);
-      setTimeout(() => setSendToast(null), 4000);
       setSendPanelOpen(false);
       setSendAmount("");
       setSendRecipient("");
+      // Wallet-style success popup, same as Swap/Pool flows.
+      showSuccess({
+        title: "TRANSFER SENT",
+        subtitle: "ON-CHAIN CONFIRMATION",
+        rows: [
+          { label: "AMOUNT", value: `${amount} ${token.symbol}` },
+          { label: "TO", value: toName },
+          { label: "TX", value: `${String(txHash).slice(0, 10)}...` },
+        ],
+      });
     } catch (err: any) {
       console.error("[ChatUI] executeSend error:", err);
-      alert(err?.message || "Send failed");
+      const msg = err?.shortMessage || err?.reason || err?.message || "Send failed";
+      showError(msg);
     } finally { setBusy(false); }
   };
 
@@ -1642,7 +1770,7 @@ export default function ChatUIPage() {
                     onClick={() => setFeedFilter("bounty")}
                     className={cn(
                       "px-3 h-7 rounded-full text-[11px] font-semibold transition-colors inline-flex items-center gap-1",
-                      feedFilter === "bounty" ? "bg-emerald-500/20 text-emerald-300" : "text-brand-text-muted hover:text-brand-text-primary"
+                      feedFilter === "bounty" ? "bg-white/10 text-brand-text-primary" : "text-brand-text-muted hover:text-brand-text-primary"
                     )}
                   >
                     🪙 Bounty
@@ -1729,17 +1857,17 @@ export default function ChatUIPage() {
                     const t = item.transfer;
                     return (
                       <div key={item.id} className="flex justify-start">
-                        <div className="max-w-[760px] w-fit bg-gradient-to-r from-emerald-950 to-green-900 border-l-4 border-emerald-400 rounded-xl px-4 py-3 text-sm text-brand-text-primary">
+                        <div className="max-w-[760px] w-fit bg-brand-surface-2 border-l-4 border-brand-text-primary/60 rounded-xl px-4 py-3 text-sm text-brand-text-primary">
                           <div className="font-medium">
                             💸 <span className="font-semibold">{t.fromName}</span> sent{" "}
-                            <span className="font-semibold text-emerald-300">{t.amount} {t.token}</span> to{" "}
+                            <span className="font-semibold text-brand-text-primary">{t.amount} {t.token}</span> to{" "}
                             <span className="font-semibold">{t.toName}</span>
                           </div>
                           <a
                             href={EXPLORER_TX(t.txHash)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="mt-1 inline-block text-[11px] text-emerald-300/80 hover:text-emerald-200 hover:underline"
+                            className="mt-1 inline-block text-[11px] text-brand-text-muted hover:text-brand-text-primary hover:underline"
                           >
                             View TX ↗
                           </a>
@@ -1764,11 +1892,11 @@ export default function ChatUIPage() {
                           <div
                             ref={(el) => { postRefs.current[post.id] = el; }}
                             className={cn(
-                              "relative max-w-[760px] w-fit rounded-xl border border-green-500/50 bg-gradient-to-r from-green-900/40 to-emerald-900/40 px-4 py-3 text-sm text-brand-text-primary transition-all",
-                              isHighlighted && "ring-2 ring-yellow-400"
+                              "relative max-w-[760px] w-fit rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm text-brand-text-primary transition-all",
+                              isHighlighted && "ring-2 ring-white/40"
                             )}
                           >
-                            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-300">
+                            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-brand-text-muted">
                               <span>➤</span>
                               <span>Token Sent</span>
                               <span className="ml-2 text-[10px] font-normal text-brand-text-muted normal-case tracking-normal">{displayTime(post.timestamp)}</span>
@@ -1777,7 +1905,7 @@ export default function ChatUIPage() {
                               <Avatar name={senderName} size={30} />
                               <div className="text-sm leading-snug">
                                 <span className="font-semibold">{senderName}</span>{" "}
-                                sent <span className="font-semibold text-emerald-300">{sendMatch[1]} {sendMatch[2]}</span>{" "}
+                                sent <span className="font-semibold text-brand-text-primary">{sendMatch[1]} {sendMatch[2]}</span>{" "}
                                 to <span className="font-semibold">{sendMatch[3]}</span>
                               </div>
                             </div>
@@ -1796,7 +1924,7 @@ export default function ChatUIPage() {
                             post.pending && "opacity-60"
                           )}
                         >
-                          {post.bountyActive && <div className="absolute right-3 top-3 text-emerald-400" title="Bounty active">💰</div>}
+                          {post.bountyActive && <div className="absolute right-3 top-3 text-brand-text-primary" title="Bounty active">💰</div>}
                           {post.pending && <div className="absolute right-3 top-3 text-[10px] text-brand-text-muted">sending…</div>}
 
                           {/* Discord-style hover action bar */}
@@ -1845,7 +1973,7 @@ export default function ChatUIPage() {
                               <span className="ml-2 text-xs text-brand-text-muted">{displayTime(post.timestamp)}</span>
                               <span className="ml-2 text-xs text-brand-text-muted">· ♥ {post.likeCount}</span>
                               {post.bountyActive && commentedPosts[post.id] && (
-                                <span className="ml-2 text-[11px] text-emerald-400">✓ Bounty claimed</span>
+                                <span className="ml-2 text-[11px] text-brand-text-primary">✓ Bounty claimed</span>
                               )}
                             </div>
                           </div>
@@ -2026,7 +2154,7 @@ export default function ChatUIPage() {
                       <button
                         disabled={busy}
                         onClick={executeSend}
-                        className="px-4 h-9 rounded-md bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-semibold disabled:opacity-50"
+                        className="px-4 h-9 rounded-md bg-white text-black hover:bg-white/90 text-xs font-semibold disabled:opacity-50"
                       >Send Token →</button>
                     </div>
                   </div>
@@ -2107,7 +2235,7 @@ export default function ChatUIPage() {
                        const total = per > 0 && count > 0 ? per * count : 0;
                        return (
                          <div className="text-[11px] text-brand-text-primary mb-2">
-                           Total bounty: <span className="font-semibold text-emerald-400">{total.toFixed(4)} zkLTC</span>
+                           Total bounty: <span className="font-semibold text-brand-text-primary">{total.toFixed(4)} zkLTC</span>
                            <span className="text-brand-text-muted"> ({count} likes × {per || 0} zkLTC each)</span>
                          </div>
                        );
@@ -2149,7 +2277,7 @@ export default function ChatUIPage() {
                   </div>
                 )}
                 {tab === "global" && inlineBountyActive && (
-                  <span className="relative inline-flex items-center gap-1 text-[10px] pl-1.5 pr-5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  <span className="relative inline-flex items-center gap-1 text-[10px] pl-1.5 pr-5 py-0.5 rounded bg-white/10 text-brand-text-primary border border-brand-border">
                     💰 {inlineBountyTotal}
                     <button
                       type="button"
@@ -2160,7 +2288,7 @@ export default function ChatUIPage() {
                         setInlineTotalBounty("");
                         setInlineBountyMultiplier("");
                       }}
-                      className="absolute right-0.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-emerald-500/30 text-emerald-300 hover:text-white"
+                      className="absolute right-0.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-white/20 text-brand-text-muted hover:text-brand-text-primary"
                     >
                       <X size={10} />
                     </button>
@@ -2259,7 +2387,7 @@ export default function ChatUIPage() {
       )}
 
       {sendToast && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] bg-emerald-500/95 text-black rounded-xl px-6 py-3 shadow-xl font-bold text-sm pointer-events-none">
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] bg-white text-black rounded-xl px-6 py-3 shadow-xl font-bold text-sm pointer-events-none">
           {sendToast}
         </div>
       )}
@@ -2359,7 +2487,7 @@ export default function ChatUIPage() {
                         className={cn(
                           "px-4 py-2.5 text-sm font-semibold transition-colors -mb-px border-b-2",
                           profileTab === t.key
-                            ? "border-emerald-400 text-brand-text-primary"
+                            ? "border-white text-brand-text-primary"
                             : "border-transparent text-brand-text-muted hover:text-brand-text-primary"
                         )}
                       >
@@ -2367,7 +2495,7 @@ export default function ChatUIPage() {
                         {typeof t.badge === "number" && t.badge > 0 && (
                           <span className={cn(
                             "ml-2 inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[10px] font-bold",
-                            profileTab === t.key ? "bg-emerald-500/20 text-emerald-300" : "bg-white/5 text-brand-text-muted"
+                            profileTab === t.key ? "bg-white/15 text-brand-text-primary" : "bg-white/5 text-brand-text-muted"
                           )}>
                             {t.badge}
                           </span>
@@ -2386,7 +2514,7 @@ export default function ChatUIPage() {
                           {isMe && (
                             <button
                               onClick={() => setView("market")}
-                              className="mt-4 inline-flex items-center gap-1.5 px-4 h-9 rounded-md bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold transition-colors"
+                              className="mt-4 inline-flex items-center gap-1.5 px-4 h-9 rounded-md bg-white hover:bg-white/90 text-black text-xs font-bold transition-colors"
                             >
                               Browse Marketplace <ChevronRight size={14} />
                             </button>
@@ -2399,12 +2527,12 @@ export default function ChatUIPage() {
                             return (
                               <div
                                 key={d}
-                                className="group relative rounded-xl border border-brand-border bg-brand-surface p-4 hover:border-emerald-500/40 transition-colors"
+                                className="group relative rounded-xl border border-brand-border bg-brand-surface p-4 hover:border-brand-border transition-colors"
                               >
                                 <div className="flex items-start justify-between mb-2">
-                                  <div className="text-[10px] font-bold tracking-wider text-emerald-400">.LIT</div>
+                                  <div className="text-[10px] font-bold tracking-wider text-brand-text-primary">.LIT</div>
                                   {listed && (
-                                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-semibold text-emerald-300">
+                                    <span className="px-2 py-0.5 rounded-full bg-white/10 border border-brand-border text-[10px] font-semibold text-brand-text-primary">
                                       Listed
                                     </span>
                                   )}
@@ -2412,7 +2540,7 @@ export default function ChatUIPage() {
                                 <div className="text-lg font-semibold text-brand-text-primary truncate" title={d}>{d}</div>
                                 {listed && (
                                   <div className="mt-1 text-xs text-brand-text-muted">
-                                    Asking <span className="text-emerald-400 font-semibold">{listed.price} zkLTC</span>
+                                    Asking <span className="text-brand-text-primary font-semibold">{listed.price} zkLTC</span>
                                   </div>
                                 )}
                                 {isMe && (
@@ -2441,7 +2569,7 @@ export default function ChatUIPage() {
                           {isMe && (
                             <button
                               onClick={() => setView("market")}
-                              className="mt-4 inline-flex items-center gap-1.5 px-4 h-9 rounded-md bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold transition-colors"
+                              className="mt-4 inline-flex items-center gap-1.5 px-4 h-9 rounded-md bg-white hover:bg-white/90 text-black text-xs font-bold transition-colors"
                             >
                               List a Domain <ChevronRight size={14} />
                             </button>
@@ -2455,11 +2583,11 @@ export default function ChatUIPage() {
                               <div key={`${l.name}-${l.listedAt}`} className="rounded-xl border border-brand-border bg-brand-surface p-4">
                                 <div className="flex items-start justify-between mb-2">
                                   <div>
-                                    <div className="text-[10px] font-bold tracking-wider text-emerald-400">.LIT</div>
+                                    <div className="text-[10px] font-bold tracking-wider text-brand-text-primary">.LIT</div>
                                     <div className="text-lg font-semibold text-brand-text-primary truncate">{l.name}</div>
                                   </div>
                                   <div className="text-right">
-                                    <div className="text-xl font-bold text-emerald-400 tabular-nums">{l.price}</div>
+                                    <div className="text-xl font-bold text-brand-text-primary tabular-nums">{l.price}</div>
                                     <div className="text-[10px] text-brand-text-muted">zkLTC</div>
                                   </div>
                                 </div>
@@ -2481,9 +2609,16 @@ export default function ChatUIPage() {
                                           console.log("[Market] unlist confirmed");
                                           addNotif(wallet, { type: "gf", title: "Listing removed", message: `${l.name} unlisted from market`, link: "/chat" });
                                           await loadListings();
+                                          showSuccess({
+                                            title: "DOMAIN UNLISTED",
+                                            rows: [
+                                              { label: "NAME", value: `${l.name}.lit` },
+                                              { label: "TX", value: `${tx.hash.slice(0, 10)}...` },
+                                            ],
+                                          });
                                         } catch (err: any) {
                                           const msg = err?.shortMessage || err?.reason || err?.message || "Unlist failed";
-                                          try { (await import("sonner")).toast.error(msg); } catch { /* ignore */ }
+                                          showError(msg);
                                         } finally { setBusy(false); }
                                       }}
                                       className="flex-1 h-9 rounded-md border border-brand-border text-xs font-semibold text-brand-text-primary hover:bg-white/5 disabled:opacity-50 transition-colors"
@@ -2493,7 +2628,7 @@ export default function ChatUIPage() {
                                     {cardBids.length > 0 && (
                                       <button
                                         onClick={() => setProfileTab("bids")}
-                                        className="flex-1 h-9 rounded-md bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold transition-colors"
+                                        className="flex-1 h-9 rounded-md bg-white text-black hover:bg-white/90 text-xs font-bold transition-colors"
                                       >
                                         View {cardBids.length} bid{cardBids.length === 1 ? "" : "s"}
                                       </button>
@@ -2528,7 +2663,7 @@ export default function ChatUIPage() {
                                   <div className="text-sm text-brand-text-primary">
                                     <span className="font-semibold">{b.bidderName || short(b.bidder)}</span>
                                     {" "}bid{" "}
-                                    <span className="font-bold text-emerald-400">{b.amount} zkLTC</span>
+                                    <span className="font-bold text-brand-text-primary">{b.amount} zkLTC</span>
                                     {" "}on{" "}
                                     <span className="font-semibold">{b.domain}</span>
                                   </div>
@@ -2540,7 +2675,7 @@ export default function ChatUIPage() {
                                   <button
                                     disabled={busy}
                                     onClick={() => acceptBid(b.domain, b.bidder, b.amount)}
-                                    className="px-4 h-9 rounded-md bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold disabled:opacity-50 transition-colors"
+                                    className="px-4 h-9 rounded-md bg-white hover:bg-white/90 text-black text-xs font-bold disabled:opacity-50 transition-colors"
                                   >
                                     Accept
                                   </button>
@@ -2584,10 +2719,10 @@ export default function ChatUIPage() {
               const myListings = listingsFull.filter((l) => l.seller?.toLowerCase() === wallet.toLowerCase());
               const totalVolume = soldItems.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0);
               return (
-                <div className="rounded-2xl border border-brand-border bg-gradient-to-br from-emerald-500/10 via-brand-surface to-brand-bg p-5 sm:p-6 mb-5">
+                <div className="rounded-2xl border border-brand-border bg-gradient-to-br from-white/5 via-brand-surface to-brand-bg p-5 sm:p-6 mb-5">
                   <div className="flex flex-col lg:flex-row lg:items-end gap-4">
                     <div className="flex-1">
-                      <div className="text-[10px] uppercase tracking-[0.25em] text-emerald-300 font-bold mb-1">Verified Marketplace</div>
+                      <div className="text-[10px] uppercase tracking-[0.25em] text-brand-text-primary font-bold mb-1">Verified Marketplace</div>
                       <h2 className="text-2xl sm:text-3xl font-bold text-brand-text-primary tracking-tight">Trade .lit Domains</h2>
                       <p className="text-xs text-brand-text-muted mt-2 max-w-md">
                         Discover, bid on, and sell ownership of .lit names on the LiteForge network.
@@ -2604,7 +2739,7 @@ export default function ChatUIPage() {
                       </div>
                       <div className="rounded-xl bg-black/30 border border-brand-border px-3 py-2.5 backdrop-blur-sm">
                         <div className="text-[9px] uppercase tracking-wider text-brand-text-muted font-bold">Volume</div>
-                        <div className="text-lg font-bold text-emerald-400 tabular-nums">{totalVolume.toFixed(2)}</div>
+                        <div className="text-lg font-bold text-brand-text-primary tabular-nums">{totalVolume.toFixed(2)}</div>
                       </div>
                       <div className="rounded-xl bg-black/30 border border-brand-border px-3 py-2.5 backdrop-blur-sm">
                         <div className="text-[9px] uppercase tracking-wider text-brand-text-muted font-bold">Yours</div>
@@ -2620,10 +2755,10 @@ export default function ChatUIPage() {
             {bidsForOwner.length > 0 && (
               <button
                 onClick={() => { setProfileAddr(wallet); setProfileTab("bids"); setView("profile"); }}
-                className="w-full mb-5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/15 px-4 py-3 flex items-center gap-3 text-left transition-colors"
+                className="w-full mb-5 rounded-xl border border-brand-border bg-white/5 hover:bg-white/10 px-4 py-3 flex items-center gap-3 text-left transition-colors"
               >
-                <div className="h-8 w-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                  <TrendingUp size={16} className="text-emerald-300" />
+                <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center">
+                  <TrendingUp size={16} className="text-brand-text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-brand-text-primary">
@@ -2631,7 +2766,7 @@ export default function ChatUIPage() {
                   </div>
                   <div className="text-[11px] text-brand-text-muted">Tap to review and accept or reject</div>
                 </div>
-                <ChevronRight size={18} className="text-emerald-300" />
+                <ChevronRight size={18} className="text-brand-text-primary" />
               </button>
             )}
 
@@ -2656,11 +2791,11 @@ export default function ChatUIPage() {
                       <div key={d} className="rounded-xl border border-brand-border bg-brand-surface p-4">
                         <div className="flex items-start justify-between mb-3">
                           <div>
-                            <div className="text-[10px] font-bold tracking-wider text-emerald-400">.LIT</div>
+                            <div className="text-[10px] font-bold tracking-wider text-brand-text-primary">.LIT</div>
                             <div className="text-base font-semibold text-brand-text-primary truncate">{d}</div>
                           </div>
                           {existing ? (
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-semibold text-emerald-300">
+                            <span className="px-2 py-0.5 rounded-full bg-white/10 border border-brand-border text-[10px] font-semibold text-brand-text-primary">
                               Listed · {existing.price}
                             </span>
                           ) : (
@@ -2676,7 +2811,7 @@ export default function ChatUIPage() {
                               onChange={(e) => setListPriceFor((p) => ({ ...p, [d]: e.target.value }))}
                               placeholder="Price (zkLTC)"
                               inputMode="decimal"
-                              className="flex-1 h-9 px-3 rounded-md bg-brand-bg border border-brand-border text-sm text-brand-text-primary placeholder:text-brand-text-muted outline-none focus:border-emerald-500/40"
+                              className="flex-1 h-9 px-3 rounded-md bg-brand-bg border border-brand-border text-sm text-brand-text-primary placeholder:text-brand-text-muted outline-none focus:border-white/40"
                             />
                             <button
                               disabled={busy || !(listPriceFor[d] || "").trim() || parseFloat(listPriceFor[d] || "0") <= 0}
@@ -2695,14 +2830,24 @@ export default function ChatUIPage() {
                                     message: `${d} listed for ${listPriceFor[d]} zkLTC`,
                                     link: "/chat",
                                   });
+                                  const priceLabel = listPriceFor[d];
                                   setListPriceFor((p) => ({ ...p, [d]: "" }));
                                   await loadListings();
+                                  showSuccess({
+                                    title: "DOMAIN LISTED",
+                                    subtitle: "ON THE MARKETPLACE",
+                                    rows: [
+                                      { label: "NAME", value: `${d}.lit` },
+                                      { label: "PRICE", value: `${priceLabel} zkLTC` },
+                                      { label: "TX", value: `${tx.hash.slice(0, 10)}...` },
+                                    ],
+                                  });
                                 } catch (err: any) {
                                   const msg = err?.shortMessage || err?.reason || err?.message || "List failed";
-                                  try { (await import("sonner")).toast.error(msg); } catch { /* ignore */ }
+                                  showError(msg);
                                 } finally { setBusy(false); }
                               }}
-                              className="h-9 px-3 rounded-md bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold disabled:opacity-50 transition-colors"
+                              className="h-9 px-3 rounded-md bg-white text-black hover:bg-white/90 text-xs font-bold disabled:opacity-50 transition-colors"
                             >
                               List
                             </button>
@@ -2721,9 +2866,16 @@ export default function ChatUIPage() {
                                   console.log("[Market] unlist confirmed");
                                   addNotif(wallet, { type: "gf", title: "Listing removed", message: `${d} unlisted`, link: "/chat" });
                                   await loadListings();
+                                  showSuccess({
+                                    title: "DOMAIN UNLISTED",
+                                    rows: [
+                                      { label: "NAME", value: `${d}.lit` },
+                                      { label: "TX", value: `${tx.hash.slice(0, 10)}...` },
+                                    ],
+                                  });
                                 } catch (err: any) {
                                   const msg = err?.shortMessage || err?.reason || err?.message || "Unlist failed";
-                                  try { (await import("sonner")).toast.error(msg); } catch { /* ignore */ }
+                                  showError(msg);
                                 } finally { setBusy(false); }
                               }}
                               className="flex-1 h-9 rounded-md border border-brand-border text-xs font-semibold text-brand-text-primary hover:bg-white/5 disabled:opacity-50 transition-colors"
@@ -2733,7 +2885,7 @@ export default function ChatUIPage() {
                             {(bidsByDomain[d]?.length || 0) > 0 && (
                               <button
                                 onClick={() => { setProfileAddr(wallet); setProfileTab("bids"); setView("profile"); }}
-                                className="flex-1 h-9 rounded-md bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold transition-colors"
+                                className="flex-1 h-9 rounded-md bg-white text-black hover:bg-white/90 text-xs font-bold transition-colors"
                               >
                                 {bidsByDomain[d]?.length} bid{(bidsByDomain[d]?.length || 0) === 1 ? "" : "s"}
                               </button>
@@ -2756,7 +2908,7 @@ export default function ChatUIPage() {
                     value={marketSearch}
                     onChange={(e) => setMarketSearch(e.target.value)}
                     placeholder="Search .lit domains"
-                    className="w-full h-10 pl-10 pr-3 rounded-lg bg-brand-surface border border-brand-border text-sm text-brand-text-primary placeholder:text-brand-text-muted outline-none focus:border-emerald-500/40 transition-colors"
+                    className="w-full h-10 pl-10 pr-3 rounded-lg bg-brand-surface border border-brand-border text-sm text-brand-text-primary placeholder:text-brand-text-muted outline-none focus:border-brand-border transition-colors"
                   />
                 </div>
                 <div className="flex items-center gap-1.5 overflow-x-auto -mx-1 px-1 scrollbar-none">
@@ -2794,19 +2946,19 @@ export default function ChatUIPage() {
                   </div>
                 ) : (
                   soldItems.map((s, i) => (
-                    <div key={`${s.domain}-${i}`} className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.06] px-4 py-3 flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                        <Tag size={14} className="text-emerald-300" />
+                    <div key={`${s.domain}-${i}`} className="rounded-xl border border-brand-border bg-white/[0.04] px-4 py-3 flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-white/10 flex items-center justify-center">
+                        <Tag size={14} className="text-brand-text-primary" />
                       </div>
                       <div className="min-w-0 flex-1 text-sm">
                         <span className="font-semibold text-brand-text-primary">{short(s.buyer)}</span>
                         <span className="text-brand-text-muted"> bought </span>
-                        <span className="font-semibold text-emerald-300">{s.domain}</span>
+                        <span className="font-semibold text-brand-text-primary">{s.domain}</span>
                         <span className="text-brand-text-muted"> from </span>
                         <span className="font-semibold text-brand-text-primary">{short(s.seller)}</span>
                       </div>
                       <div className="text-right shrink-0">
-                        <div className="text-sm font-bold text-emerald-400 tabular-nums">{s.price} zkLTC</div>
+                        <div className="text-sm font-bold text-brand-text-primary tabular-nums">{s.price} zkLTC</div>
                         <div className="text-[10px] text-brand-text-muted">{displayTime(s.soldAt)}</div>
                       </div>
                     </div>
@@ -2844,16 +2996,16 @@ export default function ChatUIPage() {
                       return (
                         <div
                           key={`${l.name}-${l.seller}`}
-                          className="group rounded-xl border border-brand-border bg-brand-surface overflow-hidden hover:border-emerald-500/40 hover:shadow-2xl hover:shadow-emerald-500/10 transition-all"
+                          className="group rounded-xl border border-brand-border bg-brand-surface overflow-hidden hover:border-brand-border hover:shadow-2xl hover:shadow-white/5 transition-all"
                         >
                           {/* Card header */}
-                          <div className="relative h-28 bg-gradient-to-br from-emerald-500/20 via-emerald-500/5 to-transparent flex items-center justify-center">
+                          <div className="relative h-28 bg-gradient-to-br from-white/10 via-white/5 to-transparent flex items-center justify-center">
                             <div className="text-center">
-                              <div className="text-[9px] font-bold tracking-[0.3em] text-emerald-400">.LIT</div>
+                              <div className="text-[9px] font-bold tracking-[0.3em] text-brand-text-primary">.LIT</div>
                               <div className="text-xl font-bold text-brand-text-primary mt-0.5 px-3 truncate max-w-[200px]">{l.name}</div>
                             </div>
                             {cardBids.length > 0 && (
-                              <span className="absolute top-2 right-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/60 border border-emerald-500/30 text-[10px] font-semibold text-emerald-300 backdrop-blur-sm">
+                              <span className="absolute top-2 right-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/60 border border-brand-border text-[10px] font-semibold text-brand-text-primary backdrop-blur-sm">
                                 <TrendingUp size={10} /> {cardBids.length}
                               </span>
                             )}
@@ -2870,7 +3022,7 @@ export default function ChatUIPage() {
                               <div className="text-[10px] text-brand-text-muted">{l.listedAt ? displayTime(l.listedAt) : ""}</div>
                             </div>
                             <div className="flex items-baseline gap-1">
-                              <span className="text-2xl font-bold text-emerald-400 tabular-nums">{l.price}</span>
+                              <span className="text-2xl font-bold text-brand-text-primary tabular-nums">{l.price}</span>
                               <span className="text-xs text-brand-text-muted font-semibold">zkLTC</span>
                             </div>
                             <div className="text-[11px] text-brand-text-muted mt-1.5 truncate">
@@ -2896,17 +3048,24 @@ export default function ChatUIPage() {
                                       const tx = await c.buyName(l.name, { value: priceWei });
                                       await tx.wait();
                                       console.log("[Market] buy confirmed");
-                                      setSendToast(`✅ You bought ${l.name}!`);
-                                      setTimeout(() => setSendToast(null), 4000);
                                       addNotif(wallet, { type: "gf", title: "Domain purchased", message: `Bought ${l.name} for ${l.price} zkLTC`, link: "/chat" });
                                       addNotif(l.seller, { type: "gf", title: "Domain sold", message: `${short(wallet)} bought ${l.name} for ${l.price} zkLTC`, link: "/chat" });
                                       await Promise.all([loadListings(), loadMyDomains(), loadBidsByDomain()]);
+                                      showSuccess({
+                                        title: "DOMAIN PURCHASED",
+                                        subtitle: "WELCOME TO YOUR NEW NAME",
+                                        rows: [
+                                          { label: "NAME", value: `${l.name}.lit` },
+                                          { label: "PRICE", value: `${l.price} zkLTC` },
+                                          { label: "TX", value: `${tx.hash.slice(0, 10)}...` },
+                                        ],
+                                      });
                                     } catch (err: any) {
                                       const msg = err?.shortMessage || err?.reason || err?.message || "Buy failed";
-                                      try { (await import("sonner")).toast.error(msg); } catch { /* ignore */ }
+                                      showError(msg);
                                     } finally { setBusy(false); }
                                   }}
-                                  className="flex-1 h-9 rounded-md bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold disabled:opacity-40 transition-colors"
+                                  className="flex-1 h-9 rounded-md bg-white text-black hover:bg-white/90 text-xs font-bold disabled:opacity-40 transition-colors"
                                 >
                                   Buy Now
                                 </button>
@@ -2936,7 +3095,7 @@ export default function ChatUIPage() {
                                     onChange={(e) => setBidInputs((p) => ({ ...p, [l.name]: e.target.value }))}
                                     placeholder="zkLTC bid"
                                     inputMode="decimal"
-                                    className="flex-1 h-8 px-2 rounded-md bg-brand-bg border border-brand-border text-xs text-brand-text-primary placeholder:text-brand-text-muted outline-none focus:border-emerald-500/40"
+                                    className="flex-1 h-8 px-2 rounded-md bg-brand-bg border border-brand-border text-xs text-brand-text-primary placeholder:text-brand-text-muted outline-none focus:border-white/40"
                                   />
                                   <button
                                     disabled={busy || !(bidInputs[l.name] || "").trim() || parseFloat(bidInputs[l.name] || "0") <= 0}
@@ -2954,12 +3113,21 @@ export default function ChatUIPage() {
                                         addNotif(l.seller, { type: "gf", title: "New bid received", message: `${short(wallet)} bid ${amount} zkLTC on ${l.name}`, link: "/chat" });
                                         setBidInputs((p) => { const n = { ...p }; delete n[l.name]; return n; });
                                         await loadBidsByDomain();
+                                        showSuccess({
+                                          title: "BID PLACED",
+                                          subtitle: "WAITING FOR SELLER",
+                                          rows: [
+                                            { label: "NAME", value: `${l.name}.lit` },
+                                            { label: "AMOUNT", value: `${amount} zkLTC` },
+                                            { label: "TX", value: `${tx.hash.slice(0, 10)}...` },
+                                          ],
+                                        });
                                       } catch (err: any) {
                                         const msg = err?.shortMessage || err?.reason || err?.message || "Bid failed";
-                                        try { (await import("sonner")).toast.error(msg); } catch { /* ignore */ }
+                                        showError(msg);
                                       } finally { setBusy(false); }
                                     }}
-                                    className="h-8 px-3 rounded-md bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold disabled:opacity-40 transition-colors"
+                                    className="h-8 px-3 rounded-md bg-white text-black hover:bg-white/90 text-xs font-bold disabled:opacity-40 transition-colors"
                                   >
                                     Submit
                                   </button>
@@ -2979,7 +3147,7 @@ export default function ChatUIPage() {
                                 {cardBids.slice(0, 2).map((b, i) => (
                                   <div key={i} className="flex items-center justify-between text-[11px]">
                                     <span className="text-brand-text-muted truncate">{short(b.bidder)}</span>
-                                    <span className="text-emerald-400 font-semibold tabular-nums shrink-0 ml-2">{b.amount} zkLTC</span>
+                                    <span className="text-brand-text-primary font-semibold tabular-nums shrink-0 ml-2">{b.amount} zkLTC</span>
                                   </div>
                                 ))}
                                 {cardBids.length > 2 && (
@@ -2999,8 +3167,8 @@ export default function ChatUIPage() {
 
           {/* Recently Sold ticker (kept below navbar via z-[40]) */}
           {soldItems.length > 0 && (
-            <div className="fixed bottom-0 left-0 right-0 z-[40] bg-emerald-500/10 border-t border-emerald-500/30 overflow-hidden pointer-events-none">
-              <div className="flex gap-8 whitespace-nowrap py-2 px-4 animate-[marquee_30s_linear_infinite] text-[11px] text-emerald-300">
+            <div className="fixed bottom-0 left-0 right-0 z-[40] bg-white/5 border-t border-brand-border overflow-hidden pointer-events-none">
+              <div className="flex gap-8 whitespace-nowrap py-2 px-4 animate-[marquee_30s_linear_infinite] text-[11px] text-brand-text-primary">
                 {soldItems.slice(0, 8).map((s, i) => (
                   <span key={i}>
                     🏷️ <span className="font-semibold">{s.domain}</span> sold for <span className="font-semibold">{s.price} zkLTC</span> · {displayTime(s.soldAt)}
@@ -3035,10 +3203,10 @@ export default function ChatUIPage() {
             </div>
 
             {/* Hero */}
-            <div className="rounded-2xl border border-brand-border bg-gradient-to-br from-emerald-500/10 via-brand-surface to-purple-500/10 p-6 sm:p-8 mb-6">
+            <div className="rounded-2xl border border-brand-border bg-gradient-to-br from-white/5 via-brand-surface to-white/5 p-6 sm:p-8 mb-6">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-emerald-300">.lit Identity</span>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-[10px] font-semibold text-emerald-300">On-chain</span>
+                <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-text-primary">.lit Identity</span>
+                <span className="px-2 py-0.5 rounded-full bg-white/10 border border-brand-border text-[10px] font-semibold text-brand-text-primary">On-chain</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-extrabold text-brand-text-primary mb-2">
                 Claim your .lit name
@@ -3061,10 +3229,10 @@ export default function ChatUIPage() {
                   autoCorrect="off"
                   className={cn(
                     "w-full h-16 sm:h-20 px-4 sm:px-5 pr-28 sm:pr-36 rounded-xl bg-brand-bg border-2 text-2xl sm:text-3xl font-bold text-brand-text-primary outline-none transition-colors",
-                    buyAvailable === "available" && "border-emerald-500/60",
+                    buyAvailable === "available" && "border-white/60",
                     buyAvailable === "taken" && "border-red-500/60",
                     buyAvailable === "invalid" && "border-amber-500/60",
-                    (buyAvailable === "idle" || buyAvailable === "checking") && "border-brand-border focus:border-emerald-500/40",
+                    (buyAvailable === "idle" || buyAvailable === "checking") && "border-brand-border focus:border-brand-border",
                   )}
                 />
                 <span className="pointer-events-none absolute right-4 sm:right-5 top-1/2 -translate-y-1/2 text-lg sm:text-xl font-bold text-brand-text-muted">.lit</span>
@@ -3081,7 +3249,7 @@ export default function ChatUIPage() {
                   </span>
                 )}
                 {buyAvailable === "available" && (
-                  <span className="text-emerald-300 font-semibold inline-flex items-center gap-1.5">
+                  <span className="text-brand-text-primary font-semibold inline-flex items-center gap-1.5">
                     <Check size={12} /> {buyName}.lit is available
                   </span>
                 )}
@@ -3100,7 +3268,7 @@ export default function ChatUIPage() {
                 <div className="mt-4 p-4 rounded-xl bg-brand-bg border border-brand-border">
                   <div className="text-[10px] uppercase tracking-wider text-brand-text-muted mb-2 font-semibold">Live preview</div>
                   <div className="flex items-center gap-3">
-                    <div className="h-12 w-12 rounded-full bg-gradient-to-br from-emerald-500 to-purple-500 inline-flex items-center justify-center text-xl font-bold text-white shrink-0">
+                    <div className="h-12 w-12 rounded-full bg-gradient-to-br from-white/30 to-white/10 inline-flex items-center justify-center text-xl font-bold text-white shrink-0">
                       {Array.from(buyName)[0] || "?"}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -3122,15 +3290,15 @@ export default function ChatUIPage() {
                       className={cn(
                         "relative p-3 rounded-xl border text-left transition-colors",
                         buyDuration === d.value
-                          ? "border-emerald-500/60 bg-emerald-500/10"
+                          ? "border-white/60 bg-white/5"
                           : "border-brand-border bg-brand-bg hover:bg-white/5",
                       )}
                     >
                       {d.tag && (
-                        <span className="absolute -top-2 right-2 px-1.5 py-0.5 rounded-full bg-emerald-500 text-[9px] font-bold text-black uppercase tracking-wider">{d.tag}</span>
+                        <span className="absolute -top-2 right-2 px-1.5 py-0.5 rounded-full bg-white text-[9px] font-bold text-black uppercase tracking-wider">{d.tag}</span>
                       )}
                       <div className="text-sm font-bold text-brand-text-primary">{d.label}</div>
-                      <div className="text-xs text-emerald-300 font-semibold tabular-nums mt-1">{d.price} zkLTC</div>
+                      <div className="text-xs text-brand-text-primary font-semibold tabular-nums mt-1">{d.price} zkLTC</div>
                     </button>
                   ))}
                 </div>
@@ -3140,12 +3308,12 @@ export default function ChatUIPage() {
               <div className="mt-6 flex flex-col sm:flex-row sm:items-center gap-3">
                 <div className="flex-1">
                   <div className="text-[11px] uppercase tracking-wider text-brand-text-muted font-semibold">Total</div>
-                  <div className="text-2xl font-bold text-brand-text-primary tabular-nums">{buyPrice} <span className="text-sm font-semibold text-emerald-300">zkLTC</span></div>
+                  <div className="text-2xl font-bold text-brand-text-primary tabular-nums">{buyPrice} <span className="text-sm font-semibold text-brand-text-primary">zkLTC</span></div>
                 </div>
                 <button
                   disabled={buyBusy || !wallet || buyAvailable !== "available"}
                   onClick={registerLitName}
-                  className="h-12 px-6 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-sm font-extrabold disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2"
+                  className="h-12 px-6 rounded-xl bg-white hover:bg-white/90 text-black text-sm font-extrabold disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2"
                 >
                   {buyBusy
                     ? "Registering…"
@@ -3158,7 +3326,7 @@ export default function ChatUIPage() {
               </div>
 
               {buySuccess && (
-                <div className="mt-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-sm text-emerald-300 inline-flex items-center gap-2">
+                <div className="mt-4 p-3 rounded-xl bg-white/5 border border-brand-border text-sm text-brand-text-primary inline-flex items-center gap-2">
                   <Check size={14} /> Registered <span className="font-bold">{buySuccess}.lit</span> — visible in your profile.
                 </div>
               )}
@@ -3171,7 +3339,7 @@ export default function ChatUIPage() {
                   <div className="text-sm font-bold text-brand-text-primary">Your .lit names</div>
                   <button
                     onClick={() => { setProfileAddr(wallet); setProfileTab("domains"); setView("profile"); }}
-                    className="text-xs text-emerald-300 hover:text-emerald-200 font-semibold"
+                    className="text-xs text-brand-text-primary hover:text-brand-text-primary font-semibold"
                   >
                     View profile →
                   </button>
@@ -3198,7 +3366,7 @@ export default function ChatUIPage() {
                   <button
                     key={s}
                     onClick={() => setBuyName(s)}
-                    className="px-3 py-1.5 rounded-full bg-brand-bg border border-brand-border text-xs text-brand-text-primary hover:border-emerald-500/40 transition-colors"
+                    className="px-3 py-1.5 rounded-full bg-brand-bg border border-brand-border text-xs text-brand-text-primary hover:border-brand-border transition-colors"
                   >
                     {s}.lit
                   </button>
