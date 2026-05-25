@@ -200,6 +200,8 @@ export default function ChatUIPage() {
     return Number.isFinite(t) ? t.toFixed(4) : "0";
   }, [inlineLikeReward, inlineCommentReward]);
 
+  const [visitedMentions, setVisitedMentions] = useState<Set<string>>(new Set());
+
   const scrollToPost = useCallback((id: string) => {
     const el = postRefs.current[id];
     if (!el) return;
@@ -207,6 +209,68 @@ export default function ChatUIPage() {
     setHighlightedId(id);
     setTimeout(() => setHighlightedId((h) => (h === id ? null : h)), 1500);
   }, []);
+
+  const walletLc = wallet.toLowerCase();
+  const shortMe = walletLc ? short(wallet).toLowerCase() : "";
+  const myLitName = walletLc ? (namesRef.current[walletLc] || "").toLowerCase() : "";
+
+  const taggedIds = useMemo(() => {
+    if (!walletLc) return [] as string[];
+    return posts
+      .filter((p) => {
+        const c = (p.content || "").toLowerCase();
+        return (shortMe && c.includes(`@${shortMe}`)) || (!!myLitName && c.includes(`@${myLitName}`));
+      })
+      .map((p) => p.id);
+  }, [posts, walletLc, shortMe, myLitName]);
+
+  const unreadMentions = useMemo(() => taggedIds.filter((id) => !visitedMentions.has(id)), [taggedIds, visitedMentions]);
+
+  const jumpToLatestMention = useCallback(() => {
+    if (unreadMentions.length === 0) return;
+    const latest = unreadMentions[unreadMentions.length - 1];
+    setVisitedMentions((prev) => {
+      const next = new Set(prev);
+      next.add(latest);
+      return next;
+    });
+    scrollToPost(latest);
+  }, [unreadMentions, scrollToPost]);
+
+  const renderPostContent = useCallback((content: string) => {
+    const re = /(@0x[a-fA-F0-9]{2,8}(?:\.{2,3}[a-fA-F0-9]{2,8})?|@[\w-]+\.lit)/g;
+    const parts: React.ReactNode[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(content)) !== null) {
+      if (m.index > last) parts.push(content.slice(last, m.index));
+      const tag = m[0];
+      const needle = tag.slice(1).toLowerCase();
+      parts.push(
+        <button
+          key={`${m.index}-${tag}`}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            const target = posts.find(
+              (p) =>
+                short(p.author).toLowerCase() === needle ||
+                p.author.toLowerCase() === needle ||
+                (p.name || "").toLowerCase() === needle,
+            );
+            if (target) scrollToPost(target.id);
+          }}
+          className="text-sky-400 hover:underline cursor-pointer font-medium"
+        >
+          {tag}
+        </button>,
+      );
+      last = m.index + tag.length;
+    }
+    if (last < content.length) parts.push(content.slice(last));
+    return parts.length ? parts : content;
+  }, [posts, scrollToPost]);
+
 
   const totalBudget = useMemo(() => {
     if (!addBounty) return "0";
