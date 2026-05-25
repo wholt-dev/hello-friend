@@ -378,3 +378,8 @@ body.hide-nav .litdex-mobile-hamburger { display: none !important; }
   /* Game card uses full viewport */
   .ms-go-card { max-width: none !important; min-height: 100dvh; display: flex; flex-direction: column; justify-content: center; border-radius: 0 !important; border: none !important; }
 }
+
+@keyframes marquee {
+  from { transform: translateX(100%); }
+  to { transform: translateX(-100%); }
+}
