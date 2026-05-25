@@ -9,7 +9,6 @@ import {
   Menu,
   MessageCircle,
   MoreHorizontal,
-  Paperclip,
   Reply,
   Search,
   Send,
@@ -242,11 +241,18 @@ export default function ChatUIPage() {
   const [fetchedReplyPosts, setFetchedReplyPosts] = useState<Record<string, { id: string; author: string; name?: string; content: string }>>({});
   const [inlineBountyActive, setInlineBountyActive] = useState(false);
   const [inlineLikeReward, setInlineLikeReward] = useState("");
-  const [inlineCommentReward, setInlineCommentReward] = useState("");
+  const [inlineTotalBounty, setInlineTotalBounty] = useState("");
   const inlineBountyTotal = useMemo(() => {
-    const t = Number(inlineLikeReward || 0) + Number(inlineCommentReward || 0);
+    const t = Number(inlineTotalBounty || 0);
     return Number.isFinite(t) ? t.toFixed(4) : "0";
-  }, [inlineLikeReward, inlineCommentReward]);
+  }, [inlineTotalBounty]);
+  const inlineBountyLikes = useMemo(() => {
+    const per = Number(inlineLikeReward || 0);
+    const total = Number(inlineTotalBounty || 0);
+    if (!per || !total || per <= 0) return 0;
+    return Math.floor(total / per);
+  }, [inlineLikeReward, inlineTotalBounty]);
+  const [emojiOpen, setEmojiOpen] = useState(false);
 
   const [visitedMentions, setVisitedMentions] = useState<Set<string>>(new Set());
 
