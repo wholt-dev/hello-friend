@@ -12,7 +12,6 @@ import {
   Reply,
   Search,
   Send,
-  Settings,
   Share2,
   Smile,
   SquarePen,
@@ -258,6 +257,94 @@ export default function ChatUIPage() {
   const [emojiOpen, setEmojiOpen] = useState(false);
 
   const [visitedMentions, setVisitedMentions] = useState<Set<string>>(new Set());
+
+  // FIX 1 — feed filter
+  const [feedFilter, setFeedFilter] = useState<"all" | "bounty">("all");
+  // FIX 4/5/6 — in-app view (no react-router available)
+  const [view, setView] = useState<"chat" | "profile" | "market">("chat");
+  const [profileAddr, setProfileAddr] = useState<string>("");
+  const [myDisplayName, setMyDisplayName] = useState<string>("");
+  // FIX 6 — market state
+  const [listings, setListings] = useState<Array<{ name: string; price: string; seller: string }>>([]);
+  const [listName, setListName] = useState("");
+  const [listPrice, setListPrice] = useState("");
+  // FIX 5 — profile data
+  const [profilePoints, setProfilePoints] = useState<string>("0");
+  const [profileBalance, setProfileBalance] = useState<string>("0");
+  const [profileDomains, setProfileDomains] = useState<string[]>([]);
+
+  // Resolve my own .lit name for sidebar bottom
+  useEffect(() => {
+    if (!wallet) { setMyDisplayName(""); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API}/hub/resolve/reverse/${wallet}`);
+        if (r.ok) {
+          const j = await r.json();
+          const n = j?.name || j?.litName || j?.data?.name || "";
+          if (!cancelled && n) { setMyDisplayName(n); return; }
+        }
+      } catch { /* ignore */ }
+      try {
+        const n = await resolveName(wallet);
+        if (!cancelled) setMyDisplayName(n && n.endsWith(".lit") ? n : "");
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [wallet, resolveName]);
+
+  // Reset private messages when switching contact
+  useEffect(() => { setMessages([]); }, [current?.address]);
+
+  // FIX 5 — load profile data when entering profile view
+  useEffect(() => {
+    if (view !== "profile" || !profileAddr) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API}/hub/points/${profileAddr}`);
+        const j = await r.json();
+        if (!cancelled) setProfilePoints(String(j?.points ?? j?.balance ?? j?.total ?? 0));
+      } catch { if (!cancelled) setProfilePoints("0"); }
+      try {
+        const r = await fetch(RPC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [profileAddr, "latest"] }),
+        });
+        const j = await r.json();
+        if (!cancelled) setProfileBalance(formatUnitsStr(BigInt(j.result || "0x0"), 18));
+      } catch { if (!cancelled) setProfileBalance("0"); }
+      try {
+        const r = await fetch(`${API}/hub/domains/${profileAddr}`);
+        const j = await r.json();
+        const arr = readArray(j, ["domains", "names", "data"]);
+        if (!cancelled) setProfileDomains(arr.map((d: any) => (typeof d === "string" ? d : d.name || d.domain)).filter(Boolean));
+      } catch { if (!cancelled) setProfileDomains([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [view, profileAddr]);
+
+  // FIX 6 — load market listings
+  const loadListings = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/hub/market/listings`);
+      const j = await r.json();
+      const arr = readArray(j, ["listings", "data", "items"]);
+      setListings(arr.map((l: any) => ({
+        name: l.name || l.domain || "",
+        price: String(l.price ?? l.priceZkLTC ?? "0"),
+        seller: l.seller || l.owner || l.address || "",
+      })).filter((l: any) => l.name));
+    } catch { setListings([]); }
+  }, []);
+  useEffect(() => { if (view === "market") loadListings(); }, [view, loadListings]);
+
+  const openProfile = (addr: string) => {
+    setProfileAddr(addr);
+    setView("profile");
+  };
 
   const scrollToPost = useCallback((id: string) => {
     const el = postRefs.current[id];
