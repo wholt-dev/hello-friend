@@ -656,6 +656,22 @@ export default function ChatUIPage() {
     const likeWei = useBounty ? parseAmount(inlineLikeReward || "0") : 0n;
     const commentWei = 0n;
     const budgetWei = useBounty ? parseAmount(inlineTotalBounty || "0") : 0n;
+    const optimisticId = `optimistic-${Date.now()}`;
+    const optimisticPost: Post = {
+      id: optimisticId,
+      postId: optimisticId,
+      author: wallet,
+      name: namesRef.current[wallet.toLowerCase()] || short(wallet),
+      content,
+      timestamp: Math.floor(Date.now() / 1000),
+      likeCount: 0,
+      commentCount: 0,
+      bountyActive: useBounty,
+      liked: false,
+      comments: [],
+      pending: true,
+    };
+    setPosts((prev) => [...prev, optimisticPost]);
     setBusy(true);
     try {
       await writeContract(
@@ -672,8 +688,13 @@ export default function ChatUIPage() {
       setInlineBountyActive(false);
       setInlineLikeReward("");
       setInlineTotalBounty("");
+      setInlineBountyMultiplier(1);
       setBountyPopupOpen(false);
       await loadPosts();
+    } catch (err) {
+      console.error("[ChatUI] sendGlobal error:", err);
+      setPosts((prev) => prev.filter((p) => p.id !== optimisticId));
+      try { (await import("sonner")).toast.error("Failed to send post"); } catch { /* ignore */ }
     } finally { setBusy(false); }
   };
 
