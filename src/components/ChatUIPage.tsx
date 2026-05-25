@@ -767,7 +767,7 @@ export default function ChatUIPage() {
                           className={cn(
                             "group relative max-w-[760px] w-fit rounded-lg border bg-brand-surface px-3 py-3 text-sm text-brand-text-primary transition-all",
                             tagged ? "border-l-4 border-l-gray-400 border-brand-border bg-gray-700/40" : "border-brand-border",
-                            isHighlighted && "ring-2 ring-brand-teal"
+                            isHighlighted && "ring-2 ring-yellow-400 bg-yellow-400/10"
                           )}
                         >
                           {post.bountyActive && <div className="absolute right-3 top-3 text-emerald-400" title="Bounty active">💰</div>}
