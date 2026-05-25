@@ -54,6 +54,28 @@ async function getMarketplaceContract() {
   return new Contract(MARKETPLACE_ADDRESS, MARKETPLACE_ABI, signer);
 }
 
+const REGISTRY_ABI = [
+  "function register(string name, uint8 duration) external payable",
+  "function isAvailable(string name) external view returns (bool)",
+  "function getPrice(uint8 duration) external view returns (uint256)",
+] as const;
+
+async function getRegistryContract() {
+  const eth = (window as any).ethereum;
+  if (!eth) throw new Error("No wallet detected");
+  const provider = new BrowserProvider(eth);
+  const signer = await provider.getSigner();
+  return new Contract(LIT_REGISTRY_ADDRESS, REGISTRY_ABI, signer);
+}
+
+const BUY_DURATION_OPTIONS: { value: number; label: string; price: string; tag?: string }[] = [
+  { value: 1,  label: "1 Year",   price: "0.05" },
+  { value: 2,  label: "2 Years",  price: "0.09" },
+  { value: 5,  label: "5 Years",  price: "0.20", tag: "Popular" },
+  { value: 10, label: "10 Years", price: "0.35" },
+  { value: 99, label: "Forever",  price: "0.50", tag: "Lifetime" },
+];
+
 const SELECTOR = {
   createPost: "0xbf95fe57",
   likePost: "0x725009d3",
@@ -289,7 +311,7 @@ export default function ChatUIPage() {
   // FIX 1 — feed filter
   const [feedFilter, setFeedFilter] = useState<"all" | "bounty">("all");
   // FIX 4/5/6 — in-app view (no react-router available)
-  const [view, setView] = useState<"chat" | "profile" | "market">("chat");
+  const [view, setView] = useState<"chat" | "profile" | "market" | "buy">("chat");
   const [profileAddr, setProfileAddr] = useState<string>("");
   const [myDisplayName, setMyDisplayName] = useState<string>("");
   // FIX 6 — market state
@@ -301,6 +323,14 @@ export default function ChatUIPage() {
   const [profileBalance, setProfileBalance] = useState<string>("0");
   const [profileDomains, setProfileDomains] = useState<string[]>([]);
   const [profileName, setProfileName] = useState<string>("");
+
+  // Buy .lit domain — registry registration form state
+  const [buyName, setBuyName] = useState<string>("");
+  const [buyDuration, setBuyDuration] = useState<number>(1);
+  const [buyAvailable, setBuyAvailable] = useState<"idle" | "checking" | "available" | "taken" | "invalid">("idle");
+  const [buyPrice, setBuyPrice] = useState<string>("0.05");
+  const [buyBusy, setBuyBusy] = useState<boolean>(false);
+  const [buySuccess, setBuySuccess] = useState<string | null>(null);
 
   // FIX 6 — extended market state
   const [listingsFull, setListingsFull] = useState<Array<{ name: string; price: string; seller: string; listedAt: number }>>([]);
@@ -409,6 +439,85 @@ export default function ChatUIPage() {
       setMyDomains(arr.map((d: any) => (typeof d === "string" ? d : d.name || d.domain)).filter(Boolean));
     } catch { setMyDomains([]); }
   }, [wallet]);
+
+  // Buy .lit — keep price in sync with chosen duration
+  useEffect(() => {
+    const local = BUY_DURATION_OPTIONS.find((d) => d.value === buyDuration);
+    if (local) setBuyPrice(local.price);
+    // Try to refine via API too (so any contract pricing change propagates).
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API}/hub/name/price/${buyDuration}`);
+        if (!r.ok) return;
+        const j = await r.json();
+        const p = j?.price ?? j?.priceEther;
+        if (!cancelled && p) setBuyPrice(String(p));
+      } catch { /* keep static price */ }
+    })();
+    return () => { cancelled = true; };
+  }, [buyDuration]);
+
+  // Buy .lit — availability check (debounced) for whatever the user types.
+  useEffect(() => {
+    const raw = buyName.trim();
+    if (!raw) { setBuyAvailable("idle"); return; }
+    // Domain rules: at least 1 character, no spaces, no dots, no leading/trailing whitespace.
+    if (/[\s.]/.test(raw)) { setBuyAvailable("invalid"); return; }
+    setBuyAvailable("checking");
+    const id = setTimeout(async () => {
+      try {
+        const r = await fetch(`${API}/hub/name/available/${encodeURIComponent(raw)}`);
+        const j = await r.json();
+        const ok = j?.available === true || j?.available === "true";
+        setBuyAvailable(ok ? "available" : "taken");
+      } catch {
+        setBuyAvailable("idle");
+      }
+    }, 350);
+    return () => clearTimeout(id);
+  }, [buyName]);
+
+  const registerLitName = useCallback(async () => {
+    const name = buyName.trim();
+    if (!name) return;
+    if (!wallet) { alert("Connect wallet first"); return; }
+    setBuyBusy(true);
+    setBuySuccess(null);
+    try {
+      const c = await getRegistryContract();
+      const valueWei = parseEther(buyPrice);
+      console.log("[BuyLit] register()", { name, duration: buyDuration, price: buyPrice });
+      const tx = await c.register(name, buyDuration, { value: valueWei });
+      console.log("[BuyLit] tx submitted", tx.hash);
+      await tx.wait();
+      console.log("[BuyLit] tx confirmed");
+      setBuySuccess(name);
+      addNotif(wallet, {
+        type: "gf",
+        title: "Domain registered",
+        message: `${name}.lit is yours${buyDuration === 99 ? " forever" : ` for ${buyDuration} year${buyDuration > 1 ? "s" : ""}`}`,
+        link: "/chat",
+      });
+      // Refresh profile + market caches so it shows up immediately.
+      setBuyName("");
+      setBuyAvailable("idle");
+      await loadMyDomains();
+      // Refetch profile domains for the side panel and profile view.
+      try {
+        const r = await fetch(`${API}/hub/names/owned/${wallet}`);
+        const j = await r.json();
+        const arr = readArray(j, ["domains", "names", "data"]);
+        setProfileDomains(arr.map((d: any) => (typeof d === "string" ? d : d.name || d.domain)).filter(Boolean));
+      } catch { /* ignore */ }
+    } catch (err: any) {
+      const msg = err?.shortMessage || err?.reason || err?.message || "Registration failed";
+      console.error("[BuyLit] failed:", msg);
+      try { (await import("sonner")).toast.error(msg); } catch { /* ignore */ }
+    } finally {
+      setBuyBusy(false);
+    }
+  }, [buyName, buyDuration, buyPrice, wallet, loadMyDomains]);
 
   // Bids on listings the connected wallet is selling.
   const loadBidsForOwner = useCallback(async () => {
@@ -782,13 +891,13 @@ export default function ChatUIPage() {
       const myAddr = wallet.toLowerCase();
       setPendingMsgs((prev) => prev.filter((p) => {
         const text = getMessageText(p);
-        const ts = Number(p.timestamp || p.ts || 0);
+        const ts = Number(p.timestamp || p.ts || (p as any).sentAt || 0);
         return !serverMsgs.some((s) => {
           const sFrom = (s.from || s.wallet || (s as any).fromWallet || (s as any).sender || "").toString().toLowerCase();
           if (sFrom !== myAddr) return false;
           const sText = getMessageText(s);
           if (sText !== text) return false;
-          const sTs = Number(s.timestamp || s.ts || 0);
+          const sTs = Number(s.timestamp || s.ts || (s as any).sentAt || 0);
           // Allow generous window because backend timestamps may differ from
           // the optimistic clock.
           return !ts || !sTs || Math.abs(sTs - ts) < 600;
@@ -1279,6 +1388,16 @@ export default function ChatUIPage() {
                 <span className="text-base leading-none">🪙</span>
                 {sidebarOpen && <span className="text-sm">.lit Market</span>}
               </button>
+              <button
+                onClick={() => { setView("buy"); }}
+                className={cn(
+                  "w-full flex items-center gap-3 px-2 py-2 rounded-md",
+                  view === "buy" ? "bg-white/10 text-brand-text-primary" : "text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary"
+                )}
+              >
+                <span className="text-base leading-none">✨</span>
+                {sidebarOpen && <span className="text-sm">Buy .lit</span>}
+              </button>
             </div>
             <div className="mt-auto p-3 space-y-1">
               <button
@@ -1662,7 +1781,7 @@ export default function ChatUIPage() {
               })()}
 
 
-              {tab === "private" && showChat && [...messages, ...pendingMsgs].sort((a, b) => Number(a.timestamp || a.ts || 0) - Number(b.timestamp || b.ts || 0)).map((m, i) => {
+              {tab === "private" && showChat && [...messages, ...pendingMsgs].sort((a, b) => Number(a.timestamp || a.ts || (a as any).sentAt || 0) - Number(b.timestamp || b.ts || (b as any).sentAt || 0)).map((m, i) => {
                 const fromAddr = (m.from || m.wallet || (m as any).fromWallet || (m as any).sender || "").toString();
                 const mine = fromAddr.toLowerCase() === wallet.toLowerCase();
                 const isOptimistic = typeof m.id === "string" && m.id.startsWith("opt-");
@@ -1674,7 +1793,7 @@ export default function ChatUIPage() {
                       <div className="mt-1 text-[10px] text-brand-text-muted text-right">
                         {isOptimistic
                           ? (optStatus === "sent" ? "sent · syncing…" : "sending…")
-                          : displayTime(m.timestamp || m.createdAt || m.ts)}
+                          : displayTime(m.timestamp || m.createdAt || m.ts || (m as any).sentAt)}
                       </div>
                     </div>
                   </div>
@@ -2735,6 +2854,203 @@ export default function ChatUIPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {view === "buy" && (
+        <div className="fixed top-16 sm:top-20 left-0 right-0 bottom-0 z-[40] bg-brand-bg overflow-y-auto">
+          <div className="max-w-5xl mx-auto p-4 sm:p-6 pb-24">
+            {/* Header */}
+            <div className="flex items-center mb-6">
+              <button
+                onClick={() => setView("chat")}
+                className="inline-flex items-center gap-1.5 text-sm text-brand-text-muted hover:text-brand-text-primary transition-colors"
+              >
+                <ChevronRight size={14} className="rotate-180" />
+                Back
+              </button>
+              <h1 className="ml-4 text-lg sm:text-xl font-bold text-brand-text-primary">Buy .lit Domain</h1>
+              <button
+                onClick={() => wallet && (setProfileAddr(wallet), setProfileTab("domains"), setView("profile"))}
+                disabled={!wallet}
+                className="ml-auto px-3 h-9 rounded-md border border-brand-border text-xs font-semibold text-brand-text-primary hover:bg-white/5 transition-colors disabled:opacity-50"
+              >
+                My Domains
+              </button>
+            </div>
+
+            {/* Hero */}
+            <div className="rounded-2xl border border-brand-border bg-gradient-to-br from-emerald-500/10 via-brand-surface to-purple-500/10 p-6 sm:p-8 mb-6">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-emerald-300">.lit Identity</span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-[10px] font-semibold text-emerald-300">On-chain</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-brand-text-primary mb-2">
+                Claim your .lit name
+              </h2>
+              <p className="text-sm text-brand-text-muted max-w-2xl">
+                Use any character in the world — letters, numbers, emojis, symbols, fonts. Your .lit becomes your identity for chat, posts, transfers, and the marketplace.
+              </p>
+            </div>
+
+            {/* Card: input + duration + register */}
+            <div className="rounded-2xl border border-brand-border bg-brand-surface p-5 sm:p-6 mb-6">
+              <label className="block text-[11px] uppercase tracking-wider font-semibold text-brand-text-muted mb-2">Choose your name</label>
+              <div className="relative">
+                <input
+                  value={buyName}
+                  onChange={(e) => setBuyName(e.target.value)}
+                  placeholder="anything · 你好 · ✨ · 𝓢𝓪𝓬𝓱𝓲𝓷"
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  className={cn(
+                    "w-full h-16 sm:h-20 px-4 sm:px-5 pr-28 sm:pr-36 rounded-xl bg-brand-bg border-2 text-2xl sm:text-3xl font-bold text-brand-text-primary outline-none transition-colors",
+                    buyAvailable === "available" && "border-emerald-500/60",
+                    buyAvailable === "taken" && "border-red-500/60",
+                    buyAvailable === "invalid" && "border-amber-500/60",
+                    (buyAvailable === "idle" || buyAvailable === "checking") && "border-brand-border focus:border-emerald-500/40",
+                  )}
+                />
+                <span className="pointer-events-none absolute right-4 sm:right-5 top-1/2 -translate-y-1/2 text-lg sm:text-xl font-bold text-brand-text-muted">.lit</span>
+              </div>
+
+              {/* Status row */}
+              <div className="mt-3 min-h-[20px] flex items-center gap-2 text-xs">
+                {buyName.trim() === "" && (
+                  <span className="text-brand-text-muted">Type any character — emoji, fancy fonts, unicode all work.</span>
+                )}
+                {buyAvailable === "checking" && (
+                  <span className="text-brand-text-muted inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" /> Checking…
+                  </span>
+                )}
+                {buyAvailable === "available" && (
+                  <span className="text-emerald-300 font-semibold inline-flex items-center gap-1.5">
+                    <Check size={12} /> {buyName}.lit is available
+                  </span>
+                )}
+                {buyAvailable === "taken" && (
+                  <span className="text-red-400 font-semibold inline-flex items-center gap-1.5">
+                    <X size={12} /> {buyName}.lit is already taken
+                  </span>
+                )}
+                {buyAvailable === "invalid" && (
+                  <span className="text-amber-300 font-semibold">Cannot contain spaces or dots</span>
+                )}
+              </div>
+
+              {/* Live preview */}
+              {buyName.trim() !== "" && (
+                <div className="mt-4 p-4 rounded-xl bg-brand-bg border border-brand-border">
+                  <div className="text-[10px] uppercase tracking-wider text-brand-text-muted mb-2 font-semibold">Live preview</div>
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-full bg-gradient-to-br from-emerald-500 to-purple-500 inline-flex items-center justify-center text-xl font-bold text-white shrink-0">
+                      {Array.from(buyName)[0] || "?"}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-lg font-bold text-brand-text-primary truncate">{buyName}.lit</div>
+                      <div className="text-xs text-brand-text-muted truncate">{wallet ? short(wallet) : "Connect wallet to register"}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Duration */}
+              <div className="mt-6">
+                <label className="block text-[11px] uppercase tracking-wider font-semibold text-brand-text-muted mb-2">Duration</label>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {BUY_DURATION_OPTIONS.map((d) => (
+                    <button
+                      key={d.value}
+                      onClick={() => setBuyDuration(d.value)}
+                      className={cn(
+                        "relative p-3 rounded-xl border text-left transition-colors",
+                        buyDuration === d.value
+                          ? "border-emerald-500/60 bg-emerald-500/10"
+                          : "border-brand-border bg-brand-bg hover:bg-white/5",
+                      )}
+                    >
+                      {d.tag && (
+                        <span className="absolute -top-2 right-2 px-1.5 py-0.5 rounded-full bg-emerald-500 text-[9px] font-bold text-black uppercase tracking-wider">{d.tag}</span>
+                      )}
+                      <div className="text-sm font-bold text-brand-text-primary">{d.label}</div>
+                      <div className="text-xs text-emerald-300 font-semibold tabular-nums mt-1">{d.price} zkLTC</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* CTA */}
+              <div className="mt-6 flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex-1">
+                  <div className="text-[11px] uppercase tracking-wider text-brand-text-muted font-semibold">Total</div>
+                  <div className="text-2xl font-bold text-brand-text-primary tabular-nums">{buyPrice} <span className="text-sm font-semibold text-emerald-300">zkLTC</span></div>
+                </div>
+                <button
+                  disabled={buyBusy || !wallet || buyAvailable !== "available"}
+                  onClick={registerLitName}
+                  className="h-12 px-6 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-sm font-extrabold disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center justify-center gap-2"
+                >
+                  {buyBusy
+                    ? "Registering…"
+                    : !wallet
+                      ? "Connect wallet"
+                      : buyAvailable === "available"
+                        ? `Register ${buyName}.lit →`
+                        : "Pick a name"}
+                </button>
+              </div>
+
+              {buySuccess && (
+                <div className="mt-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-sm text-emerald-300 inline-flex items-center gap-2">
+                  <Check size={14} /> Registered <span className="font-bold">{buySuccess}.lit</span> — visible in your profile.
+                </div>
+              )}
+            </div>
+
+            {/* Existing domains panel */}
+            {wallet && (
+              <div className="rounded-2xl border border-brand-border bg-brand-surface p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-sm font-bold text-brand-text-primary">Your .lit names</div>
+                  <button
+                    onClick={() => { setProfileAddr(wallet); setProfileTab("domains"); setView("profile"); }}
+                    className="text-xs text-emerald-300 hover:text-emerald-200 font-semibold"
+                  >
+                    View profile →
+                  </button>
+                </div>
+                {myDomains.length === 0 ? (
+                  <div className="text-xs text-brand-text-muted">No .lit names yet — register your first above.</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {myDomains.map((d) => (
+                      <span key={d} className="px-3 py-1.5 rounded-full bg-brand-bg border border-brand-border text-xs font-semibold text-brand-text-primary">
+                        {d}.lit
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Inspiration tips */}
+            <div className="mt-6 rounded-2xl border border-brand-border bg-brand-surface p-5">
+              <div className="text-sm font-bold text-brand-text-primary mb-3">💡 Try any of these styles</div>
+              <div className="flex flex-wrap gap-2">
+                {["sachin", "alice", "🚀rocket", "𝒮𝒶𝒸𝒽𝒾𝓃", "ᴅᴀʀᴋ", "你好", "café", "金融", "♛king", "✨vibe"].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setBuyName(s)}
+                    className="px-3 py-1.5 rounded-full bg-brand-bg border border-brand-border text-xs text-brand-text-primary hover:border-emerald-500/40 transition-colors"
+                  >
+                    {s}.lit
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
