@@ -272,6 +272,17 @@ export default function ChatUIPage() {
   const [profilePoints, setProfilePoints] = useState<string>("0");
   const [profileBalance, setProfileBalance] = useState<string>("0");
   const [profileDomains, setProfileDomains] = useState<string[]>([]);
+  const [profileName, setProfileName] = useState<string>("");
+
+  // FIX 6 — extended market state
+  const [listingsFull, setListingsFull] = useState<Array<{ name: string; price: string; seller: string; listedAt: number }>>([]);
+  const [myDomains, setMyDomains] = useState<string[]>([]);
+  const [marketFilter, setMarketFilter] = useState<"all" | "latest" | "low" | "high" | "sold">("all");
+  const [soldItems, setSoldItems] = useState<Array<{ buyer: string; seller: string; domain: string; price: string; soldAt: number }>>([]);
+  const [bids, setBids] = useState<Record<string, Array<{ bidder: string; amount: string }>>>({});
+  const [bidInputs, setBidInputs] = useState<Record<string, string>>({});
+  const [listPriceFor, setListPriceFor] = useState<Record<string, string>>({});
+  const [transferTo, setTransferTo] = useState<Record<string, string>>({});
 
   // Resolve my own .lit name for sidebar bottom
   useEffect(() => {
@@ -298,6 +309,12 @@ export default function ChatUIPage() {
     if (view !== "profile" || !profileAddr) return;
     let cancelled = false;
     (async () => {
+      try {
+        const r = await fetch(`${API}/hub/resolve/reverse/${profileAddr}`);
+        const j = await r.json();
+        const n = j?.name || j?.litName || j?.data?.name || "";
+        if (!cancelled) setProfileName(n && typeof n === "string" ? n : "");
+      } catch { if (!cancelled) setProfileName(""); }
       try {
         const r = await fetch(`${API}/hub/points/${profileAddr}`);
         const j = await r.json();
@@ -328,14 +345,48 @@ export default function ChatUIPage() {
       const r = await fetch(`${API}/hub/market/listings`);
       const j = await r.json();
       const arr = readArray(j, ["listings", "data", "items"]);
-      setListings(arr.map((l: any) => ({
+      const mapped = arr.map((l: any) => ({
         name: l.name || l.domain || "",
         price: String(l.price ?? l.priceZkLTC ?? "0"),
         seller: l.seller || l.owner || l.address || "",
-      })).filter((l: any) => l.name));
-    } catch { setListings([]); }
+        listedAt: Number(l.listedAt ?? l.createdAt ?? l.timestamp ?? 0),
+      })).filter((l: any) => l.name);
+      setListings(mapped);
+      setListingsFull(mapped);
+    } catch { setListings([]); setListingsFull([]); }
   }, []);
-  useEffect(() => { if (view === "market") loadListings(); }, [view, loadListings]);
+
+  const loadSold = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/hub/market/sold`);
+      const j = await r.json();
+      const arr = readArray(j, ["sold", "items", "data", "sales"]);
+      setSoldItems(arr.map((s: any) => ({
+        buyer: s.buyer || s.to || "",
+        seller: s.seller || s.from || "",
+        domain: s.domain || s.name || "",
+        price: String(s.price ?? "0"),
+        soldAt: Number(s.soldAt ?? s.timestamp ?? s.createdAt ?? 0),
+      })).filter((s: any) => s.domain));
+    } catch { setSoldItems([]); }
+  }, []);
+
+  const loadMyDomains = useCallback(async () => {
+    if (!wallet) { setMyDomains([]); return; }
+    try {
+      const r = await fetch(`${API}/hub/domains/${wallet}`);
+      const j = await r.json();
+      const arr = readArray(j, ["domains", "names", "data"]);
+      setMyDomains(arr.map((d: any) => (typeof d === "string" ? d : d.name || d.domain)).filter(Boolean));
+    } catch { setMyDomains([]); }
+  }, [wallet]);
+
+  useEffect(() => {
+    if (view !== "market") return;
+    loadListings();
+    loadSold();
+    loadMyDomains();
+  }, [view, loadListings, loadSold, loadMyDomains]);
 
   const openProfile = (addr: string) => {
     setProfileAddr(addr);
