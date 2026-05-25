@@ -542,9 +542,9 @@ export default function ChatUIPage() {
       const response = await fetch(`${API}/hub/posts`);
       const data = await response.json();
       console.log("[ChatUI] /hub/posts response:", data);
-      const arr = readArray(data, ["posts", "data", "items"]);
+      const arr0 = readArray(data, ["posts", "data", "items"]);
       console.log("[ChatUI] posts array length:", arr.length);
-      const mapped: Post[] = await Promise.all(arr.map(async (p: any, index: number): Promise<Post> => {
+      const mapped: Post[] = await Promise.all(arr0.map(async (p: any, index: number): Promise<Post> => {
         const author = p.author || p.wallet || p.walletAddress || p.from || p.creator || "";
         const id = String(p.id ?? p.postId ?? index);
         const cachedName = namesRef.current[(author || "").toLowerCase()];
