@@ -423,11 +423,28 @@ export default function ChatUIPage() {
     } catch { setListings([]); setListingsFull([]); }
   }, []);
 
-  // No /hub/market/sold endpoint exists yet — marketplace history would need
-  // contract event indexing. Render gracefully with an empty list so the
-  // "Recently Sold" tab/ticker just stays blank instead of breaking.
+  // Recently Sold history — backend indexes the marketplace `Sold` event
+  // and returns it via /hub/marketplace/sold. If the endpoint is not deployed
+  // yet (older backend), gracefully fall back to empty so the tab/ticker
+  // stays blank instead of breaking.
   const loadSold = useCallback(async () => {
-    setSoldItems([]);
+    try {
+      const r = await fetch(`${API}/hub/marketplace/sold`);
+      if (!r.ok) { setSoldItems([]); return; }
+      const j = await r.json();
+      const arr = readArray(j, ["sold", "items", "history", "data"]);
+      const mapped = arr
+        .map((s: any) => ({
+          domain: String(s.domain || s.name || ""),
+          seller: String(s.seller || ""),
+          buyer: String(s.buyer || ""),
+          price: String(s.price ?? "0"),
+          soldAt: Number(s.soldAt || s.timestamp || s.time || 0),
+        }))
+        .filter((s: any) => s.domain)
+        .sort((a: any, b: any) => b.soldAt - a.soldAt);
+      setSoldItems(mapped);
+    } catch { setSoldItems([]); }
   }, []);
 
   const loadMyDomains = useCallback(async () => {
