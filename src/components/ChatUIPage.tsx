@@ -983,6 +983,12 @@ export default function ChatUIPage() {
 
   const likePost = async (post: Post) => {
     if (post.liked) return;
+    // Block self-likes — contract rejects them, the user only burns gas and
+    // the like count never moves. Show a toast instead.
+    if (post.author && wallet && post.author.toLowerCase() === wallet.toLowerCase()) {
+      try { (await import("sonner")).toast.error("You can't like your own post"); } catch { /* ignore */ }
+      return;
+    }
     setBusy(true);
     try {
       await writeContract(HUB_POSTS_ADDRESS, encodeCall(SELECTOR.likePost, [{ type: "uint", value: post.postId }]));
@@ -1222,6 +1228,25 @@ export default function ChatUIPage() {
       setPendingMsgs((prev) => prev.map((m) => m.id === optimisticId ? { ...m, txHash: tx.hash, status: "sent" } : m));
       const receipt = await tx.wait();
       console.log("[ChatUI] sendPrivate: tx confirmed", { hash: tx.hash, status: receipt?.status, block: receipt?.blockNumber });
+      // Pull the block timestamp so the bubble shows a real time, not the
+      // local clock — keeps it consistent with server-indexed messages.
+      let chainTs = Math.floor(Date.now() / 1000);
+      try {
+        if (receipt?.blockNumber) {
+          const block = await provider.getBlock(receipt.blockNumber);
+          if (block?.timestamp) chainTs = Number(block.timestamp);
+        }
+      } catch { /* fallback to local clock */ }
+      // Promote optimistic → locally-confirmed. The bubble now shows a real
+      // timestamp instead of "syncing…", and stays visible regardless of
+      // whether the backend indexer echoes it back.
+      setPendingMsgs((prev) => prev.map((m) => m.id === optimisticId ? {
+        ...m,
+        txHash: tx.hash,
+        status: "sent",
+        timestamp: chainTs,
+        confirmed: true,
+      } as any : m));
     } catch (err) {
       console.error("[ChatUI] sendPrivate: failed", err);
       // User rejected or RPC/contract error — drop the optimistic msg.
@@ -1669,10 +1694,11 @@ export default function ChatUIPage() {
                           <div className="absolute -top-4 right-4 z-10 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                             <div className="flex items-center gap-0.5 rounded-full border border-brand-border bg-brand-surface-2 px-1 py-1 shadow-lg">
                               <button
-                                aria-label="Like"
-                                disabled={busy || post.liked}
+                                aria-label={post.author?.toLowerCase() === wallet.toLowerCase() ? "Can't like your own post" : "Like"}
+                                title={post.author?.toLowerCase() === wallet.toLowerCase() ? "You can't like your own post" : "Like"}
+                                disabled={busy || post.liked || post.author?.toLowerCase() === wallet.toLowerCase()}
                                 onClick={() => likePost(post)}
-                                className={cn("p-2 rounded-full hover:bg-white/10 transition-colors disabled:cursor-default", post.liked && "opacity-50")}
+                                className={cn("p-2 rounded-full hover:bg-white/10 transition-colors disabled:cursor-not-allowed", (post.liked || post.author?.toLowerCase() === wallet.toLowerCase()) && "opacity-40")}
                               >
                                 <Heart size={16} className={post.liked ? "fill-current" : ""} />
                               </button>
@@ -1803,12 +1829,14 @@ export default function ChatUIPage() {
                 const mine = fromAddr.toLowerCase() === wallet.toLowerCase();
                 const isOptimistic = typeof m.id === "string" && m.id.startsWith("opt-");
                 const optStatus = (m as any).status as ("sending" | "sent" | undefined);
+                const confirmed = (m as any).confirmed === true;
+                const showOptimisticLabel = isOptimistic && !confirmed;
                 return (
                   <div key={m.id || i} className={cn("flex", mine ? "justify-end" : "justify-start")}>
-                    <div className={cn("max-w-[70%] rounded-lg px-3 py-2 text-sm border", mine ? "bg-white/10 border-white/10 text-brand-text-primary" : "bg-brand-surface border-brand-border text-brand-text-primary", isOptimistic && "opacity-70")}>
+                    <div className={cn("max-w-[70%] rounded-lg px-3 py-2 text-sm border", mine ? "bg-white/10 border-white/10 text-brand-text-primary" : "bg-brand-surface border-brand-border text-brand-text-primary", showOptimisticLabel && "opacity-70")}>
                       <div className="break-words whitespace-pre-wrap">{getMessageText(m)}</div>
                       <div className="mt-1 text-[10px] text-brand-text-muted text-right">
-                        {isOptimistic
+                        {showOptimisticLabel
                           ? (optStatus === "sent" ? "sent · syncing…" : "sending…")
                           : displayTime(m.timestamp || m.createdAt || m.ts || (m as any).sentAt)}
                       </div>
