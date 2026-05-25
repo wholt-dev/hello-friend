@@ -721,7 +721,7 @@ export default function ChatUIPage() {
             )}
           </section>
 
-          <section className="flex-1 flex flex-col bg-brand-bg min-w-0">
+          <section className="flex-1 flex flex-col bg-brand-bg min-w-0 relative">
             <div className="h-16 border-b border-brand-border flex items-center px-3">
               <Avatar name={headerName} size={44} />
               <div className="ml-2 min-w-0">
@@ -730,8 +730,28 @@ export default function ChatUIPage() {
               </div>
             </div>
 
+            {tab === "global" && unreadMentions.length > 0 && (
+              <>
+                <button
+                  onClick={jumpToLatestMention}
+                  className="absolute top-20 right-4 z-20 px-3 h-8 inline-flex items-center gap-1.5 rounded-full bg-sky-500 text-white text-xs font-semibold shadow-lg hover:bg-sky-600 transition-colors"
+                >
+                  <ArrowUp size={14} />
+                  {unreadMentions.length} mention{unreadMentions.length === 1 ? "" : "s"}
+                </button>
+                <button
+                  onClick={jumpToLatestMention}
+                  aria-label="Jump to mention"
+                  className="absolute bottom-24 right-4 z-20 h-11 w-11 inline-flex items-center justify-center rounded-full bg-sky-500 text-white shadow-xl hover:bg-sky-600 transition-colors animate-pulse"
+                >
+                  <ArrowUp size={20} />
+                </button>
+              </>
+            )}
+
             <div ref={bodyRef} className="flex-1 bg-brand-bg overflow-y-auto px-4 py-4 space-y-3">
               {!showChat && <div className="h-full flex items-center justify-center text-brand-text-muted text-sm">Select a chat to start messaging</div>}
+
 
               {tab === "global" && (() => {
                 type FeedItem =
