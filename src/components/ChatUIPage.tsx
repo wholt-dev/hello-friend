@@ -21,6 +21,15 @@ import {
 import { cn } from "@/lib/utils";
 import { addNotif } from "@/lib/notifications";
 import zkltcLogo from "@/assets/zkltc.jpg";
+import { Contract, JsonRpcProvider } from "ethers";
+import { MESSENGER_ABI, HUB_ADDR } from "@/lib/hub-logic";
+
+// Read-only provider used as a backend-independent source of truth for
+// private conversations. The Hub indexer can fall behind the chain, so we
+// always read getConversation() directly and merge with backend results.
+const onchainProvider = new JsonRpcProvider("https://liteforge.rpc.caldera.xyz/http");
+const messengerReader = new Contract(HUB_ADDR.messenger, MESSENGER_ABI, onchainProvider);
+const PENDING_LS_PREFIX = "litdex:pendingMsgs:";
 
 const API = "https://hub.test-hub.xyz";
 const CHAIN_ID_HEX = "0x1159";
@@ -304,8 +313,28 @@ export default function ChatUIPage() {
     return () => { cancelled = true; };
   }, [wallet]);
 
-  // Reset private messages when switching contact
-  useEffect(() => { setMessages([]); setPendingMsgs([]); }, [current?.address]);
+  // Reset server messages and rehydrate optimistic pending msgs from
+  // localStorage when switching contact, so a tx that hasn't been indexed
+  // yet survives navigation.
+  useEffect(() => {
+    setMessages([]);
+    if (!wallet || !current?.address) {
+      setPendingMsgs([]);
+      return;
+    }
+    try {
+      const key = `${PENDING_LS_PREFIX}${wallet.toLowerCase()}:${current.address.toLowerCase()}`;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setPendingMsgs(parsed);
+          return;
+        }
+      }
+    } catch { /* ignore */ }
+    setPendingMsgs([]);
+  }, [current?.address, wallet]);
 
   // FIX 5 — load profile data when entering profile view
   useEffect(() => {
@@ -648,32 +677,82 @@ export default function ChatUIPage() {
 
   const loadConversation = useCallback(async () => {
     if (!wallet || !current?.address) return;
-    try {
-      const r = await fetch(`${API}/hub/messenger/conversation/${wallet}/${current.address}`);
-      const j = await r.json();
-      const serverMsgs = readArray(j, ["messages", "conversation", "data"]) as Msg[];
-      setMessages(serverMsgs);
-      // Drop any optimistic message that is now reflected by the backend.
-      // We match on (sender == me) + same text within a 5-minute window.
-      const myAddr = wallet.toLowerCase();
-      setPendingMsgs((prev) => prev.filter((p) => {
+    const myAddr = wallet.toLowerCase();
+    const otherAddr = current.address.toLowerCase();
+
+    // Source A — the Hub backend index (fast, may lag).
+    const apiPromise = (async () => {
+      try {
+        const r = await fetch(`${API}/hub/messenger/conversation/${wallet}/${current.address}`);
+        const j = await r.json();
+        return readArray(j, ["messages", "conversation", "data"]) as Msg[];
+      } catch { return [] as Msg[]; }
+    })();
+
+    // Source B — direct on-chain read via Messenger.getConversation(). The
+    // contract checks msg.sender, so we make the eth_call FROM the connected
+    // wallet (no signature required, eth_call accepts arbitrary `from`).
+    const chainPromise = (async () => {
+      try {
+        const raw: any[] = await messengerReader.getConversation(current.address, { from: wallet });
+        return raw.map((m: any, idx: number): Msg => {
+          const fromAddr = (m.from || m[1] || "").toString();
+          const toAddr = (m.to || m[2] || "").toString();
+          const id = m.id?.toString?.() ?? String(idx);
+          return {
+            id: `chain-${id}`,
+            from: fromAddr,
+            to: toAddr,
+            content: m.contentHash || m[3] || "",
+            text: m.contentHash || m[3] || "",
+            timestamp: Number(m.sentAt ?? m[6] ?? 0),
+          };
+        });
+      } catch { return [] as Msg[]; }
+    })();
+
+    const [apiMsgs, chainMsgs] = await Promise.all([apiPromise, chainPromise]);
+
+    // Merge: prefer chain truth (it is authoritative); fold in API entries
+    // whose content does not collide with a chain entry on the same window.
+    const keyOf = (m: Msg) => {
+      const f = (m.from || m.wallet || (m as any).fromWallet || (m as any).sender || "").toString().toLowerCase();
+      const t = getMessageText(m);
+      const ts = Number(m.timestamp || m.ts || 0);
+      // Bucket timestamps to 60 seconds so server vs chain timing can match.
+      return `${f}|${t}|${Math.floor(ts / 60)}`;
+    };
+    const seen = new Set<string>();
+    const merged: Msg[] = [];
+    for (const m of [...chainMsgs, ...apiMsgs]) {
+      const k = keyOf(m);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      merged.push(m);
+    }
+    if (merged.length > 0 || apiMsgs.length > 0 || chainMsgs.length > 0) {
+      setMessages(merged);
+    }
+    // Drop any optimistic message that the chain or backend now reflects.
+    setPendingMsgs((prev) => {
+      const next = prev.filter((p) => {
         const text = getMessageText(p);
         const ts = Number(p.timestamp || p.ts || 0);
-        return !serverMsgs.some((s) => {
+        return !merged.some((s) => {
           const sFrom = (s.from || s.wallet || (s as any).fromWallet || (s as any).sender || "").toString().toLowerCase();
           if (sFrom !== myAddr) return false;
-          const sText = getMessageText(s);
-          if (sText !== text) return false;
+          if (getMessageText(s) !== text) return false;
           const sTs = Number(s.timestamp || s.ts || 0);
-          // Allow generous window because backend timestamps may differ from
-          // the optimistic clock.
           return !ts || !sTs || Math.abs(sTs - ts) < 600;
         });
-      }));
-    } catch {
-      // Transient fetch errors must NOT wipe the conversation — keep last
-      // known state so optimistic + previously fetched msgs stay visible.
-    }
+      });
+      try {
+        const key = `${PENDING_LS_PREFIX}${myAddr}:${otherAddr}`;
+        if (next.length === 0) localStorage.removeItem(key);
+        else localStorage.setItem(key, JSON.stringify(next));
+      } catch { /* storage may be unavailable */ }
+      return next;
+    });
   }, [current?.address, wallet]);
 
   useEffect(() => {
@@ -690,7 +769,9 @@ export default function ChatUIPage() {
   useEffect(() => {
     setCurrent(null);
     setMessages([]);
-    setPendingMsgs([]);
+    // Don't wipe pendingMsgs here — the contact-switch effect (above) is the
+    // single source of truth and will rehydrate from localStorage when the
+    // user re-opens the conversation.
     setSearch("");
   }, [tab]);
 
@@ -944,17 +1025,39 @@ export default function ChatUIPage() {
       status: "sending",
     };
     // Stage in the dedicated pending bucket so polling never wipes it.
-    setPendingMsgs((prev) => [...prev, optimisticMsg]);
+    setPendingMsgs((prev) => {
+      const next = [...prev, optimisticMsg];
+      try {
+        const key = `${PENDING_LS_PREFIX}${wallet.toLowerCase()}:${current.address.toLowerCase()}`;
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch { /* ignore */ }
+      return next;
+    });
     setDraft("");
     setBusy(true);
     let hash: string | null = null;
     try {
       hash = await writeContract(MESSENGER_ADDRESS, encodeCall(SELECTOR.sendMessage, [{ type: "address", value: current.address }, { type: "string", value: text }, { type: "string", value: "text" }]));
       // Mark optimistic as on-chain submitted.
-      setPendingMsgs((prev) => prev.map((m) => m.id === optimisticId ? { ...m, txHash: hash || undefined, status: "sent" } : m));
+      setPendingMsgs((prev) => {
+        const next = prev.map((m) => m.id === optimisticId ? { ...m, txHash: hash || undefined, status: "sent" as const } : m);
+        try {
+          const key = `${PENDING_LS_PREFIX}${wallet.toLowerCase()}:${current.address.toLowerCase()}`;
+          localStorage.setItem(key, JSON.stringify(next));
+        } catch { /* ignore */ }
+        return next;
+      });
     } catch (err) {
       // User rejected or RPC error — drop the optimistic msg.
-      setPendingMsgs((prev) => prev.filter((m) => m.id !== optimisticId));
+      setPendingMsgs((prev) => {
+        const next = prev.filter((m) => m.id !== optimisticId);
+        try {
+          const key = `${PENDING_LS_PREFIX}${wallet.toLowerCase()}:${current.address.toLowerCase()}`;
+          if (next.length === 0) localStorage.removeItem(key);
+          else localStorage.setItem(key, JSON.stringify(next));
+        } catch { /* ignore */ }
+        return next;
+      });
       try { (await import("sonner")).toast.error("Failed to send message"); } catch { /* ignore */ }
       setBusy(false);
       return;
