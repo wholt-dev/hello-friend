@@ -819,7 +819,7 @@ export default function ChatUIPage() {
                               )}
                             </div>
                           </div>
-                          <div className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{post.content}</div>
+                          <div className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{renderPostContent(post.content)}</div>
                         </div>
                       </div>
                     );
