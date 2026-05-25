@@ -283,16 +283,12 @@ export default function ChatUIPage() {
         if (r.ok) {
           const j = await r.json();
           const n = j?.name || j?.litName || j?.data?.name || "";
-          if (!cancelled && n) { setMyDisplayName(n); return; }
+          if (!cancelled) setMyDisplayName(n && typeof n === "string" ? n : "");
         }
-      } catch { /* ignore */ }
-      try {
-        const n = await resolveName(wallet);
-        if (!cancelled) setMyDisplayName(n && n.endsWith(".lit") ? n : "");
       } catch { /* ignore */ }
     })();
     return () => { cancelled = true; };
-  }, [wallet, resolveName]);
+  }, [wallet]);
 
   // Reset private messages when switching contact
   useEffect(() => { setMessages([]); }, [current?.address]);
