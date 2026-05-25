@@ -64,6 +64,10 @@ const TOKENS: Record<string, { address: string | null; decimals: number; symbol:
   CHAWLEE: { address: "0x05149f41AFE7ca712D6A42390e8047E0f2887284", decimals: 18, symbol: "CHAWLEE" },
 };
 const SEND_CMD_RE = /^\s*send\s+([\d]+(?:\.\d+)?)\s+([A-Za-z][\w.]*)\s+to\s+([\w-]+\.lit)\s*$/i;
+const SENT_DISPLAY_RE = /^💸\s*Sent\s+([\d]+(?:\.\d+)?)\s+([A-Za-z][\w.]*)\s+to\s+([\w-]+\.lit)/i;
+const SLASH_SEND_FULL_RE = /^\s*\/send\s+([A-Za-z][\w.]*)\s+([\d]+(?:\.\d+)?)\s+to\s+([\w-]+\.lit)\s*$/i;
+const REPLY_TAG_RE = /^@(0x[a-fA-F0-9]{2,8}(?:\.{2,3}[a-fA-F0-9]{2,8})?|[\w-]+\.lit)\s+/;
+const TOKEN_LIST = ["ZKLTC","USDC","USDT","PEPE","WETH","WBTC","LDEX","ZKPEPE","ZKETH","LDTOAD","USDC.T","YURI","CHAWLEE","LESTER"];
 const parseUnitsStr = (value: string, decimals: number) => {
   const [whole = "0", fraction = ""] = value.trim().split(".");
   const frac = (fraction + "0".repeat(decimals)).slice(0, decimals);
