@@ -1,9 +1,9 @@
 // ChatUI page — Private + Global chat tabs powered by LitDEX Hub backend.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowUp,
   Check,
   ChevronUp,
-  DollarSign,
   Globe,
   Heart,
   Menu,
@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { addNotif } from "@/lib/notifications";
+import zkltcLogo from "@/assets/zkltc.jpg";
 
 const API = "https://hub.test-hub.xyz";
 const CHAIN_ID_HEX = "0x1159";
@@ -199,6 +200,8 @@ export default function ChatUIPage() {
     return Number.isFinite(t) ? t.toFixed(4) : "0";
   }, [inlineLikeReward, inlineCommentReward]);
 
+  const [visitedMentions, setVisitedMentions] = useState<Set<string>>(new Set());
+
   const scrollToPost = useCallback((id: string) => {
     const el = postRefs.current[id];
     if (!el) return;
@@ -206,6 +209,68 @@ export default function ChatUIPage() {
     setHighlightedId(id);
     setTimeout(() => setHighlightedId((h) => (h === id ? null : h)), 1500);
   }, []);
+
+  const walletLc = wallet.toLowerCase();
+  const shortMe = walletLc ? short(wallet).toLowerCase() : "";
+  const myLitName = walletLc ? (namesRef.current[walletLc] || "").toLowerCase() : "";
+
+  const taggedIds = useMemo(() => {
+    if (!walletLc) return [] as string[];
+    return posts
+      .filter((p) => {
+        const c = (p.content || "").toLowerCase();
+        return (shortMe && c.includes(`@${shortMe}`)) || (!!myLitName && c.includes(`@${myLitName}`));
+      })
+      .map((p) => p.id);
+  }, [posts, walletLc, shortMe, myLitName]);
+
+  const unreadMentions = useMemo(() => taggedIds.filter((id) => !visitedMentions.has(id)), [taggedIds, visitedMentions]);
+
+  const jumpToLatestMention = useCallback(() => {
+    if (unreadMentions.length === 0) return;
+    const latest = unreadMentions[unreadMentions.length - 1];
+    setVisitedMentions((prev) => {
+      const next = new Set(prev);
+      next.add(latest);
+      return next;
+    });
+    scrollToPost(latest);
+  }, [unreadMentions, scrollToPost]);
+
+  const renderPostContent = useCallback((content: string) => {
+    const re = /(@0x[a-fA-F0-9]{2,8}(?:\.{2,3}[a-fA-F0-9]{2,8})?|@[\w-]+\.lit)/g;
+    const parts: React.ReactNode[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(content)) !== null) {
+      if (m.index > last) parts.push(content.slice(last, m.index));
+      const tag = m[0];
+      const needle = tag.slice(1).toLowerCase();
+      parts.push(
+        <button
+          key={`${m.index}-${tag}`}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            const target = posts.find(
+              (p) =>
+                short(p.author).toLowerCase() === needle ||
+                p.author.toLowerCase() === needle ||
+                (p.name || "").toLowerCase() === needle,
+            );
+            if (target) scrollToPost(target.id);
+          }}
+          className="text-sky-400 hover:underline cursor-pointer font-medium"
+        >
+          {tag}
+        </button>,
+      );
+      last = m.index + tag.length;
+    }
+    if (last < content.length) parts.push(content.slice(last));
+    return parts.length ? parts : content;
+  }, [posts, scrollToPost]);
+
 
   const totalBudget = useMemo(() => {
     if (!addBounty) return "0";
@@ -656,7 +721,7 @@ export default function ChatUIPage() {
             )}
           </section>
 
-          <section className="flex-1 flex flex-col bg-brand-bg min-w-0">
+          <section className="flex-1 flex flex-col bg-brand-bg min-w-0 relative">
             <div className="h-16 border-b border-brand-border flex items-center px-3">
               <Avatar name={headerName} size={44} />
               <div className="ml-2 min-w-0">
@@ -665,8 +730,28 @@ export default function ChatUIPage() {
               </div>
             </div>
 
+            {tab === "global" && unreadMentions.length > 0 && (
+              <>
+                <button
+                  onClick={jumpToLatestMention}
+                  className="absolute top-20 right-4 z-20 px-3 h-8 inline-flex items-center gap-1.5 rounded-full bg-sky-500 text-white text-xs font-semibold shadow-lg hover:bg-sky-600 transition-colors"
+                >
+                  <ArrowUp size={14} />
+                  {unreadMentions.length} mention{unreadMentions.length === 1 ? "" : "s"}
+                </button>
+                <button
+                  onClick={jumpToLatestMention}
+                  aria-label="Jump to mention"
+                  className="absolute bottom-24 right-4 z-20 h-11 w-11 inline-flex items-center justify-center rounded-full bg-sky-500 text-white shadow-xl hover:bg-sky-600 transition-colors animate-pulse"
+                >
+                  <ArrowUp size={20} />
+                </button>
+              </>
+            )}
+
             <div ref={bodyRef} className="flex-1 bg-brand-bg overflow-y-auto px-4 py-4 space-y-3">
               {!showChat && <div className="h-full flex items-center justify-center text-brand-text-muted text-sm">Select a chat to start messaging</div>}
+
 
               {tab === "global" && (() => {
                 type FeedItem =
@@ -702,7 +787,7 @@ export default function ChatUIPage() {
                           className={cn(
                             "group relative max-w-[760px] w-fit rounded-lg border bg-brand-surface px-3 py-3 text-sm text-brand-text-primary transition-all",
                             tagged ? "border-l-4 border-l-gray-400 border-brand-border bg-gray-700/40" : "border-brand-border",
-                            isHighlighted && "ring-2 ring-brand-teal"
+                            isHighlighted && "ring-2 ring-yellow-400 bg-yellow-400/10"
                           )}
                         >
                           {post.bountyActive && <div className="absolute right-3 top-3 text-emerald-400" title="Bounty active">💰</div>}
@@ -748,13 +833,13 @@ export default function ChatUIPage() {
                             <div className="min-w-0">
                               <span className="font-semibold">{post.name || short(post.author)}</span>
                               <span className="ml-2 text-xs text-brand-text-muted">{displayTime(post.timestamp)}</span>
-                              <span className="ml-2 text-xs text-brand-text-muted">· ♥ {post.likeCount} · 💬 {post.commentCount}</span>
+                              <span className="ml-2 text-xs text-brand-text-muted">· ♥ {post.likeCount}</span>
                               {post.bountyActive && commentedPosts[post.id] && (
                                 <span className="ml-2 text-[11px] text-emerald-400">✓ Bounty claimed</span>
                               )}
                             </div>
                           </div>
-                          <div className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{post.content}</div>
+                          <div className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{renderPostContent(post.content)}</div>
                         </div>
                       </div>
                     );
@@ -832,13 +917,27 @@ export default function ChatUIPage() {
                     title="Add bounty"
                   >
                     <img
-                      src="https://gitlab.com/sachinhure/hello-world/-/raw/main/public/coins/zkltc.jpg"
+                      src={zkltcLogo}
                       alt="zkLTC"
                       style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }}
                     />
                   </button>
                 )}
-                {tab === "private" && <IconBtn aria-label="Send zkLTC" disabled={!current} onClick={() => setTipOpen(true)}><DollarSign size={18} /></IconBtn>}
+                {tab === "private" && (
+                  <button
+                    type="button"
+                    aria-label="Send zkLTC"
+                    disabled={!current}
+                    onClick={() => setTipOpen(true)}
+                    className="h-9 w-9 inline-flex items-center justify-center rounded-md hover:bg-white/5 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <img
+                      src={zkltcLogo}
+                      alt="zkLTC"
+                      style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }}
+                    />
+                  </button>
+                )}
                 {tab === "global" && bountyPopupOpen && (
                   <div className="absolute bottom-full left-2 mb-2 z-20 w-72 rounded-lg border border-brand-border bg-brand-surface-2 p-3 shadow-2xl">
                     <div className="flex items-center justify-between mb-2">
