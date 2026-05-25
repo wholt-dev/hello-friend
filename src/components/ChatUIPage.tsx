@@ -608,6 +608,19 @@ export default function ChatUIPage() {
   const sendGlobal = async () => {
     const body = draft.trim();
     if (!body) return;
+    const sendMatch = body.match(SEND_CMD_RE);
+    if (sendMatch) {
+      setBusy(true);
+      try {
+        await sendTokenCommand(sendMatch[1], sendMatch[2], sendMatch[3]);
+        setDraft("");
+        setReplyTo(null);
+      } catch (err: any) {
+        console.error("[ChatUI] send command error:", err);
+        alert(err?.message || "Send failed");
+      } finally { setBusy(false); }
+      return;
+    }
     const content = replyTo
       ? (body.startsWith("@") ? body : `@${short(replyTo.authorAddr)} ${body}`)
       : body;
