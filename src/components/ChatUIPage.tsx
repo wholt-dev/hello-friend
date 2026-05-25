@@ -21,6 +21,7 @@ import {
   SquarePen,
   Tag,
   TrendingUp,
+  Users,
   User2,
   X,
 } from "lucide-react";
@@ -330,6 +331,29 @@ export default function ChatUIPage() {
   const [wallet, setWallet] = useState("");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [pending, setPending] = useState<PendingRequest[]>([]);
+  // Outgoing friend requests we sent — tracked in localStorage so the
+  // "to: name.lit · pending/accepted/rejected" badge survives navigation
+  // and refresh. Status is derived: once the recipient appears in our
+  // friends list we mark accepted; if their pending request to us shows
+  // up as status=2 (rejected) we mark rejected; otherwise pending.
+  const [outgoing, setOutgoing] = useState<Array<{
+    id: string;
+    to: string;       // recipient address (lowercase)
+    name: string;     // recipient .lit name
+    txHash?: string;
+    sentAt: number;   // unix seconds
+    status: "pending" | "accepted" | "rejected";
+  }>>(() => {
+    try {
+      const raw = typeof window !== "undefined" ? localStorage.getItem("litdex:outgoingFriendReqs") : null;
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      // Drop entries older than 14 days regardless of status.
+      const cutoff = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 14;
+      return arr.filter((r: any) => r && Number(r.sentAt) > cutoff);
+    } catch { return []; }
+  });
   const [current, setCurrent] = useState<Contact | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   // Optimistic outbound DMs awaiting backend indexing. Kept separate from
@@ -346,6 +370,7 @@ export default function ChatUIPage() {
   const [likeReward, setLikeReward] = useState("0.01");
   const [commentReward, setCommentReward] = useState("0.01");
   const [addFriendOpen, setAddFriendOpen] = useState(false);
+  const [outgoingPanelOpen, setOutgoingPanelOpen] = useState(false);
   const [friendName, setFriendName] = useState("");
   const [tipOpen, setTipOpen] = useState(false);
   const [tipAmount, setTipAmount] = useState("0.01");
@@ -508,6 +533,36 @@ export default function ChatUIPage() {
       safeSet("litdex:globalTransfers", JSON.stringify(localTransfers));
     } catch { /* ignore quota */ }
   }, [localTransfers]);
+
+  // Persist outgoing friend requests so the status badge survives reloads.
+  useEffect(() => {
+    try {
+      safeSet("litdex:outgoingFriendReqs", JSON.stringify(outgoing));
+    } catch { /* ignore */ }
+  }, [outgoing]);
+
+  // Sync outgoing-request status against the live friends list. As soon as
+  // the recipient appears in our `contacts` we mark accepted and toast the
+  // user. Status flips happen once and persist via the effect above.
+  useEffect(() => {
+    if (outgoing.length === 0) return;
+    const friendsLc = new Set(contacts.map((c) => (c.address || "").toLowerCase()));
+    let changed = false;
+    const next = outgoing.map((r) => {
+      if (r.status !== "pending") return r;
+      if (friendsLc.has(r.to)) {
+        changed = true;
+        showSuccess({
+          title: "FRIEND REQUEST ACCEPTED",
+          subtitle: `${r.name}.lit accepted you`,
+          rows: [{ label: "TO", value: `${r.name}.lit` }],
+        });
+        return { ...r, status: "accepted" as const };
+      }
+      return r;
+    });
+    if (changed) setOutgoing(next);
+  }, [contacts, outgoing]);
 
   // FIX 5 — load profile data when entering profile view
   useEffect(() => {
@@ -1514,6 +1569,24 @@ export default function ChatUIPage() {
       const txHash = await writeContract(MESSENGER_ADDRESS, encodeCall(SELECTOR.sendFriendRequest, [{ type: "address", value: resolved }]));
       setFriendName("");
       setAddFriendOpen(false);
+      // Track outbound — the sidebar badge will show pending/accepted/rejected.
+      setOutgoing((prev) => {
+        const lcTo = resolved.toLowerCase();
+        // De-dupe: drop any prior entry to same address (re-send case),
+        // keep the new pending one.
+        const filtered = prev.filter((r) => r.to !== lcTo);
+        return [
+          ...filtered,
+          {
+            id: `out-${Date.now()}`,
+            to: lcTo,
+            name: clean,
+            txHash: typeof txHash === "string" ? txHash : undefined,
+            sentAt: Math.floor(Date.now() / 1000),
+            status: "pending",
+          },
+        ];
+      });
       showSuccess({
         title: "FRIEND REQUEST SENT",
         subtitle: "WAITING FOR ACCEPTANCE",
@@ -1859,10 +1932,93 @@ export default function ChatUIPage() {
               <p className="text-sm font-medium text-brand-text-primary">{tab === "private" ? "Private" : "Global"}</p>
               <div className="ml-auto flex items-center gap-1">
                 {tab === "private" && (
-                  <button onClick={() => setAddFriendOpen(true)} className="relative h-9 w-9 inline-flex items-center justify-center rounded-md text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary">
-                    <SquarePen size={16} />
-                    {pending.length > 0 && <span className="absolute -right-1 -top-1 min-w-4 h-4 rounded-full bg-brand-danger px-1 text-[10px] text-brand-text-primary leading-4 text-center">{pending.length}</span>}
-                  </button>
+                  <>
+                    {/* Outgoing friend requests button — shows status of who
+                        you've added (pending / accepted / rejected). */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setOutgoingPanelOpen((v) => !v)}
+                        title="Sent friend requests"
+                        className="relative h-9 w-9 inline-flex items-center justify-center rounded-md text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary"
+                      >
+                        <Users size={16} />
+                        {outgoing.some((r) => r.status === "pending") && (
+                          <span className="absolute -right-1 -top-1 min-w-4 h-4 rounded-full bg-white px-1 text-[10px] text-black leading-4 text-center font-bold">
+                            {outgoing.filter((r) => r.status === "pending").length}
+                          </span>
+                        )}
+                      </button>
+                      {outgoingPanelOpen && (
+                        <div className="absolute right-0 top-full mt-1 z-30 w-72 max-h-80 overflow-y-auto rounded-lg border border-brand-border bg-brand-surface-2 shadow-2xl">
+                          <div className="px-3 py-2 border-b border-brand-border flex items-center gap-2">
+                            <Users size={14} className="text-brand-text-muted" />
+                            <span className="text-xs font-semibold text-brand-text-primary">Sent Requests</span>
+                            <button
+                              onClick={() => setOutgoingPanelOpen(false)}
+                              aria-label="Close"
+                              className="ml-auto p-1 rounded hover:bg-white/10 text-brand-text-muted hover:text-brand-text-primary"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                          {outgoing.length === 0 ? (
+                            <div className="px-4 py-6 text-center text-xs text-brand-text-muted">
+                              You haven't sent any friend requests yet.
+                            </div>
+                          ) : (
+                            <div className="py-1">
+                              {[...outgoing]
+                                .sort((a, b) => b.sentAt - a.sentAt)
+                                .map((r) => {
+                                  const statusLabel =
+                                    r.status === "accepted"
+                                      ? "Friend request accepted"
+                                      : r.status === "rejected"
+                                      ? "Friend request rejected"
+                                      : "Friend request pending";
+                                  const dotClass =
+                                    r.status === "accepted"
+                                      ? "bg-white"
+                                      : r.status === "rejected"
+                                      ? "bg-brand-danger"
+                                      : "bg-brand-text-muted animate-pulse";
+                                  return (
+                                    <div
+                                      key={r.id}
+                                      className="flex items-center gap-2 px-3 py-2 hover:bg-white/5 transition-colors"
+                                    >
+                                      <Avatar name={r.name} size={32} />
+                                      <div className="min-w-0 flex-1">
+                                        <div className="text-xs font-semibold text-brand-text-primary truncate">
+                                          {r.name}.lit
+                                        </div>
+                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dotClass)} />
+                                          <span className="text-[10px] text-brand-text-muted truncate">{statusLabel}</span>
+                                        </div>
+                                      </div>
+                                      {r.status !== "pending" && (
+                                        <button
+                                          aria-label="Dismiss"
+                                          onClick={() => setOutgoing((prev) => prev.filter((o) => o.id !== r.id))}
+                                          className="p-1 rounded hover:bg-white/10 text-brand-text-muted hover:text-brand-text-primary"
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={() => setAddFriendOpen(true)} className="relative h-9 w-9 inline-flex items-center justify-center rounded-md text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary">
+                      <SquarePen size={16} />
+                      {pending.length > 0 && <span className="absolute -right-1 -top-1 min-w-4 h-4 rounded-full bg-brand-danger px-1 text-[10px] text-brand-text-primary leading-4 text-center">{pending.length}</span>}
+                    </button>
+                  </>
                 )}
                 <button onClick={() => setTab(tab === "private" ? "global" : "private")} className="px-2.5 h-8 inline-flex items-center gap-1.5 rounded-md text-xs font-semibold bg-white/5 text-brand-text-primary hover:bg-white/10 transition-colors">
                   {tab === "private" ? <Globe size={14} /> : <MessageCircle size={14} />}{tab === "private" ? "Global" : "Private"}
