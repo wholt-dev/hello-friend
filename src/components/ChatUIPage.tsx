@@ -981,13 +981,33 @@ export default function ChatUIPage() {
               <button onClick={() => setTab("global")} className={cn("w-full flex items-center gap-3 px-2 py-2 rounded-md", tab === "global" ? "bg-white/10 text-brand-text-primary" : "text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary")}>
                 <Globe size={18} />{sidebarOpen && <span className="text-sm">Global</span>}
               </button>
+              <button
+                onClick={() => { setView("market"); }}
+                className={cn(
+                  "w-full flex items-center gap-3 px-2 py-2 rounded-md",
+                  view === "market" ? "bg-white/10 text-brand-text-primary" : "text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary"
+                )}
+              >
+                <span className="text-base leading-none">🪙</span>
+                {sidebarOpen && <span className="text-sm">.lit Market</span>}
+              </button>
             </div>
             <div className="mt-auto p-3 space-y-1">
-              <button className="w-full flex items-center gap-3 px-2 py-2 rounded-md text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary">
-                <Settings size={18} />{sidebarOpen && <span className="text-sm">Settings</span>}
-              </button>
-              <button className="w-full flex items-center gap-3 px-2 py-2 rounded-md text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary">
-                <User2 size={18} />{sidebarOpen && (<><span className="text-sm truncate">{short(wallet) || "Not connected"}</span><ChevronUp size={16} className="ml-auto" /></>)}
+              <button
+                onClick={() => wallet && openProfile(wallet)}
+                disabled={!wallet}
+                className="w-full flex items-center gap-3 px-2 py-2 rounded-md text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary disabled:opacity-50"
+                title={wallet || "Not connected"}
+              >
+                <User2 size={18} />
+                {sidebarOpen && (
+                  <>
+                    <span className="text-sm truncate">
+                      {myDisplayName || short(wallet) || "Not connected"}
+                    </span>
+                    <ChevronUp size={16} className="ml-auto" />
+                  </>
+                )}
               </button>
             </div>
           </aside>
