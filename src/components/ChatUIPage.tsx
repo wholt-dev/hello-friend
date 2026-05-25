@@ -528,7 +528,51 @@ export default function ChatUIPage() {
       await writeContract(HUB_POSTS_ADDRESS, encodeCall(SELECTOR.likePost, [{ type: "uint", value: post.postId }]));
       setPosts((list) => list.map((p) => p.id === post.id ? { ...p, liked: true } : p));
       await refreshPost(post.postId);
+      if (post.bountyActive) {
+        try {
+          const r = await fetch(`${API}/hub/posts/${post.postId}`);
+          const j = await r.json();
+          const p = j.post || j.data || j;
+          const rewardRaw = p?.likeReward ?? p?.likeBounty ?? p?.likeRewardWei;
+          if (rewardRaw && BigInt(rewardRaw) > 0n) {
+            const wei = BigInt(rewardRaw);
+            const whole = wei / 10n ** 18n;
+            const frac = (wei % 10n ** 18n).toString().padStart(18, "0").replace(/0+$/, "");
+            const amount = frac ? `${whole}.${frac}` : `${whole}`;
+            const creatorName = post.name || short(post.author);
+            setBountyToast({ amount, name: creatorName });
+            setTimeout(() => setBountyToast(null), 4000);
+          }
+        } catch (err) { console.error("[ChatUI] bounty toast error:", err); }
+      }
     } finally { setBusy(false); }
+  };
+
+  const sendTokenCommand = async (amount: string, tokenSym: string, litName: string) => {
+    const key = tokenSym.toUpperCase();
+    const token = TOKENS[key];
+    if (!token) throw new Error(`Unknown token: ${tokenSym}`);
+    const r = await fetch(`${API}/hub/resolve/${encodeURIComponent(litName)}`);
+    const j = await r.json();
+    const to = j?.address || j?.wallet || j?.walletAddress || j?.data?.address;
+    if (!to) throw new Error(`Could not resolve ${litName}`);
+    if (token.address === null) {
+      await writeContract(to, "0x", parseUnitsStr(amount, 18));
+    } else {
+      const data = ERC20_TRANSFER_SELECTOR + addressHex(to) + uintHex(parseUnitsStr(amount, token.decimals));
+      await writeContract(token.address, data, 0n);
+    }
+    const content = `send ${amount} ${token.symbol} to ${litName}`;
+    await writeContract(
+      HUB_POSTS_ADDRESS,
+      encodeCall(SELECTOR.createPost, [
+        { type: "string", value: content },
+        { type: "uint", value: 0n },
+        { type: "uint", value: 0n },
+      ]),
+      0n,
+    );
+    await loadPosts();
   };
 
   const commentPost = async (postId: string, rawText: string) => {
