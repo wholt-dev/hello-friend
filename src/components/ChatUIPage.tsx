@@ -21,6 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import { addNotif } from "@/lib/notifications";
 import zkltcLogo from "@/assets/zkltc.jpg";
+import { BrowserProvider, Contract } from "ethers";
 
 const API = "https://hub.test-hub.xyz";
 const CHAIN_ID_HEX = "0x1159";
@@ -947,13 +948,34 @@ export default function ChatUIPage() {
     setPendingMsgs((prev) => [...prev, optimisticMsg]);
     setDraft("");
     setBusy(true);
-    let hash: string | null = null;
+    let txHash: string | null = null;
     try {
-      hash = await writeContract(MESSENGER_ADDRESS, encodeCall(SELECTOR.sendMessage, [{ type: "address", value: current.address }, { type: "string", value: text }, { type: "string", value: "text" }]));
+      const eth: any = (window as any).ethereum;
+      if (!eth) throw new Error("Wallet not found");
+      await ensureChain();
+      const provider = new BrowserProvider(eth);
+      const signer = await provider.getSigner();
+      const messenger = new Contract(
+        MESSENGER_ADDRESS,
+        ["function sendMessage(address to, string content, string msgType) external"],
+        signer,
+      );
+      console.log("[ChatUI] sendPrivate -> sendMessage()", {
+        messenger: MESSENGER_ADDRESS,
+        to: current.address,
+        text,
+        from: wallet,
+      });
+      const tx = await messenger.sendMessage(current.address, text, "text");
+      txHash = tx.hash;
+      console.log("[ChatUI] sendPrivate: tx submitted", tx.hash);
       // Mark optimistic as on-chain submitted.
-      setPendingMsgs((prev) => prev.map((m) => m.id === optimisticId ? { ...m, txHash: hash || undefined, status: "sent" } : m));
+      setPendingMsgs((prev) => prev.map((m) => m.id === optimisticId ? { ...m, txHash: tx.hash, status: "sent" } : m));
+      const receipt = await tx.wait();
+      console.log("[ChatUI] sendPrivate: tx confirmed", { hash: tx.hash, status: receipt?.status, block: receipt?.blockNumber });
     } catch (err) {
-      // User rejected or RPC error — drop the optimistic msg.
+      console.error("[ChatUI] sendPrivate: failed", err);
+      // User rejected or RPC/contract error — drop the optimistic msg.
       setPendingMsgs((prev) => prev.filter((m) => m.id !== optimisticId));
       try { (await import("sonner")).toast.error("Failed to send message"); } catch { /* ignore */ }
       setBusy(false);
@@ -962,25 +984,25 @@ export default function ChatUIPage() {
       setBusy(false);
     }
 
-    // After the wallet returns a tx hash, run a background reconciliation
-    // loop: wait for the chain receipt, then poll the Hub backend every 2s
-    // until it has indexed the new message (which prunes the optimistic
-    // entry inside loadConversation).
-    (async () => {
-      if (hash) await waitForReceipt(hash, 60_000);
-      for (let i = 0; i < 15; i++) {
-        await loadConversation();
-        // Stop early if the optimistic entry was pruned (server caught up).
-        const stillPending = await new Promise<boolean>((resolve) => {
-          setPendingMsgs((prev) => {
-            resolve(prev.some((m) => m.id === optimisticId));
-            return prev;
-          });
+    // After confirmation, re-fetch the conversation so the message
+    // transitions from optimistic ("syncing") to a confirmed server-indexed
+    // entry. The existing scroll effect on [messages, pendingMsgs] handles
+    // auto-scroll to the latest. Keep a short retry loop in case the
+    // backend indexer lags slightly behind the chain receipt.
+    for (let i = 0; i < 10; i++) {
+      await loadConversation();
+      const stillPending = await new Promise<boolean>((resolve) => {
+        setPendingMsgs((prev) => {
+          resolve(prev.some((m) => m.id === optimisticId));
+          return prev;
         });
-        if (!stillPending) return;
-        await new Promise((res) => setTimeout(res, 2000));
+      });
+      if (!stillPending) {
+        if (txHash) console.log("[ChatUI] sendPrivate: indexed by hub", txHash);
+        return;
       }
-    })().catch(() => { /* swallow */ });
+      await new Promise((res) => setTimeout(res, 2000));
+    }
   };
 
   const sendTip = async () => {
