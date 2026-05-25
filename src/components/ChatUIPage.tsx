@@ -67,11 +67,19 @@ const SEND_CMD_RE = /^\s*send\s+([\d]+(?:\.\d+)?)\s+([A-Za-z][\w.]*)\s+to\s+([\w
 const SENT_DISPLAY_RE = /^💸\s*Sent\s+([\d]+(?:\.\d+)?)\s+([A-Za-z][\w.]*)\s+to\s+([\w-]+\.lit)/i;
 const SLASH_SEND_FULL_RE = /^\s*\/send\s+([A-Za-z][\w.]*)\s+([\d]+(?:\.\d+)?)\s+to\s+([\w-]+\.lit)\s*$/i;
 const REPLY_TAG_RE = /^@(0x[a-fA-F0-9]{2,8}(?:\.{2,3}[a-fA-F0-9]{2,8})?|[\w-]+\.lit)\s+/;
+const REPLY_ID_RE = /^\[replyTo:([^\]]+)\]\s*/;
+const EXPLORER_TX = (hash: string) => `https://liteforge.explorer.caldera.xyz/tx/${hash}`;
 const TOKEN_LIST = ["ZKLTC","USDC","USDT","PEPE","WETH","WBTC","LDEX","ZKPEPE","ZKETH","LDTOAD","USDC.T","YURI","CHAWLEE","LESTER"];
 const parseUnitsStr = (value: string, decimals: number) => {
   const [whole = "0", fraction = ""] = value.trim().split(".");
   const frac = (fraction + "0".repeat(decimals)).slice(0, decimals);
   return BigInt(whole || "0") * 10n ** BigInt(decimals) + BigInt(frac || "0");
+};
+const formatUnitsStr = (value: bigint, decimals: number) => {
+  const s = value.toString().padStart(decimals + 1, "0");
+  const whole = s.slice(0, -decimals);
+  const frac = s.slice(-decimals).replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole;
 };
 
 type Contact = { address: string; name: string; message?: string };
@@ -222,6 +230,16 @@ export default function ChatUIPage() {
   const [bountyPopupOpen, setBountyPopupOpen] = useState(false);
   const [bountyToast, setBountyToast] = useState<{ amount: string; name: string } | null>(null);
   const [sendToast, setSendToast] = useState<string | null>(null);
+  const [sendPanelOpen, setSendPanelOpen] = useState(false);
+  const [sendTokenKey, setSendTokenKey] = useState("ZKLTC");
+  const [sendAmount, setSendAmount] = useState("");
+  const [sendRecipient, setSendRecipient] = useState("");
+  const [sendBalance, setSendBalance] = useState("0");
+  const [localTransfers, setLocalTransfers] = useState<Array<{
+    id: string; ts: number; from: string; fromName: string; to: string; toName: string;
+    amount: string; token: string; txHash: string; createdAt: number;
+  }>>([]);
+  const [fetchedReplyPosts, setFetchedReplyPosts] = useState<Record<string, { id: string; author: string; name?: string; content: string }>>({});
   const [inlineBountyActive, setInlineBountyActive] = useState(false);
   const [inlineLikeReward, setInlineLikeReward] = useState("");
   const [inlineCommentReward, setInlineCommentReward] = useState("");
@@ -613,28 +631,8 @@ export default function ChatUIPage() {
   const sendGlobal = async () => {
     const body = draft.trim();
     if (!body) return;
-    const slashMatch = body.match(SLASH_SEND_FULL_RE);
-    const sendMatch = !slashMatch ? body.match(SEND_CMD_RE) : null;
-    if (slashMatch || sendMatch) {
-      const [amount, tokenSym, litName] = slashMatch
-        ? [slashMatch[2], slashMatch[1], slashMatch[3]]
-        : [sendMatch![1], sendMatch![2], sendMatch![3]];
-      setBusy(true);
-      try {
-        await sendTokenCommand(amount, tokenSym, litName);
-        const sym = TOKENS[tokenSym.toUpperCase()]?.symbol || tokenSym;
-        setSendToast(`✅ Sent ${amount} ${sym} to ${litName}!`);
-        setTimeout(() => setSendToast(null), 4000);
-        setDraft("");
-        setReplyTo(null);
-      } catch (err: any) {
-        console.error("[ChatUI] send command error:", err);
-        alert(err?.message || "Send failed");
-      } finally { setBusy(false); }
-      return;
-    }
     const content = replyTo
-      ? (body.startsWith("@") ? body : `@${short(replyTo.authorAddr)} ${body}`)
+      ? `[replyTo:${replyTo.postId}] @${replyTo.name || short(replyTo.authorAddr)} ${body}`
       : body;
     const useBounty = inlineBountyActive && (Number(inlineLikeReward || 0) > 0 || Number(inlineCommentReward || 0) > 0);
     const likeWei = useBounty ? parseAmount(inlineLikeReward || "0") : 0n;
@@ -733,6 +731,112 @@ export default function ChatUIPage() {
   const sharePost = (post: Post) => {
     const text = `${post.content}\n\nlitdex.test-hub.xyz`;
     window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+  };
+
+  // Fetch quoted-reply parent posts not already loaded
+  useEffect(() => {
+    if (tab !== "global") return;
+    const need = new Set<string>();
+    for (const p of posts) {
+      const m = (p.content || "").match(REPLY_ID_RE);
+      if (m) {
+        const id = m[1];
+        if (!posts.find((pp) => pp.id === id) && !fetchedReplyPosts[id]) need.add(id);
+      }
+    }
+    if (need.size === 0) return;
+    (async () => {
+      const updates: Record<string, { id: string; author: string; name?: string; content: string }> = {};
+      for (const id of need) {
+        try {
+          const r = await fetch(`${API}/hub/posts/${id}`);
+          const j = await r.json();
+          const p = j.post || j.data || j;
+          if (!p) continue;
+          const author = p.author || p.wallet || p.walletAddress || p.from || p.creator || "";
+          const name = p.name || p.litName || p.creatorName || (author ? await resolveName(author) : "");
+          updates[id] = { id, author, name, content: p.content || p.message || p.text || "" };
+        } catch { /* ignore */ }
+      }
+      if (Object.keys(updates).length) setFetchedReplyPosts((prev) => ({ ...prev, ...updates }));
+    })();
+  }, [posts, fetchedReplyPosts, resolveName, tab]);
+
+  // Send-panel: balance fetch
+  const fetchSendBalance = useCallback(async () => {
+    if (!wallet) { setSendBalance("0"); return; }
+    const token = TOKENS[sendTokenKey];
+    if (!token) { setSendBalance("0"); return; }
+    try {
+      if (token.address === null) {
+        const r = await fetch(RPC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [wallet, "latest"] }),
+        });
+        const j = await r.json();
+        setSendBalance(formatUnitsStr(BigInt(j.result || "0x0"), 18));
+      } else {
+        const data = "0x70a08231" + addressHex(wallet);
+        const res = await readContract(token.address, data);
+        setSendBalance(formatUnitsStr(BigInt(res || "0x0"), token.decimals));
+      }
+    } catch { setSendBalance("0"); }
+  }, [wallet, sendTokenKey, readContract]);
+
+  useEffect(() => { if (sendPanelOpen) fetchSendBalance(); }, [sendPanelOpen, fetchSendBalance]);
+
+  useEffect(() => {
+    if (!sendPanelOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSendPanelOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sendPanelOpen]);
+
+  const executeSend = async () => {
+    const amount = sendAmount.trim();
+    const recipient = sendRecipient.trim();
+    if (!amount || !recipient) { alert("Enter amount and recipient"); return; }
+    const token = TOKENS[sendTokenKey];
+    if (!token) return;
+    setBusy(true);
+    try {
+      let to = recipient;
+      let toName = recipient;
+      if (!recipient.startsWith("0x")) {
+        const r = await fetch(`${API}/hub/resolve/${encodeURIComponent(recipient)}`);
+        const j = await r.json();
+        to = j?.address || j?.wallet || j?.walletAddress || j?.data?.address;
+        if (!to) throw new Error(`Could not resolve ${recipient}`);
+      } else {
+        toName = short(recipient);
+      }
+      let txHash: string;
+      if (token.address === null) {
+        txHash = await writeContract(to, "0x", parseUnitsStr(amount, 18));
+      } else {
+        const data = ERC20_TRANSFER_SELECTOR + addressHex(to) + uintHex(parseUnitsStr(amount, token.decimals));
+        txHash = await writeContract(token.address, data, 0n);
+      }
+      const fromName = namesRef.current[wallet.toLowerCase()] || short(wallet);
+      const now = Date.now();
+      setLocalTransfers((prev) => [...prev, {
+        id: `tx-${txHash}`,
+        ts: Math.floor(now / 1000),
+        from: wallet, fromName,
+        to, toName,
+        amount, token: token.symbol,
+        txHash, createdAt: now,
+      }]);
+      setSendToast(`✅ Sent ${amount} ${token.symbol} to ${toName}!`);
+      setTimeout(() => setSendToast(null), 4000);
+      setSendPanelOpen(false);
+      setSendAmount("");
+      setSendRecipient("");
+    } catch (err: any) {
+      console.error("[ChatUI] executeSend error:", err);
+      alert(err?.message || "Send failed");
+    } finally { setBusy(false); }
   };
 
   const filtered = contacts.filter((c) => !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.address.toLowerCase().includes(search.toLowerCase()));
@@ -850,7 +954,8 @@ export default function ChatUIPage() {
               {tab === "global" && (() => {
                 type FeedItem =
                   | { kind: "post"; id: string; ts: number; post: Post }
-                  | { kind: "reply"; id: string; ts: number; parent: Post; commenter: string; name?: string; text: string; timestamp?: number | string };
+                  | { kind: "reply"; id: string; ts: number; parent: Post; commenter: string; name?: string; text: string; timestamp?: number | string }
+                  | { kind: "transfer"; id: string; ts: number; transfer: typeof localTransfers[number] };
                 const items: FeedItem[] = [];
                 posts.forEach((post, pi) => {
                   const pts = Number(post.timestamp || 0) || pi;
@@ -860,11 +965,34 @@ export default function ChatUIPage() {
                     items.push({ kind: "reply", id: `r-${post.id}-${ci}`, ts: cts, parent: post, commenter: c.commenter, name: c.name, text: c.text, timestamp: c.timestamp });
                   });
                 });
+                localTransfers.forEach((t) => items.push({ kind: "transfer", id: t.id, ts: t.ts, transfer: t }));
                 items.sort((a, b) => a.ts - b.ts);
                 const walletLc = wallet.toLowerCase();
                 const myLitName = walletLc ? (namesRef.current[walletLc] || "").toLowerCase() : "";
 
                 return items.map((item) => {
+                  if (item.kind === "transfer") {
+                    const t = item.transfer;
+                    return (
+                      <div key={item.id} className="flex justify-start">
+                        <div className="max-w-[760px] w-fit bg-gradient-to-r from-emerald-950 to-green-900 border-l-4 border-emerald-400 rounded-xl px-4 py-3 text-sm text-brand-text-primary">
+                          <div className="font-medium">
+                            💸 <span className="font-semibold">{t.fromName}</span> sent{" "}
+                            <span className="font-semibold text-emerald-300">{t.amount} {t.token}</span> to{" "}
+                            <span className="font-semibold">{t.toName}</span>
+                          </div>
+                          <a
+                            href={EXPLORER_TX(t.txHash)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-1 inline-block text-[11px] text-emerald-300/80 hover:text-emerald-200 hover:underline"
+                          >
+                            View TX ↗
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  }
                   if (item.kind === "post") {
                     const post = item.post;
                     const shortMe = walletLc ? short(wallet).toLowerCase() : "";
@@ -963,26 +1091,40 @@ export default function ChatUIPage() {
                             </div>
                           </div>
                           {(() => {
-                            const replyMatch = (post.content || "").match(REPLY_TAG_RE);
-                            if (!replyMatch) {
-                              return <div className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{renderPostContent(post.content)}</div>;
+                            const idMatch = (post.content || "").match(REPLY_ID_RE);
+                            let replyBody = post.content;
+                            let original: { id?: string; author: string; name?: string; content: string } | null = null;
+                            let loadingRef = false;
+                            if (idMatch) {
+                              const refId = idMatch[1];
+                              replyBody = post.content.slice(idMatch[0].length).replace(REPLY_TAG_RE, "");
+                              const inList = posts.find((p) => p.id === refId);
+                              if (inList) original = inList;
+                              else if (fetchedReplyPosts[refId]) original = fetchedReplyPosts[refId];
+                              else loadingRef = true;
+                            } else {
+                              const replyMatch = (post.content || "").match(REPLY_TAG_RE);
+                              if (!replyMatch) {
+                                return <div className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{renderPostContent(post.content)}</div>;
+                              }
+                              const tagBody = replyMatch[1].toLowerCase();
+                              replyBody = post.content.slice(replyMatch[0].length);
+                              const found = posts.find((p) =>
+                                short(p.author).toLowerCase() === tagBody ||
+                                p.author.toLowerCase() === tagBody ||
+                                (p.name || "").toLowerCase() === tagBody
+                              );
+                              if (found) original = found;
                             }
-                            const tagBody = replyMatch[1].toLowerCase();
-                            const replyBody = post.content.slice(replyMatch[0].length);
-                            const original = posts.find((p) =>
-                              short(p.author).toLowerCase() === tagBody ||
-                              p.author.toLowerCase() === tagBody ||
-                              (p.name || "").toLowerCase() === tagBody
-                            );
-                            const previewName = original ? (original.name || short(original.author)) : replyMatch[1];
-                            const previewText = original ? original.content : "Original post not found";
+                            const previewName = original ? (original.name || short(original.author)) : (loadingRef ? "Loading…" : "Original post");
+                            const previewText = original ? original.content : (loadingRef ? "Fetching original post…" : "Original post not found");
                             const previewShort = previewText.length > 100 ? `${previewText.slice(0, 100)}…` : previewText;
                             return (
                               <>
                                 <button
                                   type="button"
-                                  onClick={() => original && scrollToPost(original.id)}
-                                  disabled={!original}
+                                  onClick={() => original?.id && scrollToPost(original.id)}
+                                  disabled={!original?.id}
                                   className="mt-2 block w-full text-left pl-2 pr-2 py-1.5 border-l-4 border-gray-400 bg-gray-700/40 rounded-r-md hover:bg-gray-700/60 transition-colors disabled:cursor-default"
                                 >
                                   <div className="flex items-center gap-1.5 text-[11px] text-brand-text-muted truncate">
@@ -1060,61 +1202,69 @@ export default function ChatUIPage() {
                   </button>
                 </div>
               )}
-              {tab === "global" && draft.trimStart().toLowerCase().startsWith("/send") && (() => {
-                const parts = draft.trim().split(/\s+/);
-                // parts[0] = /send; parts[1] = token; parts[2] = amount; parts[3] = "to"; parts[4] = recipient
-                const tokenPart = parts[1];
-                const hasToken = !!tokenPart && !!TOKENS[tokenPart.toUpperCase()];
-                const hasAmount = hasToken && !!parts[2] && /^\d+(\.\d+)?$/.test(parts[2]);
-                const step = !hasToken ? 1 : !hasAmount ? 2 : 3;
-                return (
-                  <div className="mx-2 mb-2 rounded-xl border border-gray-700 bg-gray-900 shadow-2xl p-3">
-                    <div className="flex items-center justify-between mb-2 text-[11px] font-semibold">
-                      <div className="flex items-center gap-2">
-                        <span className={cn("px-2 py-0.5 rounded", step === 1 ? "bg-sky-500 text-white" : "text-brand-text-muted")}>1. Token</span>
-                        <span className="text-brand-text-muted">→</span>
-                        <span className={cn("px-2 py-0.5 rounded", step === 2 ? "bg-sky-500 text-white" : "text-brand-text-muted")}>2. Amount</span>
-                        <span className="text-brand-text-muted">→</span>
-                        <span className={cn("px-2 py-0.5 rounded", step === 3 ? "bg-sky-500 text-white" : "text-brand-text-muted")}>3. Recipient</span>
-                      </div>
+              {tab === "global" && sendPanelOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-30"
+                    onClick={() => setSendPanelOpen(false)}
+                  />
+                  <div className="mx-2 mb-2 relative z-40 rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-sm font-semibold text-brand-text-primary">💸 Send Token</div>
                       <button
-                        onClick={() => setDraft("")}
+                        onClick={() => setSendPanelOpen(false)}
                         aria-label="Close"
                         className="p-1 rounded hover:bg-white/10 text-brand-text-muted hover:text-brand-text-primary"
-                      ><X size={12} /></button>
+                      ><X size={14} /></button>
                     </div>
-                    {step === 1 && (
-                      <>
-                        <div className="text-[11px] text-brand-text-muted mb-2">Select a token</div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {TOKEN_LIST.map((k) => {
-                            const t = TOKENS[k];
-                            return (
-                              <button
-                                key={k}
-                                type="button"
-                                onClick={() => {
-                                  setDraft(`/send ${t.symbol} `);
-                                  setTimeout(() => inputRef.current?.focus(), 0);
-                                }}
-                                className="rounded-full px-3 py-1 bg-gray-800 hover:bg-gray-700 text-xs text-brand-text-primary border border-gray-700"
-                              >
-                                {t.symbol}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </>
-                    )}
-                    {step === 2 && (
-                      <div className="text-xs text-brand-text-primary">Enter amount of <span className="font-semibold text-sky-400">{TOKENS[tokenPart.toUpperCase()].symbol}</span></div>
-                    )}
-                    {step === 3 && (
-                      <div className="text-xs text-brand-text-primary">Enter recipient .lit name (e.g. <span className="font-mono text-sky-400">to alice.lit</span>)</div>
-                    )}
+                    <label className="block text-[11px] text-brand-text-muted mb-1">Token</label>
+                    <select
+                      value={sendTokenKey}
+                      onChange={(e) => setSendTokenKey(e.target.value)}
+                      className="w-full h-9 px-2 mb-3 rounded-md bg-brand-bg border border-gray-700 text-sm text-brand-text-primary outline-none"
+                    >
+                      {TOKEN_LIST.map((k) => (
+                        <option key={k} value={k}>{TOKENS[k].symbol}</option>
+                      ))}
+                    </select>
+                    <label className="block text-[11px] text-brand-text-muted mb-1">
+                      Amount <span className="opacity-60">· balance {sendBalance} {TOKENS[sendTokenKey]?.symbol}</span>
+                    </label>
+                    <div className="flex gap-2 mb-3">
+                      <input
+                        value={sendAmount}
+                        onChange={(e) => setSendAmount(e.target.value)}
+                        placeholder="0.0"
+                        inputMode="decimal"
+                        className="flex-1 h-9 px-2 rounded-md bg-brand-bg border border-gray-700 text-sm text-brand-text-primary outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setSendAmount(sendBalance)}
+                        className="px-3 h-9 rounded-md bg-gray-800 hover:bg-gray-700 border border-gray-700 text-xs font-semibold text-sky-300"
+                      >MAX</button>
+                    </div>
+                    <label className="block text-[11px] text-brand-text-muted mb-1">To</label>
+                    <input
+                      value={sendRecipient}
+                      onChange={(e) => setSendRecipient(e.target.value)}
+                      placeholder="alice.lit or 0x…"
+                      className="w-full h-9 px-2 mb-3 rounded-md bg-brand-bg border border-gray-700 text-sm text-brand-text-primary outline-none"
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={() => setSendPanelOpen(false)}
+                        className="px-3 h-9 rounded-md border border-gray-700 text-xs font-semibold text-brand-text-muted hover:text-brand-text-primary"
+                      >Cancel</button>
+                      <button
+                        disabled={busy}
+                        onClick={executeSend}
+                        className="px-4 h-9 rounded-md bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-semibold disabled:opacity-50"
+                      >Send Token →</button>
+                    </div>
                   </div>
-                );
-              })()}
+                </>
+              )}
               <div className="relative flex items-center gap-1 px-2 py-2">
                 <IconBtn aria-label="Emoji"><Smile size={18} /></IconBtn>
                 <IconBtn aria-label="Attach"><Paperclip size={18} /></IconBtn>
@@ -1200,14 +1350,21 @@ export default function ChatUIPage() {
                 <input
                   ref={inputRef}
                   value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (tab === "global" && v === "/") {
+                      setDraft("");
+                      setSendPanelOpen(true);
+                      return;
+                    }
+                    setDraft(v);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       if (tab === "global") sendGlobal();
                       else sendPrivate();
                     } else if (e.key === "Escape") {
-                      if (draft.trimStart().toLowerCase().startsWith("/send")) setDraft("");
-                      else if (replyTo) setReplyTo(null);
+                      if (replyTo) setReplyTo(null);
                     }
                   }}
                   disabled={!showChat || busy}
