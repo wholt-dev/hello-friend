@@ -1771,17 +1771,24 @@ export default function ChatUIPage() {
       {view === "profile" && (
         <div className="fixed inset-0 z-[90] bg-brand-bg overflow-y-auto">
           <div className="max-w-3xl mx-auto p-6">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center mb-6">
               <button onClick={() => setView("chat")} className="text-sm text-brand-text-muted hover:text-brand-text-primary">← Back</button>
-              <div className="text-xs text-brand-text-muted">/profile/{short(profileAddr)}</div>
             </div>
             <div className="flex items-center gap-4 mb-6">
-              <Avatar name={namesRef.current[profileAddr.toLowerCase()] || profileAddr} size={72} />
+              <Avatar name={profileName || namesRef.current[profileAddr.toLowerCase()] || profileAddr} size={72} />
               <div className="min-w-0">
-                <div className="text-xl font-semibold text-brand-text-primary truncate">
-                  {namesRef.current[profileAddr.toLowerCase()] || (profileAddr.toLowerCase() === wallet.toLowerCase() ? myDisplayName : "") || short(profileAddr)}
-                </div>
-                <div className="text-xs text-brand-text-muted truncate">{profileAddr}</div>
+                {(() => {
+                  const litName = profileName || (profileAddr.toLowerCase() === wallet.toLowerCase() ? myDisplayName : "") || namesRef.current[profileAddr.toLowerCase()];
+                  const hasLit = litName && !litName.startsWith("0x");
+                  return (
+                    <>
+                      <div className="text-xl font-semibold text-brand-text-primary truncate">
+                        {hasLit ? litName : short(profileAddr)}
+                      </div>
+                      {hasLit && <div className="text-xs text-brand-text-muted truncate">{short(profileAddr)}</div>}
+                    </>
+                  );
+                })()}
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
@@ -1791,7 +1798,7 @@ export default function ChatUIPage() {
               </div>
               <div className="rounded-lg border border-brand-border bg-brand-surface p-4">
                 <div className="text-[11px] text-brand-text-muted">zkLTC balance</div>
-                <div className="text-lg font-semibold text-brand-text-primary mt-1">{profileBalance}</div>
+                <div className="text-lg font-semibold text-brand-text-primary mt-1">{(parseFloat(profileBalance) || 0).toFixed(4)} zkLTC</div>
               </div>
             </div>
             <div className="mb-6">
@@ -1799,22 +1806,8 @@ export default function ChatUIPage() {
               <div className="flex flex-wrap gap-2">
                 {profileDomains.length === 0 && <div className="text-xs text-brand-text-muted">No domains owned</div>}
                 {profileDomains.map((d) => (
-                  <span key={d} className="px-2 py-1 rounded-full bg-brand-surface border border-brand-border text-xs text-brand-text-primary">{d}</span>
+                  <span key={d} className="px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-xs font-semibold text-emerald-300">{d}</span>
                 ))}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs font-semibold text-brand-text-muted mb-2">Recent posts</div>
-              <div className="space-y-2">
-                {posts.filter((p) => p.author?.toLowerCase() === profileAddr.toLowerCase()).slice(0, 20).map((p) => (
-                  <div key={p.id} className="rounded-lg border border-brand-border bg-brand-surface px-3 py-2 text-sm text-brand-text-primary">
-                    <div className="text-[11px] text-brand-text-muted">{displayTime(p.timestamp)}</div>
-                    <div className="mt-1 whitespace-pre-wrap break-words">{p.content}</div>
-                  </div>
-                ))}
-                {posts.filter((p) => p.author?.toLowerCase() === profileAddr.toLowerCase()).length === 0 && (
-                  <div className="text-xs text-brand-text-muted">No posts yet</div>
-                )}
               </div>
             </div>
           </div>
