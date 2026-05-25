@@ -96,6 +96,7 @@ type Post = {
   bountyActive: boolean;
   liked?: boolean;
   comments?: Comment[];
+  pending?: boolean;
 };
 type PendingRequest = { id: string; from: string; to?: string; status?: number; sentAt?: number; name?: string };
 
@@ -242,6 +243,7 @@ export default function ChatUIPage() {
   const [inlineBountyActive, setInlineBountyActive] = useState(false);
   const [inlineLikeReward, setInlineLikeReward] = useState("");
   const [inlineTotalBounty, setInlineTotalBounty] = useState("");
+  const [inlineBountyMultiplier, setInlineBountyMultiplier] = useState<number>(1);
   const inlineBountyTotal = useMemo(() => {
     const t = Number(inlineTotalBounty || 0);
     return Number.isFinite(t) ? t.toFixed(4) : "0";
@@ -252,6 +254,7 @@ export default function ChatUIPage() {
     if (!per || !total || per <= 0) return 0;
     return Math.floor(total / per);
   }, [inlineLikeReward, inlineTotalBounty]);
+  const [postsLoading, setPostsLoading] = useState(true);
   const [emojiOpen, setEmojiOpen] = useState(false);
 
   const [visitedMentions, setVisitedMentions] = useState<Set<string>>(new Set());
@@ -440,10 +443,21 @@ export default function ChatUIPage() {
         };
       }));
       console.log("[ChatUI] mapped posts:", mapped);
-      setPosts(mapped);
+      setPosts((prev) => {
+        const pendingPosts = prev.filter((p) => p.pending);
+        const realPrev = prev.filter((p) => !p.pending);
+        const sameLen = realPrev.length === mapped.length;
+        const sameTop = sameLen && realPrev[0]?.id === mapped[0]?.id && realPrev[realPrev.length - 1]?.id === mapped[mapped.length - 1]?.id;
+        if (sameLen && sameTop && pendingPosts.length === 0) return prev;
+        // Drop pending posts whose content now appears in real list (by content match)
+        const remainingPending = pendingPosts.filter((pp) => !mapped.some((m) => m.author?.toLowerCase() === pp.author?.toLowerCase() && m.content === pp.content));
+        return [...mapped, ...remainingPending];
+      });
     } catch (err) {
       console.error("[ChatUI] loadPosts error:", err);
-      setPosts([]);
+      setPosts((prev) => (prev.length === 0 ? prev : prev));
+    } finally {
+      setPostsLoading(false);
     }
   }, [resolveName, wallet]);
 
@@ -499,7 +513,7 @@ export default function ChatUIPage() {
   useEffect(() => {
     if (tab === "global") {
       loadPosts();
-      const id = setInterval(loadPosts, 15_000);
+      const id = setInterval(loadPosts, 10_000);
       return () => clearInterval(id);
     }
     loadPrivate();
@@ -642,6 +656,22 @@ export default function ChatUIPage() {
     const likeWei = useBounty ? parseAmount(inlineLikeReward || "0") : 0n;
     const commentWei = 0n;
     const budgetWei = useBounty ? parseAmount(inlineTotalBounty || "0") : 0n;
+    const optimisticId = `optimistic-${Date.now()}`;
+    const optimisticPost: Post = {
+      id: optimisticId,
+      postId: optimisticId,
+      author: wallet,
+      name: namesRef.current[wallet.toLowerCase()] || short(wallet),
+      content,
+      timestamp: Math.floor(Date.now() / 1000),
+      likeCount: 0,
+      commentCount: 0,
+      bountyActive: useBounty,
+      liked: false,
+      comments: [],
+      pending: true,
+    };
+    setPosts((prev) => [...prev, optimisticPost]);
     setBusy(true);
     try {
       await writeContract(
@@ -658,8 +688,13 @@ export default function ChatUIPage() {
       setInlineBountyActive(false);
       setInlineLikeReward("");
       setInlineTotalBounty("");
+      setInlineBountyMultiplier(1);
       setBountyPopupOpen(false);
       await loadPosts();
+    } catch (err) {
+      console.error("[ChatUI] sendGlobal error:", err);
+      setPosts((prev) => prev.filter((p) => p.id !== optimisticId));
+      try { (await import("sonner")).toast.error("Failed to send post"); } catch { /* ignore */ }
     } finally { setBusy(false); }
   };
 
@@ -955,6 +990,28 @@ export default function ChatUIPage() {
               {!showChat && <div className="h-full flex items-center justify-center text-brand-text-muted text-sm">Select a chat to start messaging</div>}
 
 
+              {tab === "global" && postsLoading && posts.length === 0 && (
+                <div className="space-y-3">
+                  {[0,1,2,3,4].map((i) => (
+                    <div key={`sk-${i}`} className="flex justify-start">
+                      <div className="max-w-[760px] w-[420px] rounded-lg border border-brand-border bg-brand-surface px-3 py-3 animate-pulse">
+                        <div className="flex items-center gap-2">
+                          <div className="h-8 w-8 rounded-full bg-white/10" />
+                          <div className="flex-1 space-y-2">
+                            <div className="h-3 w-32 bg-white/10 rounded" />
+                            <div className="h-2 w-20 bg-white/5 rounded" />
+                          </div>
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          <div className="h-3 w-full bg-white/10 rounded" />
+                          <div className="h-3 w-4/5 bg-white/10 rounded" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {tab === "global" && (() => {
                 type FeedItem =
                   | { kind: "post"; id: string; ts: number; post: Post }
@@ -1042,10 +1099,12 @@ export default function ChatUIPage() {
                           className={cn(
                             "group relative max-w-[760px] w-fit rounded-lg border bg-brand-surface px-3 py-3 text-sm text-brand-text-primary transition-all",
                             tagged ? "border-l-4 border-l-gray-400 border-brand-border bg-gray-700/40" : "border-brand-border",
-                            isHighlighted && "ring-2 ring-yellow-400 bg-yellow-400/10"
+                            isHighlighted && "ring-2 ring-yellow-400 bg-yellow-400/10",
+                            post.pending && "opacity-50 italic"
                           )}
                         >
                           {post.bountyActive && <div className="absolute right-3 top-3 text-emerald-400" title="Bounty active">💰</div>}
+                          {post.pending && <div className="absolute right-3 top-3 text-[10px] text-brand-text-muted">pending…</div>}
 
                           {/* Discord-style hover action bar */}
                           <div className="absolute -top-4 right-4 z-10 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
@@ -1307,25 +1366,57 @@ export default function ChatUIPage() {
                       <div className="text-xs font-semibold text-brand-text-primary">Add bounty</div>
                       <button aria-label="Close" onClick={() => setBountyPopupOpen(false)} className="p-1 rounded hover:bg-white/10 text-brand-text-muted hover:text-brand-text-primary"><X size={12} /></button>
                     </div>
-                    <label className="block text-[11px] text-brand-text-muted mb-1">♥ Like reward (zkLTC)</label>
+                    <label className="block text-[11px] text-brand-text-muted mb-1">Per like reward (zkLTC)</label>
                     <input
                       value={inlineLikeReward}
                       onChange={(e) => setInlineLikeReward(e.target.value)}
                       placeholder="0.01"
                       className="w-full h-8 px-2 mb-2 rounded-md bg-brand-bg border border-brand-border text-xs text-brand-text-primary outline-none"
                     />
-                    <label className="block text-[11px] text-brand-text-muted mb-1">Total bounty to place (zkLTC)</label>
-                    <input
-                      value={inlineTotalBounty}
-                      onChange={(e) => setInlineTotalBounty(e.target.value)}
-                      placeholder="1.00"
-                      className="w-full h-8 px-2 mb-2 rounded-md bg-brand-bg border border-brand-border text-xs text-brand-text-primary outline-none"
-                    />
-                    <div className="text-[11px] text-brand-text-muted mb-2">ℹ️ Bounty lasts for <span className="text-brand-text-primary font-medium">{inlineBountyLikes}</span> likes</div>
+                    <label className="block text-[11px] text-brand-text-muted mb-1">How many likes to reward?</label>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs text-brand-text-muted">x</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={1000}
+                        step={1}
+                        value={inlineBountyMultiplier}
+                        onKeyDown={(e) => {
+                          if (e.key === "." || e.key === "-" || e.key === "e" || e.key === "E" || e.key === "+") e.preventDefault();
+                        }}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^0-9]/g, "");
+                          if (!raw) { setInlineBountyMultiplier(1); return; }
+                          let n = parseInt(raw, 10);
+                          if (!Number.isFinite(n) || n < 1) n = 1;
+                          if (n > 1000) n = 1000;
+                          setInlineBountyMultiplier(n);
+                        }}
+                        className="flex-1 h-8 px-2 rounded-md bg-brand-bg border border-brand-border text-xs text-brand-text-primary outline-none"
+                      />
+                    </div>
+                    <div className="text-[10px] text-brand-text-muted mb-2">Range: x1 to x1000 — integers only</div>
+                    {(() => {
+                      const per = Number(inlineLikeReward || 0);
+                      const count = Math.max(1, Math.min(1000, Math.floor(inlineBountyMultiplier || 1)));
+                      const total = per > 0 ? per * count : 0;
+                      return (
+                        <div className="text-[11px] text-brand-text-primary mb-2">
+                          Total bounty: <span className="font-semibold text-emerald-400">{total.toFixed(4)} zkLTC</span>
+                          <span className="text-brand-text-muted"> ({count} likes × {per || 0} zkLTC each)</span>
+                        </div>
+                      );
+                    })()}
                     <button
                       onClick={() => {
-                        const hasVal = Number(inlineLikeReward || 0) > 0 && Number(inlineTotalBounty || 0) > 0;
-                        setInlineBountyActive(hasVal);
+                        const per = Number(inlineLikeReward || 0);
+                        const count = Math.max(1, Math.min(1000, Math.floor(inlineBountyMultiplier || 1)));
+                        if (per <= 0) return;
+                        const total = per * count;
+                        setInlineTotalBounty(total.toString());
+                        setInlineBountyActive(true);
                         setBountyPopupOpen(false);
                       }}
                       className="w-full h-8 rounded-md bg-brand-teal text-brand-bg text-xs font-semibold"
@@ -1338,6 +1429,7 @@ export default function ChatUIPage() {
                           setInlineBountyActive(false);
                           setInlineLikeReward("");
                           setInlineTotalBounty("");
+                          setInlineBountyMultiplier(1);
                           setBountyPopupOpen(false);
                         }}
                         className="mt-2 w-full h-7 rounded-md border border-brand-border text-[11px] text-brand-text-muted hover:text-brand-text-primary"
@@ -1348,7 +1440,22 @@ export default function ChatUIPage() {
                   </div>
                 )}
                 {tab === "global" && inlineBountyActive && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">💰 {inlineBountyTotal}</span>
+                  <span className="relative inline-flex items-center gap-1 text-[10px] pl-1.5 pr-5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    💰 {inlineBountyTotal}
+                    <button
+                      type="button"
+                      aria-label="Remove bounty"
+                      onClick={() => {
+                        setInlineBountyActive(false);
+                        setInlineLikeReward("");
+                        setInlineTotalBounty("");
+                        setInlineBountyMultiplier(1);
+                      }}
+                      className="absolute right-0.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-emerald-500/30 text-emerald-300 hover:text-white"
+                    >
+                      <X size={10} />
+                    </button>
+                  </span>
                 )}
                 {emojiOpen && (
                   <EmojiPicker
