@@ -1342,25 +1342,57 @@ export default function ChatUIPage() {
                       <div className="text-xs font-semibold text-brand-text-primary">Add bounty</div>
                       <button aria-label="Close" onClick={() => setBountyPopupOpen(false)} className="p-1 rounded hover:bg-white/10 text-brand-text-muted hover:text-brand-text-primary"><X size={12} /></button>
                     </div>
-                    <label className="block text-[11px] text-brand-text-muted mb-1">♥ Like reward (zkLTC)</label>
+                    <label className="block text-[11px] text-brand-text-muted mb-1">Per like reward (zkLTC)</label>
                     <input
                       value={inlineLikeReward}
                       onChange={(e) => setInlineLikeReward(e.target.value)}
                       placeholder="0.01"
                       className="w-full h-8 px-2 mb-2 rounded-md bg-brand-bg border border-brand-border text-xs text-brand-text-primary outline-none"
                     />
-                    <label className="block text-[11px] text-brand-text-muted mb-1">Total bounty to place (zkLTC)</label>
-                    <input
-                      value={inlineTotalBounty}
-                      onChange={(e) => setInlineTotalBounty(e.target.value)}
-                      placeholder="1.00"
-                      className="w-full h-8 px-2 mb-2 rounded-md bg-brand-bg border border-brand-border text-xs text-brand-text-primary outline-none"
-                    />
-                    <div className="text-[11px] text-brand-text-muted mb-2">ℹ️ Bounty lasts for <span className="text-brand-text-primary font-medium">{inlineBountyLikes}</span> likes</div>
+                    <label className="block text-[11px] text-brand-text-muted mb-1">How many likes to reward?</label>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs text-brand-text-muted">x</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={1000}
+                        step={1}
+                        value={inlineBountyMultiplier}
+                        onKeyDown={(e) => {
+                          if (e.key === "." || e.key === "-" || e.key === "e" || e.key === "E" || e.key === "+") e.preventDefault();
+                        }}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^0-9]/g, "");
+                          if (!raw) { setInlineBountyMultiplier(1); return; }
+                          let n = parseInt(raw, 10);
+                          if (!Number.isFinite(n) || n < 1) n = 1;
+                          if (n > 1000) n = 1000;
+                          setInlineBountyMultiplier(n);
+                        }}
+                        className="flex-1 h-8 px-2 rounded-md bg-brand-bg border border-brand-border text-xs text-brand-text-primary outline-none"
+                      />
+                    </div>
+                    <div className="text-[10px] text-brand-text-muted mb-2">Range: x1 to x1000 — integers only</div>
+                    {(() => {
+                      const per = Number(inlineLikeReward || 0);
+                      const count = Math.max(1, Math.min(1000, Math.floor(inlineBountyMultiplier || 1)));
+                      const total = per > 0 ? per * count : 0;
+                      return (
+                        <div className="text-[11px] text-brand-text-primary mb-2">
+                          Total bounty: <span className="font-semibold text-emerald-400">{total.toFixed(4)} zkLTC</span>
+                          <span className="text-brand-text-muted"> ({count} likes × {per || 0} zkLTC each)</span>
+                        </div>
+                      );
+                    })()}
                     <button
                       onClick={() => {
-                        const hasVal = Number(inlineLikeReward || 0) > 0 && Number(inlineTotalBounty || 0) > 0;
-                        setInlineBountyActive(hasVal);
+                        const per = Number(inlineLikeReward || 0);
+                        const count = Math.max(1, Math.min(1000, Math.floor(inlineBountyMultiplier || 1)));
+                        if (per <= 0) return;
+                        const total = per * count;
+                        setInlineTotalBounty(total.toString());
+                        setInlineBountyActive(true);
                         setBountyPopupOpen(false);
                       }}
                       className="w-full h-8 rounded-md bg-brand-teal text-brand-bg text-xs font-semibold"
@@ -1373,6 +1405,7 @@ export default function ChatUIPage() {
                           setInlineBountyActive(false);
                           setInlineLikeReward("");
                           setInlineTotalBounty("");
+                          setInlineBountyMultiplier(1);
                           setBountyPopupOpen(false);
                         }}
                         className="mt-2 w-full h-7 rounded-md border border-brand-border text-[11px] text-brand-text-muted hover:text-brand-text-primary"
@@ -1383,7 +1416,22 @@ export default function ChatUIPage() {
                   </div>
                 )}
                 {tab === "global" && inlineBountyActive && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">💰 {inlineBountyTotal}</span>
+                  <span className="relative inline-flex items-center gap-1 text-[10px] pl-1.5 pr-5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    💰 {inlineBountyTotal}
+                    <button
+                      type="button"
+                      aria-label="Remove bounty"
+                      onClick={() => {
+                        setInlineBountyActive(false);
+                        setInlineLikeReward("");
+                        setInlineTotalBounty("");
+                        setInlineBountyMultiplier(1);
+                      }}
+                      className="absolute right-0.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-emerald-500/30 text-emerald-300 hover:text-white"
+                    >
+                      <X size={10} />
+                    </button>
+                  </span>
                 )}
                 {emojiOpen && (
                   <EmojiPicker
