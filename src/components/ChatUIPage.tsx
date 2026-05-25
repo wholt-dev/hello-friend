@@ -866,7 +866,7 @@ export default function ChatUIPage() {
                       (myLitName && contentLc.includes(`@${myLitName}`))
                     );
                     const isHighlighted = highlightedId === post.id;
-                    const sendMatch = (post.content || "").match(SEND_CMD_RE);
+                    const sendMatch = (post.content || "").match(SENT_DISPLAY_RE) || (post.content || "").match(SEND_CMD_RE);
                     if (sendMatch) {
                       const senderName = post.name || short(post.author);
                       return (
