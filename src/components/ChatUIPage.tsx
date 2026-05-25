@@ -221,6 +221,7 @@ export default function ChatUIPage() {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [bountyPopupOpen, setBountyPopupOpen] = useState(false);
   const [bountyToast, setBountyToast] = useState<{ amount: string; name: string } | null>(null);
+  const [sendToast, setSendToast] = useState<string | null>(null);
   const [inlineBountyActive, setInlineBountyActive] = useState(false);
   const [inlineLikeReward, setInlineLikeReward] = useState("");
   const [inlineCommentReward, setInlineCommentReward] = useState("");
