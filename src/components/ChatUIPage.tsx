@@ -96,6 +96,7 @@ type Post = {
   bountyActive: boolean;
   liked?: boolean;
   comments?: Comment[];
+  pending?: boolean;
 };
 type PendingRequest = { id: string; from: string; to?: string; status?: number; sentAt?: number; name?: string };
 
