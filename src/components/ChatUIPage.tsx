@@ -324,6 +324,17 @@ export default function ChatUIPage() {
   const [profileDomains, setProfileDomains] = useState<string[]>([]);
   const [profileName, setProfileName] = useState<string>("");
 
+  // localStorage helpers — survive top-navbar page navigation that
+  // unmounts ChatUIPage and clears React state.
+  const dmCacheKey = (a: string, b: string) => `litdex:dm:${a.toLowerCase()}:${b.toLowerCase()}`;
+  const profileCacheKey = (a: string) => `litdex:profile:${a.toLowerCase()}`;
+  const safeGet = (k: string) => {
+    try { return typeof window !== "undefined" ? localStorage.getItem(k) : null; } catch { return null; }
+  };
+  const safeSet = (k: string, v: string) => {
+    try { if (typeof window !== "undefined") localStorage.setItem(k, v); } catch { /* quota */ }
+  };
+
   // Buy .lit domain — registry registration form state
   const [buyName, setBuyName] = useState<string>("");
   const [buyDuration, setBuyDuration] = useState<number>(1);
@@ -366,43 +377,133 @@ export default function ChatUIPage() {
     return () => { cancelled = true; };
   }, [wallet]);
 
-  // Reset private messages when switching contact
-  useEffect(() => { setMessages([]); setPendingMsgs([]); }, [current?.address]);
+  // Reset + hydrate private messages from localStorage when contact changes.
+  // ChatUIPage unmounts on top-navbar navigation, so on remount we restore
+  // the cached conversation immediately (no flash of empty bubble) before
+  // the backend re-fetch resolves.
+  useEffect(() => {
+    setMessages([]);
+    setPendingMsgs([]);
+    if (!wallet || !current?.address) return;
+    try {
+      const raw = safeGet(dmCacheKey(wallet, current.address));
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (Array.isArray(cached?.messages)) setMessages(cached.messages);
+        if (Array.isArray(cached?.pendingMsgs)) setPendingMsgs(cached.pendingMsgs);
+      }
+    } catch { /* ignore corrupt cache */ }
+  }, [current?.address, wallet]);
+
+  // Persist messages + pending bubble to localStorage so they survive
+  // page navigation and a backend that hasn't deployed the
+  // getConversation `{from}` override yet.
+  useEffect(() => {
+    if (!wallet || !current?.address) return;
+    if (messages.length === 0 && pendingMsgs.length === 0) return;
+    try {
+      safeSet(
+        dmCacheKey(wallet, current.address),
+        JSON.stringify({ messages, pendingMsgs, savedAt: Date.now() }),
+      );
+    } catch { /* ignore */ }
+  }, [messages, pendingMsgs, wallet, current?.address]);
 
   // FIX 5 — load profile data when entering profile view
   useEffect(() => {
     if (view !== "profile" || !profileAddr) return;
     let cancelled = false;
-    (async () => {
+    // Hydrate from localStorage cache first so the UI shows real numbers
+    // instantly instead of flashing 0 → final values. Background refresh
+    // below updates them when the network responds.
+    try {
+      const raw = safeGet(profileCacheKey(profileAddr));
+      if (raw) {
+        const c = JSON.parse(raw);
+        if (typeof c?.points === "string") setProfilePoints(c.points);
+        if (typeof c?.balance === "string") setProfileBalance(c.balance);
+        if (Array.isArray(c?.domains)) setProfileDomains(c.domains);
+        if (typeof c?.name === "string") setProfileName(c.name);
+      }
+    } catch { /* ignore corrupt cache */ }
+
+    const writeCache = (patch: Record<string, unknown>) => {
       try {
-        const r = await fetch(`${API}/hub/resolve/reverse/${profileAddr}`);
-        const j = await r.json();
-        const n = j?.name || j?.litName || j?.data?.name || "";
-        if (!cancelled) setProfileName(n && typeof n === "string" ? n : "");
-      } catch { if (!cancelled) setProfileName(""); }
-      try {
-        // Same endpoint the top navbar/messenger uses — keeps profile points
-        // consistent with whatever the user sees on the Points page.
-        const r = await fetch(`https://api.test-hub.xyz/points/${profileAddr}`);
-        const j = await r.json();
-        if (!cancelled) setProfilePoints(String(j?.total ?? j?.points ?? j?.balance ?? 0));
-      } catch { if (!cancelled) setProfilePoints("0"); }
-      try {
-        const r = await fetch(RPC_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [profileAddr, "latest"] }),
-        });
-        const j = await r.json();
-        if (!cancelled) setProfileBalance(formatUnitsStr(BigInt(j.result || "0x0"), 18));
-      } catch { if (!cancelled) setProfileBalance("0"); }
-      try {
-        const r = await fetch(`${API}/hub/domains/${profileAddr}`);
-        const j = await r.json();
-        const arr = readArray(j, ["domains", "names", "data"]);
-        if (!cancelled) setProfileDomains(arr.map((d: any) => (typeof d === "string" ? d : d.name || d.domain)).filter(Boolean));
-      } catch { if (!cancelled) setProfileDomains([]); }
-    })();
+        const raw = safeGet(profileCacheKey(profileAddr));
+        const prev = raw ? JSON.parse(raw) : {};
+        safeSet(profileCacheKey(profileAddr), JSON.stringify({ ...prev, ...patch, savedAt: Date.now() }));
+      } catch { /* ignore */ }
+    };
+
+    // Run all 4 fetches in parallel — was sequential before, which made the
+    // profile feel slow (4x sum of latencies). Each branch is isolated so a
+    // single slow/failing endpoint never blocks the others.
+    void Promise.all([
+      // 1) reverse-resolve .lit name (best-effort; navbar already shows one)
+      (async () => {
+        try {
+          const r = await fetch(`${API}/hub/name/reverse/${profileAddr}`);
+          const j = await r.json();
+          const n = j?.name || j?.litName || j?.data?.name || "";
+          if (!cancelled) {
+            const val = n && typeof n === "string" ? n : "";
+            setProfileName(val);
+            writeCache({ name: val });
+          }
+        } catch { /* keep cached value */ }
+      })(),
+      // 2) Points — same endpoint the top navbar uses so numbers match.
+      (async () => {
+        try {
+          const r = await fetch(`https://api.test-hub.xyz/points/${profileAddr}`);
+          const j = await r.json();
+          if (!cancelled) {
+            const val = String(j?.total ?? j?.points ?? j?.balance ?? 0);
+            setProfilePoints(val);
+            writeCache({ points: val });
+          }
+        } catch { /* keep cached value */ }
+      })(),
+      // 3) zkLTC native balance via JSON-RPC
+      (async () => {
+        try {
+          const r = await fetch(RPC_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [profileAddr, "latest"] }),
+          });
+          const j = await r.json();
+          if (!cancelled) {
+            const val = formatUnitsStr(BigInt(j.result || "0x0"), 18);
+            setProfileBalance(val);
+            writeCache({ balance: val });
+          }
+        } catch { /* keep cached value */ }
+      })(),
+      // 4) Owned .lit domains — backend route is /hub/names/owned/:addr
+      // (the old /hub/domains/:addr was a 404, which is why this card was
+      // stuck at 0). Fall back to the legacy URL for resilience.
+      (async () => {
+        const tryUrls = [
+          `${API}/hub/names/owned/${profileAddr}`,
+          `${API}/hub/domains/${profileAddr}`,
+        ];
+        for (const url of tryUrls) {
+          try {
+            const r = await fetch(url);
+            if (!r.ok) continue;
+            const j = await r.json();
+            const arr = readArray(j, ["names", "domains", "owned", "data"]);
+            const list = arr.map((d: any) => (typeof d === "string" ? d : d.name || d.domain)).filter(Boolean);
+            if (!cancelled) {
+              setProfileDomains(list);
+              writeCache({ domains: list });
+            }
+            return;
+          } catch { /* try next */ }
+        }
+      })(),
+    ]);
     return () => { cancelled = true; };
   }, [view, profileAddr]);
 
@@ -902,7 +1003,14 @@ export default function ChatUIPage() {
       const r = await fetch(`${API}/hub/messenger/conversation/${wallet}/${current.address}`);
       const j = await r.json();
       const serverMsgs = readArray(j, ["messages", "conversation", "data"]) as Msg[];
-      setMessages(serverMsgs);
+      // Preserve last known state when the backend returns nothing — this
+      // commonly happens before the `getConversation({from})` override is
+      // deployed, where server eth_call sets msg.sender = 0x0 and the
+      // contract returns an empty array. Wiping the UI in that case would
+      // make confirmed messages disappear after navigating away and back.
+      if (serverMsgs.length > 0) {
+        setMessages(serverMsgs);
+      }
       // Drop any optimistic message that is now reflected by the backend.
       // We match on (sender == me) + same text within a 5-minute window.
       const myAddr = wallet.toLowerCase();
@@ -937,10 +1045,12 @@ export default function ChatUIPage() {
     return () => clearInterval(id);
   }, [loadPosts, loadPrivate, tab]);
 
+  // When the tab toggles, clear search + the active contact pointer, but
+  // keep `messages` and `pendingMsgs` intact — the localStorage hydrate
+  // effect re-fills them when the user re-selects the contact, and we
+  // never want to wipe an in-flight optimistic bubble due to a tab nudge.
   useEffect(() => {
     setCurrent(null);
-    setMessages([]);
-    setPendingMsgs([]);
     setSearch("");
   }, [tab]);
 
