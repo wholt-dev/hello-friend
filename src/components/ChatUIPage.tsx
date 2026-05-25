@@ -917,13 +917,27 @@ export default function ChatUIPage() {
                     title="Add bounty"
                   >
                     <img
-                      src="https://gitlab.com/sachinhure/hello-world/-/raw/main/public/coins/zkltc.jpg"
+                      src={zkltcLogo}
                       alt="zkLTC"
                       style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }}
                     />
                   </button>
                 )}
-                {tab === "private" && <IconBtn aria-label="Send zkLTC" disabled={!current} onClick={() => setTipOpen(true)}><DollarSign size={18} /></IconBtn>}
+                {tab === "private" && (
+                  <button
+                    type="button"
+                    aria-label="Send zkLTC"
+                    disabled={!current}
+                    onClick={() => setTipOpen(true)}
+                    className="h-9 w-9 inline-flex items-center justify-center rounded-md hover:bg-white/5 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <img
+                      src={zkltcLogo}
+                      alt="zkLTC"
+                      style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }}
+                    />
+                  </button>
+                )}
                 {tab === "global" && bountyPopupOpen && (
                   <div className="absolute bottom-full left-2 mb-2 z-20 w-72 rounded-lg border border-brand-border bg-brand-surface-2 p-3 shadow-2xl">
                     <div className="flex items-center justify-between mb-2">
