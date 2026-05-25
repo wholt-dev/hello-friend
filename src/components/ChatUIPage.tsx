@@ -12,7 +12,6 @@ import {
   Reply,
   Search,
   Send,
-  Settings,
   Share2,
   Smile,
   SquarePen,
@@ -258,6 +257,90 @@ export default function ChatUIPage() {
   const [emojiOpen, setEmojiOpen] = useState(false);
 
   const [visitedMentions, setVisitedMentions] = useState<Set<string>>(new Set());
+
+  // FIX 1 — feed filter
+  const [feedFilter, setFeedFilter] = useState<"all" | "bounty">("all");
+  // FIX 4/5/6 — in-app view (no react-router available)
+  const [view, setView] = useState<"chat" | "profile" | "market">("chat");
+  const [profileAddr, setProfileAddr] = useState<string>("");
+  const [myDisplayName, setMyDisplayName] = useState<string>("");
+  // FIX 6 — market state
+  const [listings, setListings] = useState<Array<{ name: string; price: string; seller: string }>>([]);
+  const [listName, setListName] = useState("");
+  const [listPrice, setListPrice] = useState("");
+  // FIX 5 — profile data
+  const [profilePoints, setProfilePoints] = useState<string>("0");
+  const [profileBalance, setProfileBalance] = useState<string>("0");
+  const [profileDomains, setProfileDomains] = useState<string[]>([]);
+
+  // Resolve my own .lit name for sidebar bottom
+  useEffect(() => {
+    if (!wallet) { setMyDisplayName(""); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API}/hub/resolve/reverse/${wallet}`);
+        if (r.ok) {
+          const j = await r.json();
+          const n = j?.name || j?.litName || j?.data?.name || "";
+          if (!cancelled) setMyDisplayName(n && typeof n === "string" ? n : "");
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [wallet]);
+
+  // Reset private messages when switching contact
+  useEffect(() => { setMessages([]); }, [current?.address]);
+
+  // FIX 5 — load profile data when entering profile view
+  useEffect(() => {
+    if (view !== "profile" || !profileAddr) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API}/hub/points/${profileAddr}`);
+        const j = await r.json();
+        if (!cancelled) setProfilePoints(String(j?.points ?? j?.balance ?? j?.total ?? 0));
+      } catch { if (!cancelled) setProfilePoints("0"); }
+      try {
+        const r = await fetch(RPC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [profileAddr, "latest"] }),
+        });
+        const j = await r.json();
+        if (!cancelled) setProfileBalance(formatUnitsStr(BigInt(j.result || "0x0"), 18));
+      } catch { if (!cancelled) setProfileBalance("0"); }
+      try {
+        const r = await fetch(`${API}/hub/domains/${profileAddr}`);
+        const j = await r.json();
+        const arr = readArray(j, ["domains", "names", "data"]);
+        if (!cancelled) setProfileDomains(arr.map((d: any) => (typeof d === "string" ? d : d.name || d.domain)).filter(Boolean));
+      } catch { if (!cancelled) setProfileDomains([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [view, profileAddr]);
+
+  // FIX 6 — load market listings
+  const loadListings = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/hub/market/listings`);
+      const j = await r.json();
+      const arr = readArray(j, ["listings", "data", "items"]);
+      setListings(arr.map((l: any) => ({
+        name: l.name || l.domain || "",
+        price: String(l.price ?? l.priceZkLTC ?? "0"),
+        seller: l.seller || l.owner || l.address || "",
+      })).filter((l: any) => l.name));
+    } catch { setListings([]); }
+  }, []);
+  useEffect(() => { if (view === "market") loadListings(); }, [view, loadListings]);
+
+  const openProfile = (addr: string) => {
+    setProfileAddr(addr);
+    setView("profile");
+  };
 
   const scrollToPost = useCallback((id: string) => {
     const el = postRefs.current[id];
@@ -898,13 +981,33 @@ export default function ChatUIPage() {
               <button onClick={() => setTab("global")} className={cn("w-full flex items-center gap-3 px-2 py-2 rounded-md", tab === "global" ? "bg-white/10 text-brand-text-primary" : "text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary")}>
                 <Globe size={18} />{sidebarOpen && <span className="text-sm">Global</span>}
               </button>
+              <button
+                onClick={() => { setView("market"); }}
+                className={cn(
+                  "w-full flex items-center gap-3 px-2 py-2 rounded-md",
+                  view === "market" ? "bg-white/10 text-brand-text-primary" : "text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary"
+                )}
+              >
+                <span className="text-base leading-none">🪙</span>
+                {sidebarOpen && <span className="text-sm">.lit Market</span>}
+              </button>
             </div>
             <div className="mt-auto p-3 space-y-1">
-              <button className="w-full flex items-center gap-3 px-2 py-2 rounded-md text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary">
-                <Settings size={18} />{sidebarOpen && <span className="text-sm">Settings</span>}
-              </button>
-              <button className="w-full flex items-center gap-3 px-2 py-2 rounded-md text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary">
-                <User2 size={18} />{sidebarOpen && (<><span className="text-sm truncate">{short(wallet) || "Not connected"}</span><ChevronUp size={16} className="ml-auto" /></>)}
+              <button
+                onClick={() => wallet && openProfile(wallet)}
+                disabled={!wallet}
+                className="w-full flex items-center gap-3 px-2 py-2 rounded-md text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary disabled:opacity-50"
+                title={wallet || "Not connected"}
+              >
+                <User2 size={18} />
+                {sidebarOpen && (
+                  <>
+                    <span className="text-sm truncate">
+                      {myDisplayName || short(wallet) || "Not connected"}
+                    </span>
+                    <ChevronUp size={16} className="ml-auto" />
+                  </>
+                )}
               </button>
             </div>
           </aside>
@@ -965,6 +1068,28 @@ export default function ChatUIPage() {
                 <div className="text-[15px] font-semibold text-brand-text-primary truncate">{headerName}</div>
                 <div className="text-xs text-brand-text-muted truncate">{tab === "global" ? "Public posts" : current ? short(current.address) : "Contact Info"}</div>
               </div>
+              {tab === "global" && (
+                <div className="ml-auto flex items-center gap-1 rounded-full border border-brand-border bg-brand-surface p-0.5">
+                  <button
+                    onClick={() => setFeedFilter("all")}
+                    className={cn(
+                      "px-3 h-7 rounded-full text-[11px] font-semibold transition-colors",
+                      feedFilter === "all" ? "bg-white/10 text-brand-text-primary" : "text-brand-text-muted hover:text-brand-text-primary"
+                    )}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setFeedFilter("bounty")}
+                    className={cn(
+                      "px-3 h-7 rounded-full text-[11px] font-semibold transition-colors inline-flex items-center gap-1",
+                      feedFilter === "bounty" ? "bg-emerald-500/20 text-emerald-300" : "text-brand-text-muted hover:text-brand-text-primary"
+                    )}
+                  >
+                    🪙 Bounty
+                  </button>
+                </div>
+              )}
             </div>
 
             {tab === "global" && unreadMentions.length > 0 && (
@@ -1018,7 +1143,16 @@ export default function ChatUIPage() {
                   | { kind: "reply"; id: string; ts: number; parent: Post; commenter: string; name?: string; text: string; timestamp?: number | string }
                   | { kind: "transfer"; id: string; ts: number; transfer: typeof localTransfers[number] };
                 const items: FeedItem[] = [];
-                posts.forEach((post, pi) => {
+                const nowSec = Math.floor(Date.now() / 1000);
+                const cutoff = nowSec - 1800;
+                const visiblePosts = feedFilter === "bounty"
+                  ? posts.filter((p) => p.bountyActive)
+                  : posts.filter((p) => {
+                      if (p.pending) return true;
+                      const ts = Number(p.timestamp || 0);
+                      return ts === 0 || ts >= cutoff;
+                    });
+                visiblePosts.forEach((post, pi) => {
                   const pts = Number(post.timestamp || 0) || pi;
                   items.push({ kind: "post", id: `p-${post.id}`, ts: pts, post });
                   (post.comments || []).forEach((c, ci) => {
@@ -1557,6 +1691,133 @@ export default function ChatUIPage() {
       {sendToast && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] bg-emerald-500/95 text-black rounded-xl px-6 py-3 shadow-xl font-bold text-sm pointer-events-none">
           {sendToast}
+        </div>
+      )}
+
+      {view === "profile" && (
+        <div className="fixed inset-0 z-[90] bg-brand-bg overflow-y-auto">
+          <div className="max-w-3xl mx-auto p-6">
+            <div className="flex items-center justify-between mb-6">
+              <button onClick={() => setView("chat")} className="text-sm text-brand-text-muted hover:text-brand-text-primary">← Back</button>
+              <div className="text-xs text-brand-text-muted">/profile/{short(profileAddr)}</div>
+            </div>
+            <div className="flex items-center gap-4 mb-6">
+              <Avatar name={namesRef.current[profileAddr.toLowerCase()] || profileAddr} size={72} />
+              <div className="min-w-0">
+                <div className="text-xl font-semibold text-brand-text-primary truncate">
+                  {namesRef.current[profileAddr.toLowerCase()] || (profileAddr.toLowerCase() === wallet.toLowerCase() ? myDisplayName : "") || short(profileAddr)}
+                </div>
+                <div className="text-xs text-brand-text-muted truncate">{profileAddr}</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+              <div className="rounded-lg border border-brand-border bg-brand-surface p-4">
+                <div className="text-[11px] text-brand-text-muted">Points</div>
+                <div className="text-lg font-semibold text-brand-text-primary mt-1">{profilePoints}</div>
+              </div>
+              <div className="rounded-lg border border-brand-border bg-brand-surface p-4">
+                <div className="text-[11px] text-brand-text-muted">zkLTC balance</div>
+                <div className="text-lg font-semibold text-brand-text-primary mt-1">{profileBalance}</div>
+              </div>
+            </div>
+            <div className="mb-6">
+              <div className="text-xs font-semibold text-brand-text-muted mb-2">.lit Domains</div>
+              <div className="flex flex-wrap gap-2">
+                {profileDomains.length === 0 && <div className="text-xs text-brand-text-muted">No domains owned</div>}
+                {profileDomains.map((d) => (
+                  <span key={d} className="px-2 py-1 rounded-full bg-brand-surface border border-brand-border text-xs text-brand-text-primary">{d}</span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-brand-text-muted mb-2">Recent posts</div>
+              <div className="space-y-2">
+                {posts.filter((p) => p.author?.toLowerCase() === profileAddr.toLowerCase()).slice(0, 20).map((p) => (
+                  <div key={p.id} className="rounded-lg border border-brand-border bg-brand-surface px-3 py-2 text-sm text-brand-text-primary">
+                    <div className="text-[11px] text-brand-text-muted">{displayTime(p.timestamp)}</div>
+                    <div className="mt-1 whitespace-pre-wrap break-words">{p.content}</div>
+                  </div>
+                ))}
+                {posts.filter((p) => p.author?.toLowerCase() === profileAddr.toLowerCase()).length === 0 && (
+                  <div className="text-xs text-brand-text-muted">No posts yet</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {view === "market" && (
+        <div className="fixed inset-0 z-[90] bg-brand-bg overflow-y-auto">
+          <div className="max-w-3xl mx-auto p-6">
+            <div className="flex items-center justify-between mb-6">
+              <button onClick={() => setView("chat")} className="text-sm text-brand-text-muted hover:text-brand-text-primary">← Back</button>
+              <div className="text-xs text-brand-text-muted">/market</div>
+            </div>
+            <h1 className="text-xl font-semibold text-brand-text-primary mb-4">.lit Domain Market</h1>
+
+            <div className="rounded-lg border border-brand-border bg-brand-surface p-4 mb-6">
+              <div className="text-sm font-semibold text-brand-text-primary mb-2">List your domain</div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input value={listName} onChange={(e) => setListName(e.target.value)} placeholder="yourname.lit" className="flex-1 h-10 px-3 rounded-md bg-brand-bg border border-brand-border text-sm text-brand-text-primary outline-none" />
+                <input value={listPrice} onChange={(e) => setListPrice(e.target.value)} placeholder="Price in zkLTC" className="w-full sm:w-44 h-10 px-3 rounded-md bg-brand-bg border border-brand-border text-sm text-brand-text-primary outline-none" />
+                <button
+                  disabled={busy || !listName.trim() || !listPrice.trim()}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      const r = await fetch(`${API}/hub/market/list`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name: listName.trim(), price: listPrice.trim(), seller: wallet }),
+                      });
+                      if (!r.ok) throw new Error("List failed");
+                      setListName(""); setListPrice("");
+                      await loadListings();
+                    } catch (err: any) {
+                      try { (await import("sonner")).toast.error(err?.message || "List failed"); } catch { /* ignore */ }
+                    } finally { setBusy(false); }
+                  }}
+                  className="h-10 px-4 rounded-md bg-brand-teal text-brand-bg text-sm font-semibold disabled:opacity-50"
+                >
+                  List for Sale
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {listings.length === 0 && <div className="text-sm text-brand-text-muted text-center py-6">No listings yet</div>}
+              {listings.map((l) => (
+                <div key={`${l.name}-${l.seller}`} className="rounded-lg border border-brand-border bg-brand-surface px-3 py-3 flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-brand-text-primary truncate">{l.name}</div>
+                    <div className="text-[11px] text-brand-text-muted truncate">Seller: {short(l.seller)}</div>
+                  </div>
+                  <div className="text-sm font-semibold text-emerald-400 whitespace-nowrap">{l.price} zkLTC</div>
+                  <button
+                    disabled={busy || !wallet || l.seller?.toLowerCase() === wallet.toLowerCase()}
+                    onClick={async () => {
+                      setBusy(true);
+                      try {
+                        const r = await fetch(`${API}/hub/market/buy`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ name: l.name, buyer: wallet }),
+                        });
+                        if (!r.ok) throw new Error("Buy failed");
+                        await loadListings();
+                      } catch (err: any) {
+                        try { (await import("sonner")).toast.error(err?.message || "Buy failed"); } catch { /* ignore */ }
+                      } finally { setBusy(false); }
+                    }}
+                    className="h-8 px-3 rounded-md bg-brand-teal text-brand-bg text-xs font-semibold disabled:opacity-50"
+                  >
+                    Buy
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>
