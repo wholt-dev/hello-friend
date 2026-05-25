@@ -46,6 +46,30 @@ const SELECTOR = {
   friendRequests: "0xdc5bd536",
 };
 
+const ERC20_TRANSFER_SELECTOR = "0xa9059cbb";
+const TOKENS: Record<string, { address: string | null; decimals: number; symbol: string }> = {
+  ZKLTC:   { address: null, decimals: 18, symbol: "zkLTC" },
+  USDC:    { address: "0xFC43ABE529CDC61B7F0aa2e677451AFd83d2B304", decimals: 6,  symbol: "USDC" },
+  PEPE:    { address: "0x6858790e164a8761a711BAD1178220C5AebcF7eC", decimals: 18, symbol: "PEPE" },
+  USDT:    { address: "0xa38c318a0B755154b25f28cAD7b2312747B073C6", decimals: 6,  symbol: "USDT" },
+  LESTER:  { address: "0xFC73cdB75F37B0da829c4e54511f410D525B76b2", decimals: 18, symbol: "Lester" },
+  WETH:    { address: "0x68Bf11e64cfD939fE1761012862FBFE47048118e", decimals: 18, symbol: "WETH" },
+  WBTC:    { address: "0xcFe6BE457D366329CCdeE7fBC48aBf1d6FFeB9C0", decimals: 18, symbol: "WBTC" },
+  LDEX:    { address: "0xBAaba603e6298fbb76325a6B0d47Cd57154ca641", decimals: 18, symbol: "LDEX" },
+  ZKPEPE:  { address: "0x314522DD1B3f74Dd1DdE03E5B5a628C28134b25d", decimals: 18, symbol: "zkPEPE" },
+  ZKETH:   { address: "0xaf9F497007342Dd025Ff696964A736Ec9584c3dd", decimals: 18, symbol: "zkETH" },
+  LDTOAD:  { address: "0xF425553A84e579BE353a6180F7d53d8101bfb3E4", decimals: 18, symbol: "LDTOAD" },
+  "USDC.T": { address: "0x60DD65bAd8a73Dfd8DF029C4e3b372d575B03BC2", decimals: 6, symbol: "USDC.t" },
+  YURI:    { address: "0xd8C4e6dBe48472d6C563eB1cc330207d020D4c8f", decimals: 18, symbol: "YURI" },
+  CHAWLEE: { address: "0x05149f41AFE7ca712D6A42390e8047E0f2887284", decimals: 18, symbol: "CHAWLEE" },
+};
+const SEND_CMD_RE = /^\s*send\s+([\d]+(?:\.\d+)?)\s+([A-Za-z][\w.]*)\s+to\s+([\w-]+\.lit)\s*$/i;
+const parseUnitsStr = (value: string, decimals: number) => {
+  const [whole = "0", fraction = ""] = value.trim().split(".");
+  const frac = (fraction + "0".repeat(decimals)).slice(0, decimals);
+  return BigInt(whole || "0") * 10n ** BigInt(decimals) + BigInt(frac || "0");
+};
+
 type Contact = { address: string; name: string; message?: string };
 type Msg = { id?: string | number; from?: string; wallet?: string; to?: string; message?: string; content?: string; text?: string; contentHash?: string; ts?: number; timestamp?: number | string; createdAt?: string };
 type Comment = { commenter: string; text: string; timestamp?: number | string; name?: string };
