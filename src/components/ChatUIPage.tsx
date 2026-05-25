@@ -1693,6 +1693,133 @@ export default function ChatUIPage() {
           {sendToast}
         </div>
       )}
+
+      {view === "profile" && (
+        <div className="fixed inset-0 z-[90] bg-brand-bg overflow-y-auto">
+          <div className="max-w-3xl mx-auto p-6">
+            <div className="flex items-center justify-between mb-6">
+              <button onClick={() => setView("chat")} className="text-sm text-brand-text-muted hover:text-brand-text-primary">← Back</button>
+              <div className="text-xs text-brand-text-muted">/profile/{short(profileAddr)}</div>
+            </div>
+            <div className="flex items-center gap-4 mb-6">
+              <Avatar name={namesRef.current[profileAddr.toLowerCase()] || profileAddr} size={72} />
+              <div className="min-w-0">
+                <div className="text-xl font-semibold text-brand-text-primary truncate">
+                  {namesRef.current[profileAddr.toLowerCase()] || (profileAddr.toLowerCase() === wallet.toLowerCase() ? myDisplayName : "") || short(profileAddr)}
+                </div>
+                <div className="text-xs text-brand-text-muted truncate">{profileAddr}</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+              <div className="rounded-lg border border-brand-border bg-brand-surface p-4">
+                <div className="text-[11px] text-brand-text-muted">Points</div>
+                <div className="text-lg font-semibold text-brand-text-primary mt-1">{profilePoints}</div>
+              </div>
+              <div className="rounded-lg border border-brand-border bg-brand-surface p-4">
+                <div className="text-[11px] text-brand-text-muted">zkLTC balance</div>
+                <div className="text-lg font-semibold text-brand-text-primary mt-1">{profileBalance}</div>
+              </div>
+            </div>
+            <div className="mb-6">
+              <div className="text-xs font-semibold text-brand-text-muted mb-2">.lit Domains</div>
+              <div className="flex flex-wrap gap-2">
+                {profileDomains.length === 0 && <div className="text-xs text-brand-text-muted">No domains owned</div>}
+                {profileDomains.map((d) => (
+                  <span key={d} className="px-2 py-1 rounded-full bg-brand-surface border border-brand-border text-xs text-brand-text-primary">{d}</span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-brand-text-muted mb-2">Recent posts</div>
+              <div className="space-y-2">
+                {posts.filter((p) => p.author?.toLowerCase() === profileAddr.toLowerCase()).slice(0, 20).map((p) => (
+                  <div key={p.id} className="rounded-lg border border-brand-border bg-brand-surface px-3 py-2 text-sm text-brand-text-primary">
+                    <div className="text-[11px] text-brand-text-muted">{displayTime(p.timestamp)}</div>
+                    <div className="mt-1 whitespace-pre-wrap break-words">{p.content}</div>
+                  </div>
+                ))}
+                {posts.filter((p) => p.author?.toLowerCase() === profileAddr.toLowerCase()).length === 0 && (
+                  <div className="text-xs text-brand-text-muted">No posts yet</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {view === "market" && (
+        <div className="fixed inset-0 z-[90] bg-brand-bg overflow-y-auto">
+          <div className="max-w-3xl mx-auto p-6">
+            <div className="flex items-center justify-between mb-6">
+              <button onClick={() => setView("chat")} className="text-sm text-brand-text-muted hover:text-brand-text-primary">← Back</button>
+              <div className="text-xs text-brand-text-muted">/market</div>
+            </div>
+            <h1 className="text-xl font-semibold text-brand-text-primary mb-4">.lit Domain Market</h1>
+
+            <div className="rounded-lg border border-brand-border bg-brand-surface p-4 mb-6">
+              <div className="text-sm font-semibold text-brand-text-primary mb-2">List your domain</div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input value={listName} onChange={(e) => setListName(e.target.value)} placeholder="yourname.lit" className="flex-1 h-10 px-3 rounded-md bg-brand-bg border border-brand-border text-sm text-brand-text-primary outline-none" />
+                <input value={listPrice} onChange={(e) => setListPrice(e.target.value)} placeholder="Price in zkLTC" className="w-full sm:w-44 h-10 px-3 rounded-md bg-brand-bg border border-brand-border text-sm text-brand-text-primary outline-none" />
+                <button
+                  disabled={busy || !listName.trim() || !listPrice.trim()}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      const r = await fetch(`${API}/hub/market/list`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name: listName.trim(), price: listPrice.trim(), seller: wallet }),
+                      });
+                      if (!r.ok) throw new Error("List failed");
+                      setListName(""); setListPrice("");
+                      await loadListings();
+                    } catch (err: any) {
+                      try { (await import("sonner")).toast.error(err?.message || "List failed"); } catch { /* ignore */ }
+                    } finally { setBusy(false); }
+                  }}
+                  className="h-10 px-4 rounded-md bg-brand-teal text-brand-bg text-sm font-semibold disabled:opacity-50"
+                >
+                  List for Sale
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {listings.length === 0 && <div className="text-sm text-brand-text-muted text-center py-6">No listings yet</div>}
+              {listings.map((l) => (
+                <div key={`${l.name}-${l.seller}`} className="rounded-lg border border-brand-border bg-brand-surface px-3 py-3 flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-brand-text-primary truncate">{l.name}</div>
+                    <div className="text-[11px] text-brand-text-muted truncate">Seller: {short(l.seller)}</div>
+                  </div>
+                  <div className="text-sm font-semibold text-emerald-400 whitespace-nowrap">{l.price} zkLTC</div>
+                  <button
+                    disabled={busy || !wallet || l.seller?.toLowerCase() === wallet.toLowerCase()}
+                    onClick={async () => {
+                      setBusy(true);
+                      try {
+                        const r = await fetch(`${API}/hub/market/buy`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ name: l.name, buyer: wallet }),
+                        });
+                        if (!r.ok) throw new Error("Buy failed");
+                        await loadListings();
+                      } catch (err: any) {
+                        try { (await import("sonner")).toast.error(err?.message || "Buy failed"); } catch { /* ignore */ }
+                      } finally { setBusy(false); }
+                    }}
+                    className="h-8 px-3 rounded-md bg-brand-teal text-brand-bg text-xs font-semibold disabled:opacity-50"
+                  >
+                    Buy
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
