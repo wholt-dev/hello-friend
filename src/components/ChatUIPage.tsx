@@ -631,28 +631,8 @@ export default function ChatUIPage() {
   const sendGlobal = async () => {
     const body = draft.trim();
     if (!body) return;
-    const slashMatch = body.match(SLASH_SEND_FULL_RE);
-    const sendMatch = !slashMatch ? body.match(SEND_CMD_RE) : null;
-    if (slashMatch || sendMatch) {
-      const [amount, tokenSym, litName] = slashMatch
-        ? [slashMatch[2], slashMatch[1], slashMatch[3]]
-        : [sendMatch![1], sendMatch![2], sendMatch![3]];
-      setBusy(true);
-      try {
-        await sendTokenCommand(amount, tokenSym, litName);
-        const sym = TOKENS[tokenSym.toUpperCase()]?.symbol || tokenSym;
-        setSendToast(`✅ Sent ${amount} ${sym} to ${litName}!`);
-        setTimeout(() => setSendToast(null), 4000);
-        setDraft("");
-        setReplyTo(null);
-      } catch (err: any) {
-        console.error("[ChatUI] send command error:", err);
-        alert(err?.message || "Send failed");
-      } finally { setBusy(false); }
-      return;
-    }
     const content = replyTo
-      ? (body.startsWith("@") ? body : `@${short(replyTo.authorAddr)} ${body}`)
+      ? `[replyTo:${replyTo.postId}] @${replyTo.name || short(replyTo.authorAddr)} ${body}`
       : body;
     const useBounty = inlineBountyActive && (Number(inlineLikeReward || 0) > 0 || Number(inlineCommentReward || 0) > 0);
     const likeWei = useBounty ? parseAmount(inlineLikeReward || "0") : 0n;
