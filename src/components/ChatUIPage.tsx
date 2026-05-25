@@ -862,6 +862,35 @@ export default function ChatUIPage() {
                       (myLitName && contentLc.includes(`@${myLitName}`))
                     );
                     const isHighlighted = highlightedId === post.id;
+                    const sendMatch = (post.content || "").match(SEND_CMD_RE);
+                    if (sendMatch) {
+                      const senderName = post.name || short(post.author);
+                      return (
+                        <div key={item.id} className="flex justify-start">
+                          <div
+                            ref={(el) => { postRefs.current[post.id] = el; }}
+                            className={cn(
+                              "relative max-w-[760px] w-fit rounded-xl border border-green-500/50 bg-gradient-to-r from-green-900/40 to-emerald-900/40 px-4 py-3 text-sm text-brand-text-primary transition-all",
+                              isHighlighted && "ring-2 ring-yellow-400"
+                            )}
+                          >
+                            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-300">
+                              <span>➤</span>
+                              <span>Token Sent</span>
+                              <span className="ml-2 text-[10px] font-normal text-brand-text-muted normal-case tracking-normal">{displayTime(post.timestamp)}</span>
+                            </div>
+                            <div className="mt-2 flex items-center gap-2">
+                              <Avatar name={senderName} size={30} />
+                              <div className="text-sm leading-snug">
+                                <span className="font-semibold">{senderName}</span>{" "}
+                                sent <span className="font-semibold text-emerald-300">{sendMatch[1]} {sendMatch[2]}</span>{" "}
+                                to <span className="font-semibold">{sendMatch[3]}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
                     return (
                       <div key={item.id} className="flex justify-start">
                         <div
