@@ -566,7 +566,7 @@ export default function ChatUIPage() {
       const data = ERC20_TRANSFER_SELECTOR + addressHex(to) + uintHex(parseUnitsStr(amount, token.decimals));
       await writeContract(token.address, data, 0n);
     }
-    const content = `send ${amount} ${token.symbol} to ${litName}`;
+    const content = `💸 Sent ${amount} ${token.symbol} to ${litName}`;
     await writeContract(
       HUB_POSTS_ADDRESS,
       encodeCall(SELECTOR.createPost, [
