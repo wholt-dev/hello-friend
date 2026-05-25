@@ -544,17 +544,12 @@ export default function ChatUIPage() {
       console.log("[ChatUI] /hub/posts response:", data);
       const arr = readArray(data, ["posts", "data", "items"]);
       console.log("[ChatUI] posts array length:", arr.length);
-      const mapped = await Promise.all(arr.map(async (p: any, index: number): Promise<Post> => {
+      const mapped: Post[] = await Promise.all(arr.map(async (p: any, index: number): Promise<Post> => {
         const author = p.author || p.wallet || p.walletAddress || p.from || p.creator || "";
         const id = String(p.id ?? p.postId ?? index);
-        const name = p.name || p.litName || p.creatorName || await resolveName(author);
-        let liked = Boolean(p.liked || p.hasLiked);
-        if (wallet && !liked) {
-          try {
-            const data = encodeCall(SELECTOR.hasLiked, [{ type: "uint", value: id }, { type: "address", value: wallet }]);
-            liked = decodeBool(await readContract(HUB_POSTS_ADDRESS, data));
-          } catch { /* keep backend value */ }
-        }
+        const cachedName = namesRef.current[(author || "").toLowerCase()];
+        const name = p.name || p.litName || p.creatorName || cachedName || short(author);
+        const liked = Boolean(p.liked || p.hasLiked);
         const commentsRaw = Array.isArray(p.comments) ? p.comments : [];
         const comments: Comment[] = commentsRaw.map((c: any) => ({
           commenter: c.commenter || c.from || c.wallet || c.author || "",
@@ -593,7 +588,20 @@ export default function ChatUIPage() {
     } finally {
       setPostsLoading(false);
     }
-  }, [resolveName, wallet]);
+    // background: resolve unresolved names and patch posts in
+    (async () => {
+      try {
+        const arr = readArray(data, ["posts", "data", "items"]);
+        const toResolve = new Set<string>();
+        for (const p of arr) {
+          const a = (p.author || p.wallet || p.creator || "").toLowerCase();
+          if (a && !namesRef.current[a]) toResolve.add(a);
+        }
+        for (const a of toResolve) { await resolveName(a); }
+        setPosts((prev) => prev.map((p) => ({ ...p, name: p.name && !p.name.startsWith("0x") ? p.name : (namesRef.current[(p.author||"").toLowerCase()] || p.name) })));
+      } catch { /* ignore */ }
+    })();
+  }, [resolveName]);
 
   const loadPrivate = useCallback(async () => {
     let connectedWallet = wallet;
@@ -647,7 +655,7 @@ export default function ChatUIPage() {
   useEffect(() => {
     if (tab === "global") {
       loadPosts();
-      const id = setInterval(loadPosts, 10_000);
+      const id = setInterval(loadPosts, 8_000);
       return () => clearInterval(id);
     }
     loadPrivate();
