@@ -537,13 +537,14 @@ export default function ChatUIPage() {
   }, []);
 
   const loadPosts = useCallback(async () => {
+    let arr0: any[] = [];
     try {
       console.log("[ChatUI] fetching posts:", `${API}/hub/posts`);
       const response = await fetch(`${API}/hub/posts`);
       const data = await response.json();
       console.log("[ChatUI] /hub/posts response:", data);
-      const arr0 = readArray(data, ["posts", "data", "items"]);
-      console.log("[ChatUI] posts array length:", arr.length);
+      arr0 = readArray(data, ["posts", "data", "items"]);
+      console.log("[ChatUI] posts array length:", arr0.length);
       const mapped: Post[] = await Promise.all(arr0.map(async (p: any, index: number): Promise<Post> => {
         const author = p.author || p.wallet || p.walletAddress || p.from || p.creator || "";
         const id = String(p.id ?? p.postId ?? index);
@@ -591,9 +592,8 @@ export default function ChatUIPage() {
     // background: resolve unresolved names and patch posts in
     (async () => {
       try {
-        const arr = readArray(data, ["posts", "data", "items"]);
         const toResolve = new Set<string>();
-        for (const p of arr) {
+        for (const p of arr0) {
           const a = (p.author || p.wallet || p.creator || "").toLowerCase();
           if (a && !namesRef.current[a]) toResolve.add(a);
         }
