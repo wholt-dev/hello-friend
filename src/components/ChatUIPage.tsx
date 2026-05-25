@@ -1465,3 +1465,64 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
     </div>
   );
 }
+
+const EMOJI_CATEGORIES: { label: string; emojis: string[] }[] = [
+  { label: "Smileys", emojis: ["😀","😃","😄","😁","😆","😅","😂","🤣","😊","🙂","😉","😍","😘","😜","🤪","😎","🤩","🥳","😏","😭","😡","🤔","😴","🤤","🤯","🥺","😬","😱","🤗","🤐"] },
+  { label: "Gestures", emojis: ["👍","👎","👌","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","👇","☝️","👋","🤚","🖐️","✋","🖖","👏","🙌","🙏","💪","🫶","🤝","✊","👊"] },
+  { label: "Animals", emojis: ["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🐔","🐧","🐦","🐤","🦄","🐝","🦋","🐢","🐍","🐙","🦀","🐬","🐳","🦈","🐊"] },
+  { label: "Food", emojis: ["🍎","🍊","🍋","🍌","🍉","🍇","🍓","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🥑","🌽","🌶️","🥕","🍔","🍟","🍕","🌭","🥪","🌮","🍣","🍩","🍪","🎂","🍰","🍫","🍿","🍺","🍷","☕","🍵"] },
+  { label: "Travel", emojis: ["🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","🚜","🛵","🏍️","🚲","✈️","🚀","🛸","🚁","⛵","🚤","🛳️","🚂","🗽","🗼","🏰","🏖️","🏝️","🏔️","🌋","🗺️","🧭"] },
+  { label: "Objects", emojis: ["💎","💰","💸","💵","🎁","🎉","🎊","🎈","🔔","💡","🔦","📱","💻","⌨️","🖥️","🖱️","💾","📷","🎥","📺","🎮","🕹️","🎲","🎯","🏆","🥇","🔑","🔒","📦","📚"] },
+  { label: "Symbols", emojis: ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","💔","❣️","💕","💞","💓","💗","💖","💘","💝","🔥","⭐","🌟","✨","⚡","☀️","🌈","☁️","❄️","✅","❌","⚠️","♻️","🔱","💯","✔️","➡️","⬅️"] },
+];
+
+function EmojiPicker({ onPick, onClose }: { onPick: (emoji: string) => void; onClose: () => void }) {
+  const [cat, setCat] = React.useState(0);
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+  return (
+    <div
+      ref={ref}
+      className="absolute bottom-full left-2 mb-2 z-30 w-72 rounded-lg border border-brand-border bg-brand-surface-2 p-2 shadow-2xl"
+    >
+      <div className="flex gap-1 overflow-x-auto mb-2 pb-1 border-b border-brand-border">
+        {EMOJI_CATEGORIES.map((c, i) => (
+          <button
+            key={c.label}
+            type="button"
+            onClick={() => setCat(i)}
+            className={cn(
+              "px-2 py-1 rounded text-[10px] whitespace-nowrap",
+              i === cat ? "bg-white/10 text-brand-text-primary" : "text-brand-text-muted hover:text-brand-text-primary",
+            )}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-8 gap-1 max-h-48 overflow-y-auto">
+        {EMOJI_CATEGORIES[cat].emojis.map((e, i) => (
+          <button
+            key={`${e}-${i}`}
+            type="button"
+            onClick={() => onPick(e)}
+            className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-white/10 text-lg"
+          >
+            {e}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
