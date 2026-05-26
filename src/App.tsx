@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import NotificationsPanel, { useNotifications } from './components/NotificationsPanel';
 import SuccessCard from './components/SuccessCard';
 import { addNotif } from './lib/notifications';
