@@ -171,8 +171,8 @@ export function AnimatedNavFramer({ activePage, onPageChange }: { activePage: st
               <span className="flex flex-col items-center leading-none">
                 <span>{item.name}</span>
                 {item.beta && (
-                  <span className="mt-0.5 text-[7px] sm:text-[8px] font-extrabold tracking-[0.25em] text-white/60 leading-none">
-                    BETA
+                  <span className="mt-0.5 text-[8px] sm:text-[9px] italic font-medium tracking-wide text-white/60 leading-none">
+                    💬 beta
                   </span>
                 )}
               </span>
@@ -241,7 +241,7 @@ export function AnimatedNavFramer({ activePage, onPageChange }: { activePage: st
                 )}
               >
                 {item.name}
-                {item.beta && <span className="ml-2 text-[10px] tracking-[0.25em] text-white/50">BETA</span>}
+                {item.beta && <span className="ml-2 text-[10px] italic font-medium tracking-wide text-white/60">💬 beta</span>}
                 {item.locked && <Lock size={16} className="opacity-40" />}
               </button>
             ))}
@@ -286,7 +286,7 @@ export function AnimatedNavFramer({ activePage, onPageChange }: { activePage: st
                             )}
                         >
                             {item.name}
-                            {item.beta && <span className="ml-3 text-sm tracking-[0.3em] text-white/50 align-middle">BETA</span>}
+                            {item.beta && <span className="ml-3 text-sm italic font-medium tracking-wide text-white/60 align-middle">💬 beta</span>}
                             {item.locked && <Lock size={24} className="opacity-40" />}
                         </button>
                     ))}
