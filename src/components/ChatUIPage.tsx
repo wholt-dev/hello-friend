@@ -106,7 +106,7 @@ async function fetchRPC(body: unknown, init?: RequestInit): Promise<Response> {
 const HUB_POSTS_ADDRESS = "0x33690545061cF3759350dd2C5A0d1080D9A14D73";
 const LIT_REGISTRY_ADDRESS = "0x3E3aEE6d154f881A7418b2dA50c915C34664C2A8";
 const MESSENGER_ADDRESS = "0x69405b51963D592C6CA9350F774045d4E76c89B8";
-const MARKETPLACE_ADDRESS = "0x9cc6e4BB66EC19475d9db8082482Eb272cf6eA02";
+const MARKETPLACE_ADDRESS = "0x191678312D1d95eF2A05DfCEEa5401b6c654385E";
 
 // Ensure MetaMask is on the LiteForge chain before issuing any signed
 // transaction. Without this the wallet can sign on the wrong network and
@@ -149,6 +149,7 @@ const MARKETPLACE_ABI = [
   "function placeBid(string name) external payable",
   "function cancelBid(string name) external",
   "function acceptBid(string name, address bidder) external",
+  "function rejectBid(string name, address bidder) external",
 ] as const;
 
 async function getMarketplaceContract() {
@@ -1110,38 +1111,51 @@ export default function ChatUIPage() {
     } finally { setBusy(false); }
   }, [wallet, loadListings, loadMyDomains, loadBidsForOwner, loadBidsByDomain]);
 
-  // The marketplace contract has no on-chain "seller rejects" function — only
-  // the bidder can cancelBid (gets refund). So Reject is purely a UX signal:
-  // notify the bidder that the seller declined and ask them to cancel the bid
-  // on their side to recover their funds.
+  // Seller-side bid rejection — the new LitMarketplace exposes
+  // `rejectBid(name, bidder)` which refunds the bidder's locked zkLTC
+  // and emits BidRejected. We call it on-chain so the bid actually
+  // disappears for everyone (not just the seller's UI).
   const rejectBid = useCallback(async (domain: string, bidder: string) => {
     if (!wallet) return;
-    addNotif(bidder, {
-      type: "gf",
-      title: `Bid declined`,
-      message: `${short(wallet)} declined your bid on ${domain}. Cancel from your bids to recover funds.`,
-      link: `/chat`,
-    });
-    // Optimistic UI clear so the rejected card vanishes immediately
-    // without waiting for the next backend poll. Reject is UX-only —
-    // bidder still has to call cancelBid to recover their funds.
-    setBidsForOwner((prev) => prev.filter((b) => !(b.domain === domain && b.bidder.toLowerCase() === bidder.toLowerCase())));
-    setBidsByDomain((prev) => {
-      const next = { ...prev };
-      if (next[domain]) {
-        next[domain] = next[domain].filter((b) => b.bidder.toLowerCase() !== bidder.toLowerCase());
-      }
-      return next;
-    });
-    showSuccess({
-      title: "BID DECLINED",
-      subtitle: "BIDDER NOTIFIED",
-      rows: [
-        { label: "NAME", value: `${domain}.lit` },
-        { label: "BIDDER", value: short(bidder) },
-      ],
-    });
-  }, [wallet]);
+    setBusy(true);
+    try {
+      const c = await getMarketplaceContract();
+      console.log("[Market] rejectBid()", { domain, bidder });
+      const tx = await c.rejectBid(domain, bidder);
+      console.log("[Market] rejectBid: tx submitted", tx.hash);
+      await tx.wait();
+      console.log("[Market] rejectBid: confirmed");
+      addNotif(bidder, {
+        type: "gf",
+        title: "Your offer got rejected",
+        message: `${short(wallet)} declined your bid on ${domain}.lit. Funds refunded.`,
+        link: "/chat",
+      });
+      // Optimistic clear so the rejected card vanishes immediately.
+      setBidsForOwner((prev) => prev.filter((b) => !(b.domain === domain && b.bidder.toLowerCase() === bidder.toLowerCase())));
+      setBidsByDomain((prev) => {
+        const next = { ...prev };
+        if (next[domain]) {
+          next[domain] = next[domain].filter((b) => b.bidder.toLowerCase() !== bidder.toLowerCase());
+        }
+        return next;
+      });
+      await Promise.all([loadBidsForOwner(), loadBidsByDomain()]);
+      showSuccess({
+        title: "BID REJECTED",
+        subtitle: "BIDDER REFUNDED",
+        rows: [
+          { label: "NAME", value: `${domain}.lit` },
+          { label: "BIDDER", value: short(bidder) },
+          { label: "TX", value: `${tx.hash.slice(0, 10)}...` },
+        ],
+      });
+    } catch (err: any) {
+      const msg = err?.shortMessage || err?.reason || err?.message || "Reject failed";
+      console.error("[Market] rejectBid failed", err);
+      showError(msg);
+    } finally { setBusy(false); }
+  }, [wallet, loadBidsForOwner, loadBidsByDomain]);
 
   // Cancel my own bid on a listing. Calls marketplace.cancelBid() which
   // refunds the locked zkLTC back to the bidder. Used by:
