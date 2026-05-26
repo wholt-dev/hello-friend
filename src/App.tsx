@@ -4937,8 +4937,9 @@ const FaucetPage = () => {
         )}
 
         <div className="mt-6 text-[10px] text-brand-text-muted space-y-1">
-          <p>• 0.01 zkLTC + 100 Points per claim</p>
+          <p>• 0.01 zkLTC + 10 Points per claim</p>
           <p>• 24 hour cooldown between claims</p>
+          <p>• Requires LitDeX NFT + .lit domain</p>
         </div>
       </Card>
     </motion.div>
@@ -4978,6 +4979,7 @@ const FaucetModal = ({ open, onClose, wallet }: { open: boolean; onClose: () => 
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [countdown, setCountdown] = useState<string>("");
   const [faucetEnabled, setFaucetEnabled] = useState<boolean>(true);
+  const [eligibility, setEligibility] = useState<{ nft: boolean; domain: boolean } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -4996,6 +4998,7 @@ const FaucetModal = ({ open, onClose, wallet }: { open: boolean; onClose: () => 
     if (!open) return;
     setSuccess(null);
     setErrorMsg("");
+    setEligibility(null);
     if (!wallet) return;
     let cancelled = false;
     (async () => {
@@ -5004,6 +5007,13 @@ const FaucetModal = ({ open, onClose, wallet }: { open: boolean; onClose: () => 
         const s = await faucetApi.getStatus(wallet);
         if (!cancelled) { setStatus(s); setFetchedAt(Date.now()); }
       } catch { /* ignore */ }
+      try {
+        const r = await fetch(`https://api.test-hub.xyz/faucet/eligibility/${wallet.toLowerCase()}`);
+        const j = await r.json();
+        if (!cancelled && j && typeof j.nft === 'boolean') {
+          setEligibility({ nft: !!j.nft, domain: !!j.domain });
+        }
+      } catch { /* ignore — backend may not be patched yet */ }
     })();
     return () => { cancelled = true; };
   }, [open, wallet]);
@@ -5034,7 +5044,7 @@ const FaucetModal = ({ open, onClose, wallet }: { open: boolean; onClose: () => 
       const res = await faucetApi.claim(wallet);
       if (res.ok) {
         setSuccess({ explorerUrl: res.explorerUrl });
-        try { addNotif(wallet, { type: "faucet", title: "Faucet Claimed", message: "0.01 zkLTC + 100 Points sent" }); } catch {}
+        try { addNotif(wallet, { type: "faucet", title: "Faucet Claimed", message: "0.01 zkLTC + 10 Points sent" }); } catch {}
       } else {
         setErrorMsg(res.message || res.reason || "Claim failed");
         try {
@@ -5068,7 +5078,7 @@ const FaucetModal = ({ open, onClose, wallet }: { open: boolean; onClose: () => 
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
               <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 text-white" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
             </div>
-            <p className="text-lg font-bold mb-1">✅ 0.01 zkLTC + 100 Points sent!</p>
+            <p className="text-lg font-bold mb-1">✅ 0.01 zkLTC + 10 Points sent!</p>
             <p className="text-sm text-brand-text-muted mb-4">Check your wallet & points balance</p>
             {success.explorerUrl && (
               <a
@@ -5087,7 +5097,7 @@ const FaucetModal = ({ open, onClose, wallet }: { open: boolean; onClose: () => 
         ) : !faucetEnabled ? (
           <>
             <p className="text-brand-text-muted text-sm mb-2">Claim free testnet tokens to get started</p>
-            <p className="text-xs text-brand-text-muted/70 mb-6">Get 0.01 zkLTC + 100 Points • 24hr cooldown</p>
+            <p className="text-xs text-brand-text-muted/70 mb-6">Get 0.01 zkLTC + 10 Points • 24hr cooldown</p>
             <button
               disabled
               className="w-full py-3.5 bg-white text-black rounded-xl font-bold text-base opacity-50 cursor-not-allowed"
@@ -5099,13 +5109,31 @@ const FaucetModal = ({ open, onClose, wallet }: { open: boolean; onClose: () => 
         ) : canClaim ? (
           <>
             <p className="text-brand-text-muted text-sm mb-2">Claim free testnet tokens to get started</p>
-            <p className="text-xs text-brand-text-muted/70 mb-6">Get 0.01 zkLTC + 100 Points • 24hr cooldown</p>
+            <p className="text-xs text-brand-text-muted/70 mb-6">Get 0.01 zkLTC + 10 Points • 24hr cooldown</p>
+
+            {eligibility && (!eligibility.nft || !eligibility.domain) && (
+              <div className="mb-4 p-3 rounded-xl bg-white/[0.02] border border-white/10 text-[11px] space-y-1.5">
+                <p className="text-white/80 font-bold uppercase tracking-widest text-[10px]">Eligibility</p>
+                <p className={eligibility.nft ? 'text-white/70' : 'text-white/40'}>
+                  {eligibility.nft ? '✓' : '✗'} Hold a LitDeX NFT
+                </p>
+                <p className={eligibility.domain ? 'text-white/70' : 'text-white/40'}>
+                  {eligibility.domain ? '✓' : '✗'} Own a .lit domain
+                </p>
+                <p className="text-white/40 pt-1">Both required to claim.</p>
+              </div>
+            )}
+
             <button
               onClick={handleClaim}
-              disabled={claiming}
-              className="w-full py-3.5 bg-white text-black rounded-xl font-bold text-base hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
+              disabled={claiming || (eligibility ? (!eligibility.nft || !eligibility.domain) : false)}
+              className="w-full py-3.5 bg-white text-black rounded-xl font-bold text-base hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {claiming ? "Claiming..." : "Claim 0.01 zkLTC + 100 Points"}
+              {claiming
+                ? "Claiming..."
+                : eligibility && (!eligibility.nft || !eligibility.domain)
+                  ? "NFT + .lit Domain Required"
+                  : "Claim 0.01 zkLTC + 10 Points"}
             </button>
             {errorMsg && (
               <div className="mt-3 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/5 text-white/40 text-xs text-center font-bold uppercase tracking-widest">
