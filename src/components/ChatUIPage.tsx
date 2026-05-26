@@ -336,6 +336,7 @@ export default function ChatUIPage() {
   // and refresh. Status is derived: once the recipient appears in our
   // friends list we mark accepted; if their pending request to us shows
   // up as status=2 (rejected) we mark rejected; otherwise pending.
+  // NOTE: per-wallet — see hydrate effect below.
   const [outgoing, setOutgoing] = useState<Array<{
     id: string;
     to: string;       // recipient address (lowercase)
@@ -343,17 +344,7 @@ export default function ChatUIPage() {
     txHash?: string;
     sentAt: number;   // unix seconds
     status: "pending" | "accepted" | "rejected";
-  }>>(() => {
-    try {
-      const raw = typeof window !== "undefined" ? localStorage.getItem("litdex:outgoingFriendReqs") : null;
-      if (!raw) return [];
-      const arr = JSON.parse(raw);
-      if (!Array.isArray(arr)) return [];
-      // Drop entries older than 14 days regardless of status.
-      const cutoff = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 14;
-      return arr.filter((r: any) => r && Number(r.sentAt) > cutoff);
-    } catch { return []; }
-  });
+  }>>([]);
   const [current, setCurrent] = useState<Contact | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   // Optimistic outbound DMs awaiting backend indexing. Kept separate from
@@ -392,19 +383,7 @@ export default function ChatUIPage() {
   const [localTransfers, setLocalTransfers] = useState<Array<{
     id: string; ts: number; from: string; fromName: string; to: string; toName: string;
     amount: string; token: string; txHash: string; createdAt: number;
-  }>>(() => {
-    // Hydrate from localStorage so the in-feed transfer notification stays
-    // visible after page navigation that unmounts ChatUIPage.
-    try {
-      const raw = typeof window !== "undefined" ? localStorage.getItem("litdex:globalTransfers") : null;
-      if (!raw) return [];
-      const arr = JSON.parse(raw);
-      if (!Array.isArray(arr)) return [];
-      // Drop entries older than 7 days so the feed doesn't grow forever.
-      const cutoff = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7;
-      return arr.filter((t: any) => t && Number(t.ts) > cutoff);
-    } catch { return []; }
-  });
+  }>>([]);
   const [fetchedReplyPosts, setFetchedReplyPosts] = useState<Record<string, { id: string; author: string; name?: string; content: string }>>({});
   const [inlineBountyActive, setInlineBountyActive] = useState(false);
   const [inlineLikeReward, setInlineLikeReward] = useState("");
@@ -445,6 +424,10 @@ export default function ChatUIPage() {
   // unmounts ChatUIPage and clears React state.
   const dmCacheKey = (a: string, b: string) => `litdex:dm:${a.toLowerCase()}:${b.toLowerCase()}`;
   const profileCacheKey = (a: string) => `litdex:profile:${a.toLowerCase()}`;
+  // Per-wallet keys so swapping wallets in MetaMask never leaks the prior
+  // wallet's outgoing requests / transfer feed into the new account.
+  const outgoingKey = (w: string) => `litdex:outgoingFriendReqs:${w.toLowerCase()}`;
+  const transfersKey = (w: string) => `litdex:globalTransfers:${w.toLowerCase()}`;
   const safeGet = (k: string) => {
     try { return typeof window !== "undefined" ? localStorage.getItem(k) : null; } catch { return null; }
   };
@@ -528,18 +511,43 @@ export default function ChatUIPage() {
 
   // Persist global-feed transfer notifications. The funds-send message in
   // global must stay visible across navigations (per UX request).
+  // Keyed per-wallet so swapping accounts in MetaMask doesn't show another
+  // user's history.
   useEffect(() => {
+    if (!wallet) { setLocalTransfers([]); return; }
     try {
-      safeSet("litdex:globalTransfers", JSON.stringify(localTransfers));
-    } catch { /* ignore quota */ }
-  }, [localTransfers]);
+      const raw = safeGet(transfersKey(wallet));
+      if (!raw) { setLocalTransfers([]); return; }
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) { setLocalTransfers([]); return; }
+      const cutoff = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7;
+      setLocalTransfers(arr.filter((t: any) => t && Number(t.ts) > cutoff));
+    } catch { setLocalTransfers([]); }
+  }, [wallet]);
+  useEffect(() => {
+    if (!wallet) return;
+    try { safeSet(transfersKey(wallet), JSON.stringify(localTransfers)); }
+    catch { /* quota */ }
+  }, [localTransfers, wallet]);
 
-  // Persist outgoing friend requests so the status badge survives reloads.
+  // Hydrate + persist outgoing friend requests, also keyed per-wallet so
+  // each connected account sees its own list and never the previous one.
   useEffect(() => {
+    if (!wallet) { setOutgoing([]); return; }
     try {
-      safeSet("litdex:outgoingFriendReqs", JSON.stringify(outgoing));
-    } catch { /* ignore */ }
-  }, [outgoing]);
+      const raw = safeGet(outgoingKey(wallet));
+      if (!raw) { setOutgoing([]); return; }
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) { setOutgoing([]); return; }
+      const cutoff = Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 14;
+      setOutgoing(arr.filter((r: any) => r && Number(r.sentAt) > cutoff));
+    } catch { setOutgoing([]); }
+  }, [wallet]);
+  useEffect(() => {
+    if (!wallet) return;
+    try { safeSet(outgoingKey(wallet), JSON.stringify(outgoing)); }
+    catch { /* ignore */ }
+  }, [outgoing, wallet]);
 
   // Sync outgoing-request status against the live friends list. As soon as
   // the recipient appears in our `contacts` we mark accepted and toast the
@@ -1132,6 +1140,34 @@ export default function ChatUIPage() {
     eth.on?.("accountsChanged", onAcc);
     return () => eth.removeListener?.("accountsChanged", onAcc);
   }, []);
+
+  // Wallet swap = reset everything that was scoped to the old account.
+  // Without this, the previous wallet's profile data, contacts and
+  // outgoing friend requests bleed into the new account until the user
+  // navigates away and back. We also bounce the user back to /chat so a
+  // stale "available.lit" profile view doesn't linger.
+  const lastWalletRef = useRef<string>("");
+  useEffect(() => {
+    const prev = lastWalletRef.current;
+    if (prev && prev.toLowerCase() !== wallet.toLowerCase()) {
+      // Account just changed — wipe per-session state.
+      setView("chat");
+      setProfileAddr("");
+      setProfileName("");
+      setProfilePoints("0");
+      setProfileBalance("0");
+      setProfileDomains([]);
+      setCurrent(null);
+      setMessages([]);
+      setPendingMsgs([]);
+      setContacts([]);
+      setPending([]);
+      setMyDomains([]);
+      setBidsForOwner([]);
+      setOutgoingPanelOpen(false);
+    }
+    lastWalletRef.current = wallet;
+  }, [wallet]);
 
   const loadPosts = useCallback(async () => {
     let arr0: any[] = [];
@@ -1734,12 +1770,89 @@ export default function ChatUIPage() {
 
   const sendTip = async () => {
     if (!current?.address) return;
+    const amountStr = (tipAmount || "").trim();
+    const note = tipNote.trim();
+    const amountNum = parseFloat(amountStr);
+    if (!amountStr || !Number.isFinite(amountNum) || amountNum <= 0) {
+      showError("Enter a valid amount");
+      return;
+    }
+    // Optimistic transfer bubble — appears in the conversation immediately
+    // with a "sending…" label, gets promoted to confirmed once the tx
+    // mines. Matches the sendMessage UX so funds + note are always visible.
+    const optimisticId = `opt-${Date.now()}`;
+    const optimisticMsg: Msg & { status?: "sending" | "sent"; txHash?: string; msgType?: string; amount?: string } = {
+      id: optimisticId,
+      from: wallet,
+      to: current.address,
+      content: note || "",
+      timestamp: Math.floor(Date.now() / 1000),
+      status: "sending",
+      msgType: "transfer",
+      amount: amountStr,
+    } as any;
+    setPendingMsgs((prev) => [...prev, optimisticMsg]);
+    setTipOpen(false);
     setBusy(true);
     try {
-      await writeContract(MESSENGER_ADDRESS, encodeCall(SELECTOR.sendZkLTC, [{ type: "address", value: current.address }, { type: "string", value: tipNote || "zkLTC" }]), parseAmount(tipAmount || "0"));
-      setTipOpen(false);
+      const txHash = await writeContract(
+        MESSENGER_ADDRESS,
+        encodeCall(SELECTOR.sendZkLTC, [
+          { type: "address", value: current.address },
+          { type: "string", value: note || "zkLTC" },
+        ]),
+        parseAmount(amountStr),
+      );
+      setPendingMsgs((prev) => prev.map((m) => m.id === optimisticId ? { ...m, txHash: typeof txHash === "string" ? txHash : undefined, status: "sent" } : m));
+      // Wait for receipt so we can promote → confirmed with chain timestamp.
+      try {
+        const receipt = typeof txHash === "string" ? await waitForReceipt(txHash) : null;
+        let chainTs = Math.floor(Date.now() / 1000);
+        if (receipt?.blockNumber) {
+          try {
+            const blk = await fetchRPC({
+              jsonrpc: "2.0",
+              id: 1,
+              method: "eth_getBlockByNumber",
+              params: [receipt.blockNumber, false],
+            });
+            const j = await blk.json();
+            const ts = j?.result?.timestamp;
+            if (ts) chainTs = parseInt(ts, 16);
+          } catch { /* keep local ts */ }
+        }
+        setPendingMsgs((prev) => prev.map((m) => m.id === optimisticId ? {
+          ...m,
+          status: "sent",
+          timestamp: chainTs,
+          confirmed: true,
+        } as any : m));
+      } catch { /* receipt poll already swallows errors */ }
       setTipNote("");
-    } finally { setBusy(false); }
+      setTipAmount("0.01");
+      // Wallet-style success popup so the user sees it just like Swap/Pool.
+      const friendLabel = current.name ? current.name : short(current.address);
+      showSuccess({
+        title: "ZKLTC SENT",
+        subtitle: "TRANSFER CONFIRMED",
+        rows: [
+          { label: "AMOUNT", value: `${amountStr} zkLTC` },
+          { label: "TO", value: friendLabel },
+          ...(note ? [{ label: "NOTE", value: note }] : []),
+          { label: "TX", value: `${String(txHash).slice(0, 10)}...` },
+        ],
+      });
+      // Refresh conversation so the chain-indexed entry shows up and
+      // dedupes the optimistic bubble.
+      try { await loadConversation(); } catch { /* polling will catch up */ }
+    } catch (err: any) {
+      console.error("[ChatUI] sendTip failed", err);
+      setPendingMsgs((prev) => prev.filter((m) => m.id !== optimisticId));
+      const msg = err?.shortMessage || err?.reason || err?.message || "Send failed";
+      showError(msg);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const sharePost = (post: Post) => {
@@ -2380,10 +2493,34 @@ export default function ChatUIPage() {
                 const optStatus = (m as any).status as ("sending" | "sent" | undefined);
                 const confirmed = (m as any).confirmed === true;
                 const showOptimisticLabel = isOptimistic && !confirmed;
+                const msgType = (m as any).msgType as string | undefined;
+                const rawAmount = (m as any).amount;
+                const amountNum = rawAmount === undefined || rawAmount === null
+                  ? 0
+                  : (typeof rawAmount === "string" ? parseFloat(rawAmount) : Number(rawAmount));
+                const isTransfer = msgType === "transfer" || (Number.isFinite(amountNum) && amountNum > 0);
+                const note = getMessageText(m);
                 return (
                   <div key={m.id || i} className={cn("flex", mine ? "justify-end" : "justify-start")}>
                     <div className={cn("max-w-[70%] rounded-lg px-3 py-2 text-sm border", mine ? "bg-white/10 border-white/10 text-brand-text-primary" : "bg-brand-surface border-brand-border text-brand-text-primary", showOptimisticLabel && "opacity-70")}>
-                      <div className="break-words whitespace-pre-wrap">{getMessageText(m)}</div>
+                      {isTransfer ? (
+                        <>
+                          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-brand-text-muted font-bold mb-1">
+                            <span>💸</span>
+                            <span>{mine ? "Sent" : "Received"} zkLTC</span>
+                          </div>
+                          <div className="text-base font-bold tabular-nums">
+                            {Number.isFinite(amountNum) ? amountNum.toString() : String(rawAmount)} zkLTC
+                          </div>
+                          {note && note !== "zkLTC" && (
+                            <div className="mt-1 text-xs text-brand-text-muted break-words whitespace-pre-wrap">
+                              “{note}”
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="break-words whitespace-pre-wrap">{note}</div>
+                      )}
                       <div className="mt-1 text-[10px] text-brand-text-muted text-right">
                         {showOptimisticLabel
                           ? (optStatus === "sent" ? "sent · syncing…" : "sending…")
