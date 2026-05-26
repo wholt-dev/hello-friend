@@ -859,8 +859,18 @@ export default function ChatUIPage() {
         seller: l.seller || l.owner || l.address || "",
         listedAt: Number(l.listedAt ?? l.createdAt ?? l.timestamp ?? 0),
       })).filter((l: any) => l.name);
-      setListings(mapped);
-      setListingsFull(mapped);
+      // Dedupe by domain name (newest wins). Backend's `getActiveListings`
+      // can momentarily return both an old + new entry for the same name
+      // when a user unlists and immediately re-lists, which produced the
+      // duplicate cards on the marketplace grid.
+      const byName = new Map<string, typeof mapped[number]>();
+      for (const l of mapped) {
+        const prev = byName.get(l.name);
+        if (!prev || (l.listedAt || 0) > (prev.listedAt || 0)) byName.set(l.name, l);
+      }
+      const deduped = Array.from(byName.values());
+      setListings(deduped);
+      setListingsFull(deduped);
     } catch {
       // Network error — preserve last good state instead of clearing.
     }
@@ -1069,6 +1079,19 @@ export default function ChatUIPage() {
         message: `${short(wallet)} accepted your ${amount} zkLTC bid on ${domain}`,
         link: `/chat`,
       });
+      // Optimistic clear so the accept/reject card vanishes the moment
+      // the tx confirms. The reload below replaces with canonical state.
+      setBidsForOwner((prev) => prev.filter((b) => !(b.domain === domain && b.bidder.toLowerCase() === bidder.toLowerCase())));
+      setBidsByDomain((prev) => {
+        const next = { ...prev };
+        delete next[domain];
+        return next;
+      });
+      // Domain transferred to the bidder — drop it from our owned list
+      // so My Listings + Domains tabs reflect immediately.
+      setListingsFull((prev) => prev.filter((l) => l.name !== domain));
+      setListings((prev) => prev.filter((l) => l.name !== domain));
+      setMyDomains((prev) => prev.filter((d) => d !== domain));
       await Promise.all([loadListings(), loadMyDomains(), loadBidsForOwner(), loadBidsByDomain()]);
       showSuccess({
         title: "BID ACCEPTED",
@@ -1098,6 +1121,17 @@ export default function ChatUIPage() {
       title: `Bid declined`,
       message: `${short(wallet)} declined your bid on ${domain}. Cancel from your bids to recover funds.`,
       link: `/chat`,
+    });
+    // Optimistic UI clear so the rejected card vanishes immediately
+    // without waiting for the next backend poll. Reject is UX-only —
+    // bidder still has to call cancelBid to recover their funds.
+    setBidsForOwner((prev) => prev.filter((b) => !(b.domain === domain && b.bidder.toLowerCase() === bidder.toLowerCase())));
+    setBidsByDomain((prev) => {
+      const next = { ...prev };
+      if (next[domain]) {
+        next[domain] = next[domain].filter((b) => b.bidder.toLowerCase() !== bidder.toLowerCase());
+      }
+      return next;
     });
     showSuccess({
       title: "BID DECLINED",
@@ -3484,7 +3518,21 @@ export default function ChatUIPage() {
                                           await tx.wait();
                                           console.log("[Market] unlist confirmed");
                                           addNotif(wallet, { type: "gf", title: "Listing removed", message: `${l.name} unlisted from market`, link: "/chat" });
-                                          await loadListings();
+                                          // Optimistic local removal — drop
+                                          // the listing AND its bids from
+                                          // state so the card and any
+                                          // associated incoming bids
+                                          // disappear without waiting for
+                                          // the next backend poll.
+                                          setListingsFull((prev) => prev.filter((x) => x.name !== l.name));
+                                          setListings((prev) => prev.filter((x) => x.name !== l.name));
+                                          setBidsForOwner((prev) => prev.filter((b) => b.domain !== l.name));
+                                          setBidsByDomain((prev) => {
+                                            const next = { ...prev };
+                                            delete next[l.name];
+                                            return next;
+                                          });
+                                          await Promise.all([loadListings(), loadBidsForOwner(), loadBidsByDomain()]);
                                           showSuccess({
                                             title: "DOMAIN UNLISTED",
                                             rows: [
@@ -3812,7 +3860,18 @@ export default function ChatUIPage() {
                                   await tx.wait();
                                   console.log("[Market] unlist confirmed");
                                   addNotif(wallet, { type: "gf", title: "Listing removed", message: `${d} unlisted`, link: "/chat" });
-                                  await loadListings();
+                                  // Optimistic clear so the row + its bids
+                                  // disappear instantly. No more stale
+                                  // accept/reject buttons until refresh.
+                                  setListingsFull((prev) => prev.filter((x) => x.name !== d));
+                                  setListings((prev) => prev.filter((x) => x.name !== d));
+                                  setBidsForOwner((prev) => prev.filter((b) => b.domain !== d));
+                                  setBidsByDomain((prev) => {
+                                    const next = { ...prev };
+                                    delete next[d];
+                                    return next;
+                                  });
+                                  await Promise.all([loadListings(), loadBidsForOwner(), loadBidsByDomain()]);
                                   showSuccess({
                                     title: "DOMAIN UNLISTED",
                                     rows: [
