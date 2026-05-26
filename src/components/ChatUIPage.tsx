@@ -151,6 +151,12 @@ async function getHubPostsContract() {
   return new Contract(HUB_POSTS_ADDRESS, HUB_POSTS_ABI, signer);
 }
 
+const MESSENGER_READ_ABI = [
+  "function requestCount() external view returns (uint256)",
+  "function friendRequests(uint256) external view returns (address from, address to, uint8 status, uint256 sentAt)",
+  "function reverseResolve(address) external view returns (string)",
+] as const;
+
 const BUY_DURATION_OPTIONS: { value: number; label: string; price: string; tag?: string }[] = [
   { value: 1,  label: "1 Year",   price: "0.05" },
   { value: 2,  label: "2 Years",  price: "0.09" },
@@ -170,8 +176,9 @@ const SELECTOR = {
   rejectFriendRequest: "0xd1b5b906",
   sendMessage: "0xcea14c26",
   sendZkLTC: "0x096a0efb",
-  getPendingRequests: "0xf05bfa7b",
-  friendRequests: "0xdc5bd536",
+  getPendingRequests: "0xf05bfa7b", // returns uint count, not list
+  friendRequests: "0xdc5bd536",     // friendRequests(uint id) -> (from, to, status, sentAt)
+  requestCount: "0xb9b8af0b",       // requestCount() -> uint
 };
 
 const ERC20_TRANSFER_SELECTOR = "0xa9059cbb";
@@ -474,6 +481,9 @@ export default function ChatUIPage() {
   const [bidsForOwner, setBidsForOwner] = useState<Array<{ domain: string; bidder: string; bidderName?: string; amount: string; bidAt: number }>>([]);
   const [bidsByDomain, setBidsByDomain] = useState<Record<string, Array<{ bidder: string; amount: string; bidAt: number }>>>({});
   const [profileCopied, setProfileCopied] = useState(false);
+  // Marketplace UX — Your Domains panel collapses by default so it never
+  // pushes the listings grid below the fold.
+  const [yourDomainsOpen, setYourDomainsOpen] = useState(false);
 
   // Resolve my own .lit name for sidebar bottom
   useEffect(() => {
@@ -957,6 +967,18 @@ export default function ChatUIPage() {
     loadBidsByDomain();
   }, [view, loadListings, loadSold, loadMyDomains, loadBidsForOwner, loadBidsByDomain]);
 
+  // Profile view depends on the same market data: My Listings tab needs
+  // `listingsFull`, Incoming Bids tab needs `bidsForOwner`, and the
+  // Domains tab's "Listed" badge needs `bidsByDomain`. Without this hook
+  // a user who navigates straight to profile from another tab would see
+  // stale 0/empty values until they swung through .lit Market first.
+  useEffect(() => {
+    if (view !== "profile") return;
+    loadListings();
+    loadBidsForOwner();
+    loadBidsByDomain();
+  }, [view, profileAddr, loadListings, loadBidsForOwner, loadBidsByDomain]);
+
   // Keep "incoming bids" badge fresh in profile, even when the user hasn't
   // opened the market yet.
   useEffect(() => {
@@ -1295,12 +1317,25 @@ export default function ChatUIPage() {
     }
 
     try {
-      const ids = decodeUintArray(await readContract(MESSENGER_ADDRESS, encodeCall(SELECTOR.getPendingRequests, [{ type: "address", value: wallet }])));
-      const requests = await Promise.all(ids.map(async (id) => {
-        const req = decodeFriendRequest(await readContract(MESSENGER_ADDRESS, encodeCall(SELECTOR.friendRequests, [{ type: "uint", value: id }])));
-        return { id: id.toString(), from: req.from, to: req.to, status: req.status, sentAt: req.sentAt, name: await resolveName(req.from) };
-      }));
-      setPending(requests.filter((req) => req.from.toLowerCase() !== wallet.toLowerCase()));
+      // The contract's getPendingRequests(addr) returns a *count*, not the
+      // ID list — that's why receivers never saw incoming requests in the
+      // sidebar. Walk the global requestCount() and pick rows where
+      // to == me && status == pending.
+      const totalHex = await readContract(MESSENGER_ADDRESS, encodeCall(SELECTOR.requestCount, []));
+      const total = Number(BigInt(totalHex || "0x0"));
+      const out: PendingRequest[] = [];
+      const max = Math.min(total, 200);
+      const meLc = wallet.toLowerCase();
+      for (let i = total; i > total - max && i > 0; i--) {
+        try {
+          const raw = await readContract(MESSENGER_ADDRESS, encodeCall(SELECTOR.friendRequests, [{ type: "uint", value: i }]));
+          const req = decodeFriendRequest(raw);
+          if ((req.to || "").toLowerCase() !== meLc) continue;
+          if (Number(req.status) !== 0) continue; // 0 = pending
+          out.push({ id: String(i), from: req.from, to: req.to, status: req.status, sentAt: req.sentAt, name: await resolveName(req.from) });
+        } catch { /* skip bad row */ }
+      }
+      setPending(out);
     } catch { setPending([]); }
   }, [mapContact, resolveName, wallet]);
 
@@ -2649,7 +2684,7 @@ export default function ChatUIPage() {
                   <span className="truncate">
                     Replying to <span className="font-semibold text-brand-text-primary">@{replyTo.name}</span>
                   </span>
-                  <span className="truncate opacity-60 hidden sm:inline">— {replyTo.content.length > 60 ? `${replyTo.content.slice(0, 60)}…` : replyTo.content}</span>
+                  <span className="truncate opacity-60 hidden sm:inline">{replyTo.content.length > 60 ? `${replyTo.content.slice(0, 60)}…` : replyTo.content}</span>
                   <button aria-label="Cancel reply" onClick={() => setReplyTo(null)} className="ml-auto p-1 rounded hover:bg-white/10 text-brand-text-muted hover:text-brand-text-primary">
                     <X size={14} />
                   </button>
@@ -2784,7 +2819,7 @@ export default function ChatUIPage() {
                         className="flex-1 h-8 px-2 rounded-md bg-brand-bg border border-brand-border text-xs text-brand-text-primary outline-none"
                       />
                     </div>
-                    <div className="text-[10px] text-brand-text-muted mb-2">Range: x1 to x1000 — integers only</div>
+                    <div className="text-[10px] text-brand-text-muted mb-2">Range: x1 to x1000. Integers only.</div>
                      {(() => {
                        const per = Number(inlineLikeReward || 0);
                        const parsed = parseInt(inlineBountyMultiplier, 10);
@@ -3328,21 +3363,74 @@ export default function ChatUIPage() {
               </button>
             )}
 
-            {/* My Domains panel — quick list / unlist / send */}
+          {/* Recently Sold inline ticker (moved from bottom — sits above
+              listings so the bottom navbar / page chrome is never overlaid). */}
+          {soldItems.length > 0 && (
+            <div className="rounded-xl border border-brand-border bg-brand-surface mb-5 overflow-hidden">
+              <div className="px-3 py-1.5 border-b border-brand-border text-[10px] uppercase tracking-[0.18em] text-brand-text-muted font-bold flex items-center gap-2">
+                <Tag size={11} /> Recently Sold
+              </div>
+              <div className="overflow-hidden">
+                <div className="flex gap-8 whitespace-nowrap py-2 px-4 animate-[marquee_40s_linear_infinite] text-[11px] text-brand-text-primary">
+                  {[...soldItems, ...soldItems].slice(0, 16).map((s, i) => (
+                    <span key={i}>
+                      🏷️ <span className="font-semibold">{s.domain}</span> sold for <span className="font-semibold">{s.price} zkLTC</span> · {displayTime(s.soldAt)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+            {/* My Domains panel — collapsed by default so it doesn't
+                push the marketplace listings below the fold. Click to
+                expand and quickly list / unlist / send. */}
             {wallet && myDomains.length > 0 && (
               <div className="mb-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-brand-text-primary">
-                    Your Domains <span className="ml-1.5 text-brand-text-muted">({myDomains.length})</span>
-                  </h3>
-                  <button
-                    onClick={() => { setProfileAddr(wallet); setProfileTab("domains"); setView("profile"); }}
-                    className="text-[11px] text-brand-text-muted hover:text-brand-text-primary transition-colors inline-flex items-center gap-1"
-                  >
-                    View all <ChevronRight size={12} />
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setYourDomainsOpen((v) => !v)}
+                  className="w-full flex items-center justify-between rounded-xl border border-brand-border bg-brand-surface px-4 py-3 hover:bg-white/[0.04] transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <Tag size={14} className="text-brand-text-muted" />
+                    <span className="text-sm font-semibold text-brand-text-primary">Your Domains</span>
+                    <span className="text-[11px] text-brand-text-muted">({myDomains.length})</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setProfileAddr(wallet);
+                        setProfileTab("domains");
+                        setView("profile");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setProfileAddr(wallet);
+                          setProfileTab("domains");
+                          setView("profile");
+                        }
+                      }}
+                      className="text-[11px] text-brand-text-muted hover:text-brand-text-primary transition-colors inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      View all <ChevronRight size={12} />
+                    </span>
+                    <span
+                      className={cn(
+                        "inline-flex items-center justify-center h-6 w-6 rounded-md border border-brand-border text-brand-text-muted transition-transform",
+                        yourDomainsOpen && "rotate-180"
+                      )}
+                    >
+                      <ChevronUp size={14} />
+                    </span>
+                  </div>
+                </button>
+                {yourDomainsOpen && (
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {myDomains.map((d) => {
                     const existing = listingsFull.find((l) => l.name === d && l.seller?.toLowerCase() === wallet.toLowerCase());
                     return (
@@ -3454,6 +3542,7 @@ export default function ChatUIPage() {
                     );
                   })}
                 </div>
+                )}
               </div>
             )}
 
@@ -3723,18 +3812,9 @@ export default function ChatUIPage() {
             )}
           </div>
 
-          {/* Recently Sold ticker (kept below navbar via z-[40]) */}
-          {soldItems.length > 0 && (
-            <div className="fixed bottom-0 left-0 right-0 z-[40] bg-white/5 border-t border-brand-border overflow-hidden pointer-events-none">
-              <div className="flex gap-8 whitespace-nowrap py-2 px-4 animate-[marquee_30s_linear_infinite] text-[11px] text-brand-text-primary">
-                {soldItems.slice(0, 8).map((s, i) => (
-                  <span key={i}>
-                    🏷️ <span className="font-semibold">{s.domain}</span> sold for <span className="font-semibold">{s.price} zkLTC</span> · {displayTime(s.soldAt)}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* (Recently Sold ticker moved up into the listings flow — see
+              the inline panel above. The fixed-bottom version was hiding
+              the page footer / next view's content below it.) */}
         </div>
       )}
 
@@ -3770,7 +3850,7 @@ export default function ChatUIPage() {
                 Claim your .lit name
               </h2>
               <p className="text-sm text-brand-text-muted max-w-2xl">
-                Use any character in the world — letters, numbers, emojis, symbols, fonts. Your .lit becomes your identity for chat, posts, transfers, and the marketplace.
+                Use any character in the world. Letters, numbers, emojis, symbols, fonts. Your .lit becomes your identity for chat, posts, transfers, and the marketplace.
               </p>
             </div>
 
@@ -3799,7 +3879,7 @@ export default function ChatUIPage() {
               {/* Status row */}
               <div className="mt-3 min-h-[20px] flex items-center gap-2 text-xs">
                 {buyName.trim() === "" && (
-                  <span className="text-brand-text-muted">Type any character — emoji, fancy fonts, unicode all work.</span>
+                  <span className="text-brand-text-muted">Type any character. Emoji, fancy fonts, unicode all work.</span>
                 )}
                 {buyAvailable === "checking" && (
                   <span className="text-brand-text-muted inline-flex items-center gap-1.5">
@@ -3885,7 +3965,7 @@ export default function ChatUIPage() {
 
               {buySuccess && (
                 <div className="mt-4 p-3 rounded-xl bg-white/5 border border-brand-border text-sm text-brand-text-primary inline-flex items-center gap-2">
-                  <Check size={14} /> Registered <span className="font-bold">{buySuccess}.lit</span> — visible in your profile.
+                  <Check size={14} /> Registered <span className="font-bold">{buySuccess}.lit</span>. Visible in your profile.
                 </div>
               )}
             </div>
@@ -3903,7 +3983,7 @@ export default function ChatUIPage() {
                   </button>
                 </div>
                 {myDomains.length === 0 ? (
-                  <div className="text-xs text-brand-text-muted">No .lit names yet — register your first above.</div>
+                  <div className="text-xs text-brand-text-muted">No .lit names yet. Register your first above.</div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {myDomains.map((d) => (
