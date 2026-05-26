@@ -596,7 +596,7 @@ export default function ChatUIPage() {
         showSuccess({
           title: "FRIEND REQUEST ACCEPTED",
           subtitle: `${r.name}.lit accepted you`,
-          rows: [{ label: "TO", value: `${r.name}.lit` }],
+          rows: [{ label: "TO", value: r.name.startsWith("0x") ? short(r.name) : `${r.name}.lit` }],
         });
         return { ...r, status: "accepted" as const };
       }
@@ -604,6 +604,72 @@ export default function ChatUIPage() {
     });
     if (changed) setOutgoing(next);
   }, [contacts, outgoing]);
+
+  // Walk on-chain friendRequests so the sender's "Sent Requests" panel
+  // flips to accepted/rejected the moment the receiver responds — even
+  // before the recipient appears in our friends list (e.g. on rejection
+  // they never join contacts). Polled at the same cadence as loadPrivate.
+  useEffect(() => {
+    if (!wallet) return;
+    const meLc = wallet.toLowerCase();
+    const pendingTos = outgoing.filter((r) => r.status === "pending").map((r) => r.to);
+    if (pendingTos.length === 0) return;
+
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const c = getReadMessenger();
+        const total = Number(await c.requestCount().catch(() => 0n));
+        if (!total) return;
+        const max = Math.min(total, 200);
+        // Build a map of "to-address -> status" for requests I sent.
+        const myStatusByTo = new Map<string, number>();
+        for (let i = total; i > total - max && i > 0; i--) {
+          if (cancelled) return;
+          try {
+            const r = await c.friendRequests(i);
+            const fromAddr = String(r[0] || (r as any).from || "").toLowerCase();
+            if (fromAddr !== meLc) continue;
+            const toAddr = String(r[1] || (r as any).to || "").toLowerCase();
+            const status = Number(r[2] ?? (r as any).status ?? 0);
+            // Prefer the most recent (highest id) record per recipient.
+            if (!myStatusByTo.has(toAddr)) myStatusByTo.set(toAddr, status);
+          } catch { /* skip */ }
+        }
+        if (cancelled) return;
+        setOutgoing((prev) => {
+          let any = false;
+          const next = prev.map((row) => {
+            if (row.status !== "pending") return row;
+            const onChainStatus = myStatusByTo.get(row.to);
+            if (onChainStatus === undefined) return row;
+            // Contract LitMessenger statuses: 0=pending, 1=accepted, 2=rejected.
+            if (onChainStatus === 1) {
+              any = true;
+              showSuccess({
+                title: "FRIEND REQUEST ACCEPTED",
+                subtitle: row.name.startsWith("0x") ? short(row.name) : `${row.name}.lit`,
+                rows: [{ label: "TO", value: row.name.startsWith("0x") ? short(row.name) : `${row.name}.lit` }],
+              });
+              return { ...row, status: "accepted" as const };
+            }
+            if (onChainStatus === 2) {
+              any = true;
+              showError(`${row.name.startsWith("0x") ? short(row.name) : row.name + ".lit"} rejected your friend request`);
+              return { ...row, status: "rejected" as const };
+            }
+            return row;
+          });
+          return any ? next : prev;
+        });
+      } catch (err) {
+        console.error("[ChatUI] outgoing status sync failed", err);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 15_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [wallet, outgoing.map((o) => `${o.to}:${o.status}`).join(",")]);
 
   // FIX 5 — load profile data when entering profile view
   useEffect(() => {
@@ -1364,8 +1430,14 @@ export default function ChatUIPage() {
 
   const loadConversation = useCallback(async () => {
     if (!wallet || !current?.address) return;
+    // Snapshot the contact at call time. If the user switches contact
+    // mid-flight (or the contact pointer changes during cache hydrate),
+    // we discard this response so messages from the old chat don't leak
+    // into the new one.
+    const myAtCall = wallet.toLowerCase();
+    const otherAtCall = current.address.toLowerCase();
     try {
-      const r = await fetch(`${API}/hub/messenger/conversation/${wallet.toLowerCase()}/${current.address.toLowerCase()}`);
+      const r = await fetch(`${API}/hub/messenger/conversation/${myAtCall}/${otherAtCall}`);
       if (!r.ok) {
         // Server-side error (RPC rate limit, contract revert) — keep last
         // known state so optimistic + previously fetched msgs stay visible.
@@ -1376,13 +1448,29 @@ export default function ChatUIPage() {
       // (e.g. RPC bandwidth exceeded). Treat that as transient and skip.
       if (j && typeof j.error === "string") return;
       const serverMsgs = readArray(j, ["messages", "conversation", "data"]) as Msg[];
+      // If the user switched contact while this request was in flight,
+      // bail. Without this guard the prior chat's messages can render
+      // under the new contact's header for a few seconds.
+      if (!current?.address || current.address.toLowerCase() !== otherAtCall || wallet.toLowerCase() !== myAtCall) {
+        return;
+      }
+      // Filter — only keep messages between this exact pair so a noisy
+      // server response can never bleed messages from another DM.
+      const filtered = serverMsgs.filter((m) => {
+        const from = (m.from || m.wallet || (m as any).fromWallet || (m as any).sender || "").toString().toLowerCase();
+        const to = (m.to || (m as any).toWallet || (m as any).receiver || "").toString().toLowerCase();
+        const between = (from === myAtCall && to === otherAtCall) || (from === otherAtCall && to === myAtCall);
+        // Some servers don't include `to`; in that case accept rows where
+        // either side matches one of the two participants only.
+        return between || (!to && (from === myAtCall || from === otherAtCall));
+      });
       // Preserve last known state when the backend returns nothing — this
       // commonly happens before the `getConversation({from})` override is
       // deployed, where server eth_call sets msg.sender = 0x0 and the
       // contract returns an empty array. Wiping the UI in that case would
       // make confirmed messages disappear after navigating away and back.
-      if (serverMsgs.length > 0) {
-        setMessages(serverMsgs);
+      if (filtered.length > 0) {
+        setMessages(filtered);
       }
       // Drop any optimistic message that is now reflected by the backend.
       // We match on (sender == me) + same text within a 5-minute window.
@@ -1390,7 +1478,7 @@ export default function ChatUIPage() {
       setPendingMsgs((prev) => prev.filter((p) => {
         const text = getMessageText(p);
         const ts = Number(p.timestamp || p.ts || (p as any).sentAt || 0);
-        return !serverMsgs.some((s) => {
+        return !filtered.some((s) => {
           const sFrom = (s.from || s.wallet || (s as any).fromWallet || (s as any).sender || "").toString().toLowerCase();
           if (sFrom !== myAddr) return false;
           const sText = getMessageText(s);
@@ -1807,9 +1895,31 @@ export default function ChatUIPage() {
   const respondRequest = async (reqId: string, accept: boolean) => {
     setBusy(true);
     try {
-      await writeContract(MESSENGER_ADDRESS, encodeCall(accept ? SELECTOR.acceptFriendRequest : SELECTOR.rejectFriendRequest, [{ type: "uint", value: reqId }]));
+      const txHash = await writeContract(
+        MESSENGER_ADDRESS,
+        encodeCall(accept ? SELECTOR.acceptFriendRequest : SELECTOR.rejectFriendRequest, [{ type: "uint", value: reqId }]),
+      );
+      // Drop from pending list locally so the card disappears immediately.
       setPending((list) => list.filter((req) => req.id !== reqId));
-      loadPrivate();
+      // Wait for confirmation, then refresh the friends list aggressively
+      // so the new friend shows up without needing a wallet swap or
+      // refresh. Three pulls handles the brief indexer lag after a tx.
+      try {
+        if (typeof txHash === "string") {
+          await waitForReceipt(txHash, 30_000);
+        }
+      } catch { /* receipt poll already swallows errors */ }
+      await loadPrivate();
+      setTimeout(() => loadPrivate(), 3_000);
+      setTimeout(() => loadPrivate(), 10_000);
+      showSuccess({
+        title: accept ? "FRIEND REQUEST ACCEPTED" : "FRIEND REQUEST REJECTED",
+        subtitle: accept ? "ADDED TO YOUR CONTACTS" : "REQUEST DECLINED",
+        rows: [{ label: "TX", value: typeof txHash === "string" ? `${txHash.slice(0, 10)}...` : "—" }],
+      });
+    } catch (err: any) {
+      const msg = err?.shortMessage || err?.reason || err?.message || "Failed";
+      showError(msg);
     } finally { setBusy(false); }
   };
 
@@ -2673,7 +2783,21 @@ export default function ChatUIPage() {
               })()}
 
 
-              {tab === "private" && showChat && [...messages, ...pendingMsgs].sort((a, b) => Number(a.timestamp || a.ts || (a as any).sentAt || 0) - Number(b.timestamp || b.ts || (b as any).sentAt || 0)).map((m, i) => {
+              {tab === "private" && showChat && current && [...messages, ...pendingMsgs]
+                .filter((m) => {
+                  // Belt-and-braces guard: only render messages that
+                  // actually belong to the active conversation pair.
+                  // Stops a stray cross-contact response from rendering
+                  // under the wrong header during contact switches.
+                  const meLc = wallet.toLowerCase();
+                  const otherLc = current.address.toLowerCase();
+                  const from = (m.from || m.wallet || (m as any).fromWallet || (m as any).sender || "").toString().toLowerCase();
+                  const to = (m.to || (m as any).toWallet || (m as any).receiver || "").toString().toLowerCase();
+                  // No to field? Allow if from matches either participant.
+                  if (!to) return from === meLc || from === otherLc;
+                  return (from === meLc && to === otherLc) || (from === otherLc && to === meLc);
+                })
+                .sort((a, b) => Number(a.timestamp || a.ts || (a as any).sentAt || 0) - Number(b.timestamp || b.ts || (b as any).sentAt || 0)).map((m, i) => {
                 const fromAddr = (m.from || m.wallet || (m as any).fromWallet || (m as any).sender || "").toString();
                 const mine = fromAddr.toLowerCase() === wallet.toLowerCase();
                 const isOptimistic = typeof m.id === "string" && m.id.startsWith("opt-");
