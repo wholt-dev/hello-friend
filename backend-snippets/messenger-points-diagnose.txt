@@ -1,0 +1,14 @@
+// Diagnostic helper to find the messenger points double-credit on
+// /root/litvm-dex/twitter-auth/server.js. Run these greps to spot:
+//   1. how many places credit points for "/msg/sent"
+//   2. is there a +2 bonus that doubles up
+//   3. the exact pts amount passed to queueQuest / recordQuestFor
+
+# Locate the /msg/sent handler and its surrounding range
+grep -n "/msg/sent\|msgsToday\|daily_limit" /root/litvm-dex/twitter-auth/server.js
+
+# Look at the points credit calls — focus on the messenger flow
+grep -n -B1 -A2 "queueQuest\|recordQuestFor" /root/litvm-dex/twitter-auth/server.js | sed -n '1,200p'
+
+# Look for any "bonus" tagged logic added temporarily for messenger
+grep -n -i "bonus\|2\s*\*\s*2\|pts\s*\*\s*2\|MSG_BONUS" /root/litvm-dex/twitter-auth/server.js
