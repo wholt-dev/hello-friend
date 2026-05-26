@@ -3654,11 +3654,11 @@ const WeeklyLeaderboard = ({ className = '' }: { className?: string }) => {
         </table>
       )}
       <div className="mt-4 pt-3 border-t border-brand-border text-[10px] text-brand-text-muted space-y-0.5">
-        <div>Rank 1: 1 zkLTC + 2,000 pts</div>
-        <div>Rank 2: 0.5 zkLTC + 1,000 pts</div>
-        <div>Rank 3: 0.3 zkLTC + 500 pts</div>
-        <div>Rank 4-10: 0.01 zkLTC + 200 pts</div>
-        <div>Rank 11-20: 0.001 zkLTC + 100 pts</div>
+        <div>Rank 1: +5,000 pts bonus</div>
+        <div>Rank 2: +2,500 pts bonus</div>
+        <div>Rank 3: +1,500 pts bonus</div>
+        <div>Rank 4-10: +500 pts bonus</div>
+        <div>Rank 11-20: +200 pts bonus</div>
         <div className="pt-2 opacity-70">Top 20 rewarded every Sunday midnight IST</div>
       </div>
     </div>
@@ -3667,40 +3667,40 @@ const WeeklyLeaderboard = ({ className = '' }: { className?: string }) => {
 
 const ConvertPointsCard = ({ wallet }: { wallet: string }) => {
   const SIMPLE_API = 'https://game.test-hub.xyz';
-  const [data, setData] = useState<any>(null);
+  const [pending, setPending] = useState<{ gamesPending: number; totalScore: number; pointsAvailable: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ text: string; tx?: string } | null>(null);
   const [err, setErr] = useState('');
 
-  const fetchStatus = async () => {
+  const fetchPending = async () => {
     if (!wallet) return;
     try {
-      const r = await fetch(`${SIMPLE_API}/simple/convert/status/${wallet}`);
-      if (r.ok) setData(await r.json());
+      const r = await fetch(`${SIMPLE_API}/simple/pending/${wallet}`);
+      if (r.ok) setPending(await r.json());
     } catch {}
   };
 
   useEffect(() => {
-    fetchStatus();
-    const t = setInterval(fetchStatus, 20000);
+    fetchPending();
+    const t = setInterval(fetchPending, 15000);
     return () => clearInterval(t);
   }, [wallet]);
 
-  const handleConvert = async () => {
+  const handleClaim = async () => {
     if (!wallet || loading) return;
     setLoading(true);
     setErr('');
     setMsg(null);
     try {
-      const r = await fetch(`${SIMPLE_API}/simple/convert/request`, {
+      const r = await fetch(`${SIMPLE_API}/simple/claim-points`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wallet }),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || j?.success === false) throw new Error(j?.message || j?.error || 'Convert failed');
-      setMsg({ text: `✅ ${j.zkltcEquiv} zkLTC sent to your wallet!`, tx: j.txHash });
-      fetchStatus();
+      if (!r.ok || j?.success === false) throw new Error(j?.message || j?.error || 'Claim failed');
+      setMsg({ text: `✅ ${j.pointsCredited} pts credited to your Points balance`, tx: j.txHash });
+      fetchPending();
     } catch (e: any) {
       setErr(e?.message || 'Network error');
     } finally {
@@ -3708,19 +3708,8 @@ const ConvertPointsCard = ({ wallet }: { wallet: string }) => {
     }
   };
 
-  const totalPointsToday = Number(data?.totalPointsToday ?? 0);
-  const availablePoints = Number(data?.availablePoints ?? 0);
-  const convertsLeft = Number(data?.convertsLeft ?? 0);
-  const ratePerPoint = data?.ratePerPoint ?? 0.00000222;
-  const requests: any[] = Array.isArray(data?.requests) ? data.requests : [];
-
-  const statusColor = (s: string) => {
-    const v = String(s || '').toLowerCase();
-    if (v === 'sent') return '#22c55e';
-    if (v === 'processing' || v === 'pending') return '#f97316';
-    if (v === 'failed') return '#ef4444';
-    return '#888';
-  };
+  const ptsAvailable = Number(pending?.pointsAvailable ?? 0);
+  const gamesPending = Number(pending?.gamesPending ?? 0);
 
   return (
     <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -3728,38 +3717,30 @@ const ConvertPointsCard = ({ wallet }: { wallet: string }) => {
 
       <div className="space-y-2 mb-4">
         <div className="flex justify-between text-[11px]">
-          <span className="text-brand-text-muted uppercase">Today's Points</span>
-          <span className="text-brand-text-primary">{totalPointsToday} pts</span>
+          <span className="text-brand-text-muted uppercase">Unclaimed Games</span>
+          <span className="text-brand-text-primary">{gamesPending}</span>
         </div>
         <div className="flex justify-between text-[11px]">
-          <span className="text-brand-text-muted uppercase">Available</span>
-          <span className="text-brand-text-primary">{availablePoints} pts</span>
+          <span className="text-brand-text-muted uppercase">Pts Available</span>
+          <span className="text-brand-text-primary">{ptsAvailable.toLocaleString()} pts</span>
         </div>
         <div className="flex justify-between text-[11px]">
-          <span className="text-brand-text-muted uppercase">Rate</span>
-          <span className="text-brand-text-primary">1 pt = {ratePerPoint} zkLTC</span>
-        </div>
-        <div className="flex justify-between text-[11px]">
-          <span className="text-brand-text-muted uppercase">Converts Left</span>
-          <span className="text-brand-text-primary">{convertsLeft}/2</span>
+          <span className="text-brand-text-muted uppercase">Conversion</span>
+          <span className="text-brand-text-primary">1 score → 0.3 pts</span>
         </div>
       </div>
 
-      {availablePoints > 0 && convertsLeft > 0 ? (
-        <button
-          onClick={handleConvert}
-          disabled={loading}
-          className="w-full py-2.5 rounded-lg bg-brand-text-primary text-brand-bg font-mono font-bold text-[11px] uppercase tracking-widest disabled:opacity-50"
-        >
-          {loading ? 'Converting…' : 'Convert → zkLTC'}
-        </button>
-      ) : convertsLeft <= 0 ? (
-        <button disabled className="w-full py-2.5 rounded-lg font-mono font-bold text-[11px] uppercase tracking-widest cursor-not-allowed" style={{ background: '#1a1a1a', color: '#555', border: '1px solid #2a2a2a' }}>
-          Next convert at 00:00 IST
-        </button>
-      ) : (
-        <div className="text-brand-text-muted text-[11px] text-center py-2">Play games to earn points</div>
-      )}
+      <button
+        onClick={handleClaim}
+        disabled={loading || ptsAvailable <= 0}
+        className="w-full py-2.5 rounded-lg bg-brand-text-primary text-brand-bg font-mono font-bold text-[11px] uppercase tracking-widest disabled:opacity-50"
+      >
+        {loading
+          ? 'Claiming…'
+          : ptsAvailable > 0
+            ? `Claim ${ptsAvailable.toLocaleString()} pts`
+            : 'Play games to earn pts'}
+      </button>
 
       {msg && (
         <div className="mt-3 text-[11px] text-brand-text-primary">
@@ -3773,18 +3754,7 @@ const ConvertPointsCard = ({ wallet }: { wallet: string }) => {
       )}
       {err && <div className="mt-3 text-[11px]" style={{ color: '#c44' }}>{err}</div>}
 
-      {requests.length > 0 && (
-        <div className="mt-4 pt-3 border-t border-brand-border space-y-1.5">
-          {requests.slice(0, 2).map((rq: any, i: number) => (
-            <div key={i} className="text-[10px] text-brand-text-muted">
-              Convert {rq.convertNum} — {rq.pointsRequested} pts → {rq.zkltcEquiv} zkLTC —{' '}
-              <span style={{ color: statusColor(rq.status) }}>{rq.status}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="mt-4 text-[10px] text-brand-text-muted">⚠️ Unconverted points expire at 00:00 IST daily</div>
+      <div className="mt-4 text-[10px] text-brand-text-muted">Points add to your on-chain Points balance instantly.</div>
     </div>
   );
 };
@@ -4158,19 +4128,20 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
               <th className="text-left font-normal">#</th>
               <th className="text-left font-normal">Wallet</th>
               <th className="text-right font-normal">Score</th>
-              <th className="text-right font-normal">zkLTC</th>
+              <th className="text-right font-normal">Points</th>
             </tr>
           </thead>
           <tbody>
             {board.slice(0, 20).map((e: any, i: number) => {
               const w = e.wallet || e.walletAddress || e.address || '';
               const cls = i === 0 ? 'text-brand-text-primary font-bold' : 'text-brand-text-muted';
+              const score = Number(e.total_score ?? e.totalScore ?? e.score ?? 0);
               return (
                 <tr key={i} className={cls}>
                   <td className="py-1">{i + 1}</td>
                   <td className="py-1">{mask(w)}</td>
-                  <td className="py-1 text-right">{Number(e.total_score ?? e.totalScore ?? e.score ?? 0)}</td>
-                  <td className="py-1 text-right">{Number(e.total_zkltc ?? e.totalZkltc ?? 0).toFixed(6)}</td>
+                  <td className="py-1 text-right">{score.toLocaleString()}</td>
+                  <td className="py-1 text-right">{Math.floor(score * 0.3).toLocaleString()}</td>
                 </tr>
               );
             })}
@@ -4202,12 +4173,12 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
                   <div className="text-brand-text-primary text-sm">{gamesPlayed} / {DAILY_LIMIT}</div>
                 </div>
                 <div className="mb-3">
-                  <div className="text-[10px] uppercase text-brand-text-muted">Total zkLTC Earned</div>
-                  <div className="text-brand-text-primary text-sm">{totalZkltc.toFixed(8)}</div>
+                  <div className="text-[10px] uppercase text-brand-text-muted">Total Points Earned</div>
+                  <div className="text-brand-text-primary text-sm">{Number(stats?.totalPointsClaimed ?? 0).toLocaleString()} pts</div>
                 </div>
                 <div className="mb-4">
                   <div className="text-[10px] uppercase text-brand-text-muted">Rate</div>
-                  <div className="text-brand-text-primary text-xs">1 PT = {RATE} zkLTC</div>
+                  <div className="text-brand-text-primary text-xs">1 score = 0.3 pts</div>
                 </div>
                 <div className="pt-3 border-t border-brand-border">
                   <div className="text-[10px] uppercase text-brand-text-muted mb-2">Recent Games</div>
@@ -4216,14 +4187,20 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
                   ) : (
                     <div className="space-y-1.5">
                       {recent.slice(0, 5).map((g: any, i: number) => {
-                        const url = g.tx_hash ? `https://liteforge.explorer.caldera.xyz/tx/${g.tx_hash}` : undefined;
+                        // Game-rewards rows store the on-chain claim tx as
+                        // `claimed_<hash>`. Show as the proof for that game.
+                        const tx = String(g.tx_hash || '');
+                        const claimedHash = tx.startsWith('claimed_') ? tx.slice('claimed_'.length) : null;
+                        const url = claimedHash ? `https://liteforge.explorer.caldera.xyz/tx/${claimedHash}` : undefined;
+                        const score = Number(g.score ?? 0);
+                        const ptsRow = Math.floor(score * 0.3);
                         return (
                           <div key={i} className="flex items-center justify-between text-[10px]">
-                            <span className="text-brand-text-primary">{Number(g.score ?? 0)} pts</span>
-                            <span className="text-brand-text-muted">{Number(g.zkltc_sent ?? 0).toFixed(6)}</span>
+                            <span className="text-brand-text-primary">{score} score</span>
+                            <span className="text-brand-text-muted">{ptsRow} pts</span>
                             {url ? (
                               <a href={url} target="_blank" rel="noreferrer" className="text-brand-text-primary underline decoration-white/30">tx</a>
-                            ) : <span className="text-brand-text-muted">—</span>}
+                            ) : <span className="text-brand-text-muted">unclaimed</span>}
                           </div>
                         );
                       })}
@@ -4344,7 +4321,7 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
 
       {/* Global stats bottom bar */}
       {!playing && (
-        <div className="mt-6 p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="mt-6 p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div>
             <div className="text-[10px] uppercase text-brand-text-muted">Total Games</div>
             <div className="text-brand-text-primary text-lg font-bold">{Number(global?.totalGames ?? 0).toLocaleString()}</div>
@@ -4356,6 +4333,12 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
           <div>
             <div className="text-[10px] uppercase text-brand-text-muted">Total zkLTC Distributed</div>
             <div className="text-brand-text-primary text-lg font-bold">{Number(global?.totalZkltc ?? 0).toFixed(6)}</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase text-brand-text-muted">Total Points Distributed</div>
+            <div className="text-brand-text-primary text-lg font-bold">
+              {Math.floor(Number(global?.totalScore ?? 0) * 0.3).toLocaleString()}
+            </div>
           </div>
         </div>
       )}
