@@ -238,12 +238,12 @@ function getReadMessenger() {
   return new Contract(MESSENGER_ADDRESS, MESSENGER_READ_ABI, provider);
 }
 
-const BUY_DURATION_OPTIONS: { value: number; label: string; price: string; tag?: string }[] = [
-  { value: 1,  label: "1 Year",   price: "0.05" },
-  { value: 2,  label: "2 Years",  price: "0.09" },
-  { value: 5,  label: "5 Years",  price: "0.20", tag: "Popular" },
-  { value: 10, label: "10 Years", price: "0.35" },
-  { value: 99, label: "Forever",  price: "0.50", tag: "Lifetime" },
+const BUY_DURATION_OPTIONS: { value: number; label: string; price: string; tag?: string; points: number }[] = [
+  { value: 1,  label: "1 Year",   price: "0.05", points: 10 },
+  { value: 2,  label: "2 Years",  price: "0.09", points: 20 },
+  { value: 5,  label: "5 Years",  price: "0.20", tag: "Popular", points: 35 },
+  { value: 10, label: "10 Years", price: "0.35", points: 60 },
+  { value: 99, label: "Forever",  price: "0.50", tag: "Lifetime", points: 100 },
 ];
 
 const SELECTOR = {
@@ -972,10 +972,36 @@ export default function ChatUIPage() {
       await tx.wait();
       console.log("[BuyLit] tx confirmed");
       setBuySuccess(name);
+
+      // Award points based on duration. Backend verifies the tx exists
+      // on chain before crediting (anti-spoof) and uses {wallet,txHash}
+      // for idempotency so a refresh can't double-credit. Failure here
+      // is silent — the registration already succeeded.
+      const POINTS_BY_DURATION: Record<number, number> = { 1: 10, 2: 20, 5: 35, 10: 60, 99: 100 };
+      const pointsToAward = POINTS_BY_DURATION[buyDuration] ?? 0;
+      if (pointsToAward > 0) {
+        try {
+          await fetch("https://api.test-hub.xyz/points/award", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              wallet,
+              action: "domain_register",
+              amount: pointsToAward,
+              txHash: tx.hash,
+              meta: { duration: buyDuration, name },
+            }),
+          });
+          console.log("[BuyLit] points awarded:", pointsToAward);
+        } catch (e) {
+          console.warn("[BuyLit] award points failed (registration still succeeded)", e);
+        }
+      }
+
       addNotif(wallet, {
         type: "gf",
         title: "Domain registered",
-        message: `${name}.lit is yours${buyDuration === 99 ? " forever" : ` for ${buyDuration} year${buyDuration > 1 ? "s" : ""}`}`,
+        message: `${name}.lit is yours${buyDuration === 99 ? " forever" : ` for ${buyDuration} year${buyDuration > 1 ? "s" : ""}`}${pointsToAward ? ` · +${pointsToAward} pts` : ""}`,
         link: "/chat",
       });
       showSuccess({
@@ -984,6 +1010,7 @@ export default function ChatUIPage() {
         rows: [
           { label: "DURATION", value: buyDuration === 99 ? "Forever" : `${buyDuration} year${buyDuration > 1 ? "s" : ""}` },
           { label: "PRICE", value: `${buyPrice} zkLTC` },
+          ...(pointsToAward ? [{ label: "POINTS", value: `+${pointsToAward}` }] : []),
           { label: "TX", value: `${tx.hash.slice(0, 10)}...` },
         ],
       });
@@ -4442,6 +4469,7 @@ export default function ChatUIPage() {
                       )}
                       <div className="text-sm font-bold text-brand-text-primary">{d.label}</div>
                       <div className="text-xs text-brand-text-primary font-semibold tabular-nums mt-1">{d.price} zkLTC</div>
+                      <div className="text-[10px] text-brand-text-muted mt-0.5">+{d.points} pts</div>
                     </button>
                   ))}
                 </div>
