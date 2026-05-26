@@ -7,13 +7,13 @@ import { Navigation, Menu, X, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 
-type NavItem = { name: string; id: string; locked?: boolean };
+type NavItem = { name: string; id: string; locked?: boolean; beta?: boolean };
 
 const navItems: NavItem[] = [
   { name: "Swap", id: "swap" },
   { name: "Pool", id: "pool" },
   { name: "Deploy", id: "deploy" },
-  { name: "Hub", id: "chatui" },
+  { name: "Hub", id: "chatui", beta: true },
   { name: "Points", id: "points" },
   { name: "NFTs", id: "nfts" },
   { name: "Messenger", id: "messenger" },
@@ -168,7 +168,14 @@ export function AnimatedNavFramer({ activePage, onPageChange }: { activePage: st
                   transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                 />
               )}
-              {item.name}
+              <span className="flex flex-col items-center leading-none">
+                <span>{item.name}</span>
+                {item.beta && (
+                  <span className="mt-0.5 text-[7px] sm:text-[8px] font-extrabold tracking-[0.25em] text-white/60 leading-none">
+                    BETA
+                  </span>
+                )}
+              </span>
               {item.locked && <Lock size={10} className="opacity-40" />}
             </motion.button>
           ))}
@@ -234,6 +241,7 @@ export function AnimatedNavFramer({ activePage, onPageChange }: { activePage: st
                 )}
               >
                 {item.name}
+                {item.beta && <span className="ml-2 text-[10px] tracking-[0.25em] text-white/50">BETA</span>}
                 {item.locked && <Lock size={16} className="opacity-40" />}
               </button>
             ))}
@@ -278,6 +286,7 @@ export function AnimatedNavFramer({ activePage, onPageChange }: { activePage: st
                             )}
                         >
                             {item.name}
+                            {item.beta && <span className="ml-3 text-sm tracking-[0.3em] text-white/50 align-middle">BETA</span>}
                             {item.locked && <Lock size={24} className="opacity-40" />}
                         </button>
                     ))}
