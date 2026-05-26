@@ -4479,7 +4479,6 @@ const MessengerPage = () => {
 
   const handleSend = async () => {
     if (!content) return;
-    if (msgCount >= DAILY_MSG_LIMIT) return;
     setSending(true);
     setError(null);
     try {
@@ -4490,11 +4489,29 @@ const MessengerPage = () => {
       const sentHash = result.hash;
       setLastSentHash(sentHash);
 
-      // Handle daily limit response from backend
+      // Backend hit the daily cap — message went on-chain, but no
+      // points were credited. Surface the cap status without blocking
+      // the user from sending more on-chain messages.
       if (result.success === false && result.reason === "daily_limit") {
         setMsgCount(DAILY_MSG_LIMIT);
         writeLocalMsgCount(DAILY_MSG_LIMIT);
-        setError("Daily limit reached");
+
+        const explorerUrl = `${litvmChain.blockExplorers.default.url}/tx/${sentHash}`;
+        const shortHash = `${sentHash.slice(0, 6)}...${sentHash.slice(-4)}`;
+        showSuccess({
+          title: "DAILY CAP REACHED",
+          subtitle: "MESSAGE DELIVERED · NO MORE POINTS TODAY",
+          rows: [
+            { label: "POINTS EARNED", value: "+0 PTS (CAP REACHED)" },
+            { label: "TRANSACTION", value: shortHash, href: explorerUrl },
+            { label: "STATUS", value: "ON-CHAIN DELIVERED" },
+          ],
+        });
+
+        await fetchStats();
+        await fetchBackendPoints();
+        setContent('');
+        if (msgType === 'direct') setRecipient('');
         setSending(false);
         return;
       }
@@ -4517,7 +4534,7 @@ const MessengerPage = () => {
         title: "MESSAGE SENT",
         subtitle: "PROTOCOL VERIFICATION COMPLETE",
         rows: [
-          { label: "POINTS EARNED", value: "+2 PTS (+2 BONUS)" },
+          { label: "POINTS EARNED", value: "+2 PTS" },
           { label: "TRANSACTION", value: shortHash, href: explorerUrl },
           { label: "STATUS", value: "ON-CHAIN DELIVERED" },
         ],
@@ -4689,8 +4706,7 @@ const MessengerPage = () => {
                     <div className="flex items-center gap-6">
                        <button 
                          onClick={handleSend}
-                         disabled={!isConnected || sending || !content || (msgType === 'direct' && !recipient) || msgCount >= DAILY_MSG_LIMIT}
-                         style={msgCount >= DAILY_MSG_LIMIT ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' } : undefined}
+                         disabled={!isConnected || sending || !content || (msgType === 'direct' && !recipient)}
                          className="px-12 py-4 bg-white text-black rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] disabled:opacity-30 transition-all shadow-[0_0_50px_rgba(255,255,255,0.1)] flex items-center gap-3"
                        >
                          {sending ? "TRANSMITTING..." : "AUTHORIZE TRANSMISSION"}
@@ -4701,7 +4717,7 @@ const MessengerPage = () => {
                        {isConnected && (
                          <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest">
                            {msgCount >= DAILY_MSG_LIMIT
-                             ? `Daily limit reached (${DAILY_MSG_LIMIT}/${DAILY_MSG_LIMIT})`
+                             ? `Cap reached · ${DAILY_MSG_LIMIT}/${DAILY_MSG_LIMIT} (no more points today)`
                              : `${msgCount}/${DAILY_MSG_LIMIT} messages today`}
                          </p>
                        )}
