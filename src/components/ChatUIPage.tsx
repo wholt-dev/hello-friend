@@ -108,6 +108,40 @@ const LIT_REGISTRY_ADDRESS = "0x3E3aEE6d154f881A7418b2dA50c915C34664C2A8";
 const MESSENGER_ADDRESS = "0x69405b51963D592C6CA9350F774045d4E76c89B8";
 const MARKETPLACE_ADDRESS = "0x9cc6e4BB66EC19475d9db8082482Eb272cf6eA02";
 
+// Ensure MetaMask is on the LiteForge chain before issuing any signed
+// transaction. Without this the wallet can sign on the wrong network and
+// the call silently never reaches the marketplace contract — which is
+// exactly why "Buy Now" / "Place Bid" / "Accept" felt unresponsive when
+// the user was on Sepolia / Mainnet.
+async function ensureLitForgeChain(): Promise<void> {
+  const eth: any = (window as any).ethereum;
+  if (!eth) throw new Error("No wallet detected");
+  const current = (await eth.request({ method: "eth_chainId" }).catch(() => "")) as string;
+  if (current?.toLowerCase() === CHAIN_ID_HEX.toLowerCase()) return;
+  try {
+    await eth.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: CHAIN_ID_HEX }],
+    });
+  } catch (err: any) {
+    if (err?.code === 4902) {
+      await eth.request({
+        method: "wallet_addEthereumChain",
+        params: [
+          {
+            chainId: CHAIN_ID_HEX,
+            chainName: "LiteForge",
+            rpcUrls: [RPC_URL],
+            nativeCurrency: { name: "zkLTC", symbol: "zkLTC", decimals: 18 },
+          },
+        ],
+      });
+      return;
+    }
+    throw err;
+  }
+}
+
 const MARKETPLACE_ABI = [
   "function listName(string name, uint256 price) external",
   "function unlistName(string name) external",
@@ -120,6 +154,7 @@ const MARKETPLACE_ABI = [
 async function getMarketplaceContract() {
   const eth = (window as any).ethereum;
   if (!eth) throw new Error("No wallet detected");
+  await ensureLitForgeChain();
   const provider = new BrowserProvider(eth);
   const signer = await provider.getSigner();
   return new Contract(MARKETPLACE_ADDRESS, MARKETPLACE_ABI, signer);
@@ -134,6 +169,7 @@ const REGISTRY_ABI = [
 async function getRegistryContract() {
   const eth = (window as any).ethereum;
   if (!eth) throw new Error("No wallet detected");
+  await ensureLitForgeChain();
   const provider = new BrowserProvider(eth);
   const signer = await provider.getSigner();
   return new Contract(LIT_REGISTRY_ADDRESS, REGISTRY_ABI, signer);
@@ -146,6 +182,7 @@ const HUB_POSTS_ABI = [
 async function getHubPostsContract() {
   const eth = (window as any).ethereum;
   if (!eth) throw new Error("No wallet detected");
+  await ensureLitForgeChain();
   const provider = new BrowserProvider(eth);
   const signer = await provider.getSigner();
   return new Contract(HUB_POSTS_ADDRESS, HUB_POSTS_ABI, signer);
@@ -1368,7 +1405,14 @@ export default function ChatUIPage() {
     console.log("[ChatUI] connectedWallet:", connectedWallet);
     if (!connectedWallet) { setContacts([]); setPending([]); return; }
     try {
-      const url = `${API}/hub/messenger/friends/${connectedWallet.toLowerCase()}`;
+      // Allow callers to bypass the backend response cache — needed
+      // right after a friend-request accept/reject so the fresh server
+      // list lands instead of the stale 30s-cached one.
+      const cacheBust = (loadPrivate as any)._bustNext === true;
+      if (cacheBust) (loadPrivate as any)._bustNext = false;
+      const url = cacheBust
+        ? `${API}/hub/messenger/friends/${connectedWallet.toLowerCase()}?t=${Date.now()}`
+        : `${API}/hub/messenger/friends/${connectedWallet.toLowerCase()}`;
       console.log("[ChatUI] fetching friends:", url);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`friends ${response.status}`);
@@ -1893,6 +1937,10 @@ export default function ChatUIPage() {
   };
 
   const respondRequest = async (reqId: string, accept: boolean) => {
+    // Snapshot the request before we drop it from `pending` — we need
+    // its `from` address + name to optimistically add the new friend
+    // to the contacts list once the user accepts.
+    const reqSnapshot = pending.find((p) => p.id === reqId);
     setBusy(true);
     try {
       const txHash = await writeContract(
@@ -1901,6 +1949,21 @@ export default function ChatUIPage() {
       );
       // Drop from pending list locally so the card disappears immediately.
       setPending((list) => list.filter((req) => req.id !== reqId));
+      // Optimistic add to contacts the instant the user accepts so they
+      // can DM without waiting for the backend's cached friends list to
+      // refresh. The poll below replaces this entry with the canonical
+      // server-resolved record.
+      if (accept && reqSnapshot?.from) {
+        const newAddr = reqSnapshot.from;
+        const newName = reqSnapshot.name || short(newAddr);
+        setContacts((prev) => {
+          if (prev.some((c) => c.address.toLowerCase() === newAddr.toLowerCase())) return prev;
+          return [
+            { address: newAddr, name: newName, message: short(newAddr) },
+            ...prev,
+          ];
+        });
+      }
       // Wait for confirmation, then refresh the friends list aggressively
       // so the new friend shows up without needing a wallet swap or
       // refresh. Three pulls handles the brief indexer lag after a tx.
@@ -1909,9 +1972,12 @@ export default function ChatUIPage() {
           await waitForReceipt(txHash, 30_000);
         }
       } catch { /* receipt poll already swallows errors */ }
+      // Force the next 3 friend-list fetches to bypass the backend cache
+      // so the new contact lands without a wallet swap or page refresh.
+      (loadPrivate as any)._bustNext = true;
       await loadPrivate();
-      setTimeout(() => loadPrivate(), 3_000);
-      setTimeout(() => loadPrivate(), 10_000);
+      setTimeout(() => { (loadPrivate as any)._bustNext = true; loadPrivate(); }, 3_000);
+      setTimeout(() => { (loadPrivate as any)._bustNext = true; loadPrivate(); }, 10_000);
       showSuccess({
         title: accept ? "FRIEND REQUEST ACCEPTED" : "FRIEND REQUEST REJECTED",
         subtitle: accept ? "ADDED TO YOUR CONTACTS" : "REQUEST DECLINED",
