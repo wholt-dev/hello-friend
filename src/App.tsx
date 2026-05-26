@@ -5382,7 +5382,11 @@ export default function App() {
         </AnimatePresence>
       </div>
 
-      {/* Footer */}
+      {/* Footer — hidden on Hub (chatui) since the in-page sidebar
+          (Private/Global/.lit Market/Buy .lit) already provides
+          navigation. Showing the global footer there clutters the
+          chat layout. */}
+      {activePage !== 'chatui' && (
       <footer ref={footerRef} className="border-t border-brand-border py-12 relative z-50 bg-brand-bg">
         <div className="container mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-3">
@@ -5398,6 +5402,7 @@ export default function App() {
           </div>
         </div>
       </footer>
+      )}
 
       <NotificationsPanel open={notifOpen} onClose={() => setNotifOpen(false)} wallet={walletAddr} />
       <FaucetModal open={faucetModalOpen} onClose={() => setFaucetModalOpen(false)} wallet={walletAddr} />
