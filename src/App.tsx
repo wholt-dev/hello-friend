@@ -4481,6 +4481,14 @@ const MessengerPage = () => {
     if (!content) return;
     setSending(true);
     setError(null);
+
+    // Frontend cap check — backend is telemetry-only now, so we own
+    // the cap-reached UX. The on-chain tx still goes through (contract
+    // may or may not credit, depending on its own internal cap), but
+    // the user sees a clear "no points today" message instead of the
+    // generic +2 PTS popup.
+    const isCapReachedClick = msgCount >= DAILY_MSG_LIMIT;
+
     try {
       const { sendMessage } = await import('./lib/litdex-core-logic');
       const target = msgType === 'public' ? 'public' : recipient;
@@ -4489,10 +4497,9 @@ const MessengerPage = () => {
       const sentHash = result.hash;
       setLastSentHash(sentHash);
 
-      // Backend hit the daily cap — message went on-chain, but no
-      // points were credited. Surface the cap status without blocking
-      // the user from sending more on-chain messages.
-      if (result.success === false && result.reason === "daily_limit") {
+      // If the backend (legacy) or the frontend cap says daily limit
+      // hit, surface the cap popup instead of the +2 PTS card.
+      if (isCapReachedClick || (result.success === false && result.reason === "daily_limit")) {
         setMsgCount(DAILY_MSG_LIMIT);
         writeLocalMsgCount(DAILY_MSG_LIMIT);
 
