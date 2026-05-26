@@ -18,7 +18,9 @@ import {
   Share2,
   ShoppingBag,
   Smile,
+  Sparkles,
   SquarePen,
+  Store,
   Tag,
   TrendingUp,
   Users,
@@ -137,6 +139,18 @@ async function getRegistryContract() {
   return new Contract(LIT_REGISTRY_ADDRESS, REGISTRY_ABI, signer);
 }
 
+const HUB_POSTS_ABI = [
+  "function withdrawBounty(uint256 postId) external",
+] as const;
+
+async function getHubPostsContract() {
+  const eth = (window as any).ethereum;
+  if (!eth) throw new Error("No wallet detected");
+  const provider = new BrowserProvider(eth);
+  const signer = await provider.getSigner();
+  return new Contract(HUB_POSTS_ADDRESS, HUB_POSTS_ABI, signer);
+}
+
 const BUY_DURATION_OPTIONS: { value: number; label: string; price: string; tag?: string }[] = [
   { value: 1,  label: "1 Year",   price: "0.05" },
   { value: 2,  label: "2 Years",  price: "0.09" },
@@ -209,6 +223,7 @@ type Post = {
   likeCount: number;
   commentCount: number;
   bountyActive: boolean;
+  bountyBalance?: string;
   liked?: boolean;
   comments?: Comment[];
   pending?: boolean;
@@ -970,8 +985,13 @@ export default function ChatUIPage() {
 
   const taggedIds = useMemo(() => {
     if (!walletLc) return [] as string[];
+    // Only flag mentions from the last 30 minutes — older posts shouldn't
+    // trigger a "you have a mention" badge anymore.
+    const cutoff = Math.floor(Date.now() / 1000) - 30 * 60;
     return posts
       .filter((p) => {
+        const ts = Number(p.timestamp || (p as any).createdAt || (p as any).ts || 0);
+        if (!ts || ts < cutoff) return false;
         const c = (p.content || "").toLowerCase();
         return (shortMe && c.includes(`@${shortMe}`)) || (!!myLitName && c.includes(`@${myLitName}`));
       })
@@ -1201,6 +1221,7 @@ export default function ChatUIPage() {
           likeCount: Number(p.likeCount ?? p.likes ?? 0),
           commentCount: Number(p.commentCount ?? p.comments?.length ?? 0),
           bountyActive: Boolean(p.bountyActive || p.hasBounty || p.bounty),
+          bountyBalance: String(p.bountyBalance ?? p.bountyAmount ?? "0"),
           liked,
           comments,
         };
@@ -1393,6 +1414,7 @@ export default function ChatUIPage() {
         likeCount: Number(p.likeCount ?? p.likes ?? it.likeCount),
         commentCount: Number(p.commentCount ?? (comments ? comments.length : it.commentCount)),
         bountyActive: Boolean(p.bountyActive ?? p.hasBounty ?? it.bountyActive),
+        bountyBalance: String(p.bountyBalance ?? p.bountyAmount ?? it.bountyBalance ?? "0"),
         comments: comments ?? it.comments,
       } : it));
     } catch (err) { console.error("[ChatUI] refreshPost error:", err); }
@@ -1427,6 +1449,74 @@ export default function ChatUIPage() {
         }
       } catch (err) { console.error("[ChatUI] bounty toast error:", err); }
     } finally { setBusy(false); }
+  };
+
+  // Reclaim unclaimed bounty after 24h. Calls HubPosts.withdrawBounty(postId)
+  // from the creator's wallet. On confirmation we publish a global post
+  // announcing the reclaim and refresh the feed.
+  const reclaimBounty = async (post: Post) => {
+    if (!wallet) {
+      showError("Connect wallet first");
+      return;
+    }
+    if (post.author?.toLowerCase() !== wallet.toLowerCase()) {
+      showError("Only the post creator can reclaim");
+      return;
+    }
+    setBusy(true);
+    try {
+      const c = await getHubPostsContract();
+      console.log("[ChatUI] reclaimBounty()", { postId: post.postId });
+      const tx = await c.withdrawBounty(post.postId);
+      console.log("[ChatUI] reclaimBounty tx submitted", tx.hash);
+      await tx.wait();
+      console.log("[ChatUI] reclaimBounty confirmed");
+
+      // Best-effort: post a global feed message announcing the reclaim.
+      // Failure here doesn't block the reclaim itself.
+      const balance = post.bountyBalance && post.bountyBalance !== "0" ? post.bountyBalance : "";
+      const announceText = balance
+        ? `💰 Reclaimed ${balance} zkLTC unclaimed bounty from post #${post.postId}`
+        : `💰 Reclaimed unclaimed bounty from post #${post.postId}`;
+      try {
+        await writeContract(
+          HUB_POSTS_ADDRESS,
+          encodeCall(SELECTOR.createPost, [
+            { type: "string", value: announceText },
+            { type: "uint", value: 0n },
+            { type: "uint", value: 0n },
+          ]),
+          0n,
+        );
+      } catch (e) {
+        console.warn("[ChatUI] reclaim announcement post failed", e);
+      }
+
+      addNotif(wallet, {
+        type: "gf",
+        title: "Bounty reclaimed",
+        message: balance
+          ? `Got back ${balance} zkLTC from post #${post.postId}`
+          : `Reclaimed bounty from post #${post.postId}`,
+        link: "/chat",
+      });
+      showSuccess({
+        title: "BOUNTY RECLAIMED",
+        subtitle: "FUNDS BACK IN YOUR WALLET",
+        rows: [
+          { label: "POST", value: `#${post.postId}` },
+          ...(balance ? [{ label: "AMOUNT", value: `${balance} zkLTC` }] : []),
+          { label: "TX", value: `${String(tx.hash).slice(0, 10)}...` },
+        ],
+      });
+      await loadPosts();
+    } catch (err: any) {
+      const msg = err?.shortMessage || err?.reason || err?.message || "Reclaim failed";
+      console.error("[ChatUI] reclaimBounty failed", err);
+      showError(msg);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const sendTokenCommand = async (amount: string, tokenSym: string, litName: string) => {
@@ -2006,7 +2096,7 @@ export default function ChatUIPage() {
                   view === "market" ? "bg-white/10 text-brand-text-primary" : "text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary"
                 )}
               >
-                <span className="text-base leading-none">🪙</span>
+                <Store size={18} />
                 {sidebarOpen && <span className="text-sm">.lit Market</span>}
               </button>
               <button
@@ -2016,7 +2106,7 @@ export default function ChatUIPage() {
                   view === "buy" ? "bg-white/10 text-brand-text-primary" : "text-brand-text-muted hover:bg-white/5 hover:text-brand-text-primary"
                 )}
               >
-                <span className="text-base leading-none">✨</span>
+                <Sparkles size={18} />
                 {sidebarOpen && <span className="text-sm">Buy .lit</span>}
               </button>
             </div>
@@ -2392,7 +2482,7 @@ export default function ChatUIPage() {
 
                           <div className="flex items-center gap-2 pr-8">
                             <Avatar name={post.name || post.author} size={34} />
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <span className="font-semibold">{post.name || short(post.author)}</span>
                               <span className="ml-2 text-xs text-brand-text-muted">{displayTime(post.timestamp)}</span>
                               <span className="ml-2 text-xs text-brand-text-muted">· ♥ {post.likeCount}</span>
@@ -2400,6 +2490,26 @@ export default function ChatUIPage() {
                                 <span className="ml-2 text-[11px] text-brand-text-primary">✓ Bounty claimed</span>
                               )}
                             </div>
+                            {(() => {
+                              // Reclaim button: visible only to the post
+                              // creator on a still-active bounty older than
+                              // 24h. Lets them pull back funds nobody claimed.
+                              const isMine = post.author?.toLowerCase() === wallet.toLowerCase();
+                              const ageSec = Math.floor(Date.now() / 1000) - Number(post.timestamp || 0);
+                              const balanceNum = parseFloat(post.bountyBalance || "0");
+                              const eligible = isMine && post.bountyActive && balanceNum > 0 && ageSec > 24 * 60 * 60;
+                              if (!eligible) return null;
+                              return (
+                                <button
+                                  onClick={() => reclaimBounty(post)}
+                                  disabled={busy}
+                                  title="Reclaim unclaimed bounty (24h+)"
+                                  className="ml-2 px-2.5 h-7 inline-flex items-center gap-1 rounded-full bg-white/10 hover:bg-white/15 border border-brand-border text-[10px] font-bold uppercase tracking-wider text-brand-text-primary transition-colors disabled:opacity-50"
+                                >
+                                  💰 Reclaim
+                                </button>
+                              );
+                            })()}
                           </div>
                           {(() => {
                             const idMatch = (post.content || "").match(REPLY_ID_RE);
