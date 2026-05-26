@@ -164,6 +164,8 @@ const REGISTRY_ABI = [
   "function register(string name, uint8 duration) external payable",
   "function isAvailable(string name) external view returns (bool)",
   "function getPrice(uint8 duration) external view returns (uint256)",
+  "function operatorApprovals(address owner, address operator) external view returns (bool)",
+  "function setOperatorApproval(address operator, bool approved) external",
 ] as const;
 
 async function getRegistryContract() {
@@ -173,6 +175,39 @@ async function getRegistryContract() {
   const provider = new BrowserProvider(eth);
   const signer = await provider.getSigner();
   return new Contract(LIT_REGISTRY_ADDRESS, REGISTRY_ABI, signer);
+}
+
+/**
+ * Ensure the connected wallet has approved the marketplace as an operator
+ * on the .lit name registry. Without this, every marketplace flow that
+ * calls `registry.transfer(name, to)` (acceptBid + buyName completion)
+ * reverts with "Not authorized". We only prompt MetaMask for approval
+ * once per wallet — the `operatorApprovals` mapping persists on-chain.
+ *
+ * Called before listName / acceptBid so the seller's later flows always
+ * have a working transfer path.
+ */
+async function ensureMarketplaceOperator(): Promise<void> {
+  const eth = (window as any).ethereum;
+  if (!eth) throw new Error("No wallet detected");
+  await ensureLitForgeChain();
+  const provider = new BrowserProvider(eth);
+  const signer = await provider.getSigner();
+  const me = (await signer.getAddress()).toLowerCase();
+  const reg = new Contract(LIT_REGISTRY_ADDRESS, REGISTRY_ABI, signer);
+  let already = false;
+  try {
+    already = await reg.operatorApprovals(me, MARKETPLACE_ADDRESS);
+  } catch {
+    // ABI mismatch or contract revert — assume not approved and let
+    // setOperatorApproval below handle the rest.
+    already = false;
+  }
+  if (already) return;
+  console.log("[Market] granting marketplace operator approval");
+  const tx = await reg.setOperatorApproval(MARKETPLACE_ADDRESS, true);
+  await tx.wait();
+  console.log("[Market] operator approval confirmed", tx.hash);
 }
 
 const HUB_POSTS_ABI = [
@@ -1011,6 +1046,11 @@ export default function ChatUIPage() {
     if (!wallet) return;
     setBusy(true);
     try {
+      // The marketplace contract calls `registry.transfer(name, bidder)`
+      // inside acceptBid, which fails with "Not authorized" unless the
+      // seller has approved the marketplace as an operator on the
+      // registry. Grant it once here (no-op if already approved).
+      await ensureMarketplaceOperator();
       const c = await getMarketplaceContract();
       console.log("[Market] acceptBid()", { domain, bidder });
       const tx = await c.acceptBid(domain, bidder);
@@ -3697,9 +3737,23 @@ export default function ChatUIPage() {
                           <div className="flex gap-2">
                             <input
                               value={listPriceFor[d] || ""}
-                              onChange={(e) => setListPriceFor((p) => ({ ...p, [d]: e.target.value }))}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                const cleaned = raw.replace(/[^0-9.]/g, "").replace(/^\./, "0.");
+                                const firstDot = cleaned.indexOf(".");
+                                const safe = firstDot === -1
+                                  ? cleaned
+                                  : cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, "");
+                                setListPriceFor((p) => ({ ...p, [d]: safe }));
+                              }}
+                              onKeyDown={(e) => {
+                                const ok = /^[\d.]$/.test(e.key) || ["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Home", "End", "Tab", "Enter"].includes(e.key);
+                                if (!ok && !e.metaKey && !e.ctrlKey) e.preventDefault();
+                              }}
                               placeholder="Price (zkLTC)"
                               inputMode="decimal"
+                              pattern="[0-9]*\.?[0-9]*"
+                              autoComplete="off"
                               className="flex-1 h-9 px-3 rounded-md bg-brand-bg border border-brand-border text-sm text-brand-text-primary placeholder:text-brand-text-muted outline-none focus:border-white/40"
                             />
                             <button
@@ -3707,6 +3761,10 @@ export default function ChatUIPage() {
                               onClick={async () => {
                                 setBusy(true);
                                 try {
+                                  // Grant operator approval up-front so
+                                  // later buy/accept flows can call
+                                  // registry.transfer() without reverting.
+                                  await ensureMarketplaceOperator();
                                   const c = await getMarketplaceContract();
                                   const priceWei = parseEther(listPriceFor[d]);
                                   console.log("[Market] listName()", { name: d, price: listPriceFor[d] });
@@ -3982,9 +4040,29 @@ export default function ChatUIPage() {
                                   <input
                                     autoFocus
                                     value={bidInputs[l.name]}
-                                    onChange={(e) => setBidInputs((p) => ({ ...p, [l.name]: e.target.value }))}
+                                    onChange={(e) => {
+                                      // Numeric only — strip everything but
+                                      // digits + a single decimal point so
+                                      // `parseEther` never receives garbage.
+                                      const raw = e.target.value;
+                                      const cleaned = raw.replace(/[^0-9.]/g, "").replace(/^\./, "0.");
+                                      const firstDot = cleaned.indexOf(".");
+                                      const safe = firstDot === -1
+                                        ? cleaned
+                                        : cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, "");
+                                      setBidInputs((p) => ({ ...p, [l.name]: safe }));
+                                    }}
+                                    onKeyDown={(e) => {
+                                      // Hard block obviously-not-numeric keys
+                                      // (letters, symbols) so the field can
+                                      // never even briefly hold non-numbers.
+                                      const ok = /^[\d.]$/.test(e.key) || ["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Home", "End", "Tab", "Enter"].includes(e.key);
+                                      if (!ok && !e.metaKey && !e.ctrlKey) e.preventDefault();
+                                    }}
                                     placeholder="zkLTC bid"
                                     inputMode="decimal"
+                                    pattern="[0-9]*\.?[0-9]*"
+                                    autoComplete="off"
                                     className="flex-1 h-8 px-2 rounded-md bg-brand-bg border border-brand-border text-xs text-brand-text-primary placeholder:text-brand-text-muted outline-none focus:border-white/40"
                                   />
                                   <button
