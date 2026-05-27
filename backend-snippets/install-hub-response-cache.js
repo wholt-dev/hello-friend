@@ -1,25 +1,17 @@
 // Installer: injects the lightweight response cache into the Hub
 // server (/root/litdex-hub/server.js) so chain-backed GET routes stop
 // hammering Caldera's public RPC. This is the sustainable fix for the
-// "Bandwidth limit exceeded" (-31002) errors that just took the Hub
-// down — most pages re-read the same data over and over (listings,
-// names, posts), so a 5-30 second TTL cache cuts RPC load by 100x+
-// while still keeping reads fresh.
+// "Bandwidth limit exceeded" (-31002) errors that took the Hub down.
+//
+// All identifiers are prefixed with `_hubResp` so they cannot collide
+// with the existing `_cache` (used by the marketplace sold cache) or
+// any other helper inside server.js.
 //
 // Server usage:
 //   wget -O /tmp/install-hub-cache.js \
 //     "https://raw.githubusercontent.com/0xDarkSeidBull/litdex/fix/hub-response-cache/backend-snippets/install-hub-response-cache.js"
 //   node /tmp/install-hub-cache.js
 //   pm2 restart litdex-hub
-//
-// What this does:
-//   1. Reads /root/litdex-hub/server.js
-//   2. If the cache block is already present (idempotent marker), exits
-//   3. Otherwise injects the cache helpers + middleware right after the
-//      first `app.use(express.json(...))` line and before the first
-//      `app.get(...)` route — same anchor logic the manual snippet
-//      already documents.
-//   4. Backs up the original to /root/litdex-hub/server.js.bak-cache
 
 const fs = require('fs');
 const SRC = '/root/litdex-hub/server.js';
@@ -27,39 +19,44 @@ const SRC = '/root/litdex-hub/server.js';
 let s = fs.readFileSync(SRC, 'utf8');
 const before = s;
 
-// Idempotent — if the cache marker is already present, bail.
-if (s.includes('// CACHE_MARKER_LITDEX_HUB_V1')) {
+// Idempotent — if the marker is already present, bail.
+if (s.includes('// CACHE_MARKER_LITDEX_HUB_V2')) {
   console.log('[install-hub-cache] already installed, nothing to do');
   process.exit(0);
 }
 
-const cacheBlock = `
-// CACHE_MARKER_LITDEX_HUB_V1 — lightweight response cache to stop
-// hammering the public RPC. Per-route TTL keeps dynamic data fresh.
-const _cache = new Map();
-const _MAX_CACHE_SIZE = 2000;
+// If a previous (broken) v1 install left `_cache` declarations behind,
+// remove them so we can install cleanly.
+s = s.replace(/\n\/\/ CACHE_MARKER_LITDEX_HUB_V1[\s\S]*?\/\/ END CACHE_MARKER_LITDEX_HUB_V1\s*\n/g, '\n');
 
-function _cacheGet(key) {
-  const entry = _cache.get(key);
+const cacheBlock = `
+// CACHE_MARKER_LITDEX_HUB_V2 — lightweight response cache to stop
+// hammering the public RPC. All identifiers are prefixed with
+// _hubResp to avoid collisions with any pre-existing _cache helpers.
+const _hubRespCache = new Map();
+const _HUB_RESP_MAX = 2000;
+
+function _hubRespGet(key) {
+  const entry = _hubRespCache.get(key);
   if (!entry) return null;
-  if (Date.now() > entry.expires) { _cache.delete(key); return null; }
+  if (Date.now() > entry.expires) { _hubRespCache.delete(key); return null; }
   return entry.value;
 }
-function _cacheSet(key, value, ttlMs) {
-  _cache.set(key, { value, expires: Date.now() + ttlMs });
-  if (_cache.size > _MAX_CACHE_SIZE) {
-    const oldest = _cache.keys().next().value;
-    if (oldest) _cache.delete(oldest);
+function _hubRespSet(key, value, ttlMs) {
+  _hubRespCache.set(key, { value, expires: Date.now() + ttlMs });
+  if (_hubRespCache.size > _HUB_RESP_MAX) {
+    const oldest = _hubRespCache.keys().next().value;
+    if (oldest) _hubRespCache.delete(oldest);
   }
 }
-function invalidateCache(pathPrefix) {
-  for (const k of _cache.keys()) {
-    if (k.startsWith(pathPrefix)) _cache.delete(k);
+function _hubRespInvalidate(pathPrefix) {
+  for (const k of _hubRespCache.keys()) {
+    if (k.startsWith(pathPrefix)) _hubRespCache.delete(k);
   }
 }
-global.invalidateCache = invalidateCache;
+global.invalidateHubCache = _hubRespInvalidate;
 
-function _ttlFor(path) {
+function _hubRespTtl(path) {
   if (path === '/hub/marketplace/listings') return 15000;
   if (path.startsWith('/hub/marketplace/listing/')) return 15000;
   if (path === '/hub/marketplace/all-bids') return 20000;
@@ -80,10 +77,10 @@ function _ttlFor(path) {
 
 app.use((req, res, next) => {
   if (req.method !== 'GET') return next();
-  const ttl = _ttlFor(req.path);
+  const ttl = _hubRespTtl(req.path);
   if (ttl <= 0) return next();
   const key = req.originalUrl;
-  const hit = _cacheGet(key);
+  const hit = _hubRespGet(key);
   if (hit !== null) {
     res.set('X-Cache', 'HIT');
     return res.json(hit);
@@ -95,7 +92,7 @@ app.use((req, res, next) => {
       if (body && typeof body === 'object' && typeof body.error === 'string') {
         return origJson(body);
       }
-      _cacheSet(key, body, ttl);
+      _hubRespSet(key, body, ttl);
       res.set('X-Cache', 'MISS');
     } catch (_) {}
     return origJson(body);
@@ -105,23 +102,22 @@ app.use((req, res, next) => {
 
 app.use((req, res, next) => {
   if (req.method === 'POST') {
-    if (req.path.startsWith('/hub/marketplace/')) invalidateCache('/hub/marketplace/');
-    else if (req.path.startsWith('/hub/messenger/')) invalidateCache('/hub/messenger/');
+    if (req.path.startsWith('/hub/marketplace/')) _hubRespInvalidate('/hub/marketplace/');
+    else if (req.path.startsWith('/hub/messenger/')) _hubRespInvalidate('/hub/messenger/');
     else if (req.path.startsWith('/hub/name/') || req.path.startsWith('/hub/names/')) {
-      invalidateCache('/hub/name/');
-      invalidateCache('/hub/names/');
-    } else if (req.path.startsWith('/hub/posts')) invalidateCache('/hub/posts');
+      _hubRespInvalidate('/hub/name/');
+      _hubRespInvalidate('/hub/names/');
+    } else if (req.path.startsWith('/hub/posts')) _hubRespInvalidate('/hub/posts');
   }
   next();
 });
-// END CACHE_MARKER_LITDEX_HUB_V1
+// END CACHE_MARKER_LITDEX_HUB_V2
 
 `;
 
 // Anchor: right after the first app.use(express.json(...)) line. Falls
-// back to the first app.get(...) if json middleware isn't present in
-// that exact form.
-const jsonAnchor = /(app\.use\(\s*express\.json\s*\(\s*\)\s*\)\s*;\s*\n)/;
+// back to the first /hub route if the json middleware shape differs.
+const jsonAnchor = /(app\.use\(\s*express\.json\s*\([^)]*\)\s*\)\s*;\s*\n)/;
 const getAnchor = /(\napp\.(?:get|post)\(\s*['"`]\/hub\/)/;
 
 if (jsonAnchor.test(s)) {
@@ -138,6 +134,18 @@ if (s === before) {
   process.exit(1);
 }
 
+// Quick syntax sanity — try to parse the result with Node's parser by
+// wrapping in a function. If it fails, abort and keep the backup.
+try {
+  // eslint-disable-next-line no-new-func
+  new Function(s);
+} catch (e) {
+  console.error('[install-hub-cache] resulting file would not parse:');
+  console.error('  ', e.message);
+  console.error('  aborting; original file is untouched');
+  process.exit(1);
+}
+
 fs.writeFileSync(SRC + '.bak-cache', before);
 fs.writeFileSync(SRC, s);
-console.log('[install-hub-cache] response cache installed; backup at ' + SRC + '.bak-cache');
+console.log('[install-hub-cache] response cache (v2, _hubResp prefix) installed; backup at ' + SRC + '.bak-cache');
