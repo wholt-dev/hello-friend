@@ -1,0 +1,15 @@
+{
+  "name": "litdex-docs",
+  "private": true,
+  "version": "1.0.0",
+  "description": "LitDEX official documentation",
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.3"
+  }
+}

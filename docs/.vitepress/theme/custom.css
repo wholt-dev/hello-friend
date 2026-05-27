@@ -1,0 +1,105 @@
+/* LitDEX dark/white minimal theme — matches the main app vibe.
+   Pure black background, white type, subtle white/5 cards. */
+
+:root {
+  --vp-c-brand-1: #ffffff;
+  --vp-c-brand-2: #ffffff;
+  --vp-c-brand-3: #ffffff;
+  --vp-c-brand-soft: rgba(255, 255, 255, 0.08);
+
+  --vp-c-bg: #ffffff;
+  --vp-c-bg-alt: #fafafa;
+  --vp-c-bg-elv: #ffffff;
+
+  --vp-c-text-1: #0a0a0a;
+  --vp-c-text-2: rgba(10, 10, 10, 0.72);
+  --vp-c-text-3: rgba(10, 10, 10, 0.5);
+
+  --vp-c-divider: rgba(0, 0, 0, 0.08);
+  --vp-c-gutter: rgba(0, 0, 0, 0.04);
+
+  --vp-font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --vp-font-family-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #0a0a0a 30%, #555555);
+  --vp-home-hero-image-background-image: linear-gradient(-45deg, #ffffff 50%, #f5f5f5 50%);
+  --vp-home-hero-image-filter: blur(40px);
+}
+
+.dark {
+  --vp-c-bg: #000000;
+  --vp-c-bg-alt: #050505;
+  --vp-c-bg-elv: #0a0a0a;
+
+  --vp-c-text-1: #ffffff;
+  --vp-c-text-2: rgba(255, 255, 255, 0.72);
+  --vp-c-text-3: rgba(255, 255, 255, 0.5);
+
+  --vp-c-divider: rgba(255, 255, 255, 0.08);
+  --vp-c-gutter: rgba(255, 255, 255, 0.04);
+
+  --vp-c-brand-1: #ffffff;
+  --vp-c-brand-2: #ffffff;
+  --vp-c-brand-3: #ffffff;
+  --vp-c-brand-soft: rgba(255, 255, 255, 0.08);
+
+  --vp-home-hero-name-background: linear-gradient(120deg, #ffffff 30%, rgba(255, 255, 255, 0.6));
+  --vp-home-hero-image-background-image: linear-gradient(-45deg, #1a1a1a 50%, #0a0a0a 50%);
+}
+
+/* Tighter, premium typography */
+.VPNavBar .title {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+h1, h2, h3, h4 {
+  letter-spacing: -0.02em;
+}
+
+/* Code blocks — pure black with white border on dark, soft on light */
+.dark .vp-code,
+.dark div[class*='language-'] {
+  background-color: #050505;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Custom block highlights */
+.custom-block.tip {
+  border-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.dark .custom-block.tip {
+  border-color: rgba(255, 255, 255, 0.15);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+/* Sidebar — slightly tighter spacing */
+.VPSidebar .group {
+  padding-top: 12px !important;
+}
+
+/* Search box on dark — match the brand */
+.dark .VPLocalSearchBox {
+  background: rgba(0, 0, 0, 0.92);
+  backdrop-filter: blur(20px);
+}
+
+/* Hero buttons */
+.VPButton.brand {
+  background: #000;
+  border-color: #000;
+  color: #fff;
+}
+
+.dark .VPButton.brand {
+  background: #fff;
+  border-color: #fff;
+  color: #000;
+}
+
+.VPButton.brand:hover {
+  filter: brightness(1.1);
+}

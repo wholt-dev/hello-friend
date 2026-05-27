@@ -5550,7 +5550,7 @@ export default function App() {
           <div className="flex gap-8 text-xs uppercase font-mono tracking-widest text-brand-text-muted">
             <a href="https://x.com/LitDEXApp" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Twitter (X)</a>
             <a href="https://t.me/litdex_discussion" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Telegram</a>
-            <a href="https://litdex.gitbook.io/litdex/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Docs</a>
+            <a href="https://docs.litdex.test-hub.xyz" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Docs</a>
           </div>
         </div>
       </footer>
