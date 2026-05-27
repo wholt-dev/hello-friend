@@ -134,18 +134,11 @@ if (s === before) {
   process.exit(1);
 }
 
-// Quick syntax sanity — try to parse the result with Node's parser by
-// wrapping in a function. If it fails, abort and keep the backup.
-try {
-  // eslint-disable-next-line no-new-func
-  new Function(s);
-} catch (e) {
-  console.error('[install-hub-cache] resulting file would not parse:');
-  console.error('  ', e.message);
-  console.error('  aborting; original file is untouched');
-  process.exit(1);
-}
-
+// Quick syntax sanity is skipped because server.js is an ESM file
+// (uses top-level `import`) which `new Function(s)` can't parse. We
+// rely on the unique `_hubResp` prefix and the strict anchor regex
+// to keep the injection safe; if anything goes wrong, the
+// server.js.bak-cache backup is one cp away.
 fs.writeFileSync(SRC + '.bak-cache', before);
 fs.writeFileSync(SRC, s);
 console.log('[install-hub-cache] response cache (v2, _hubResp prefix) installed; backup at ' + SRC + '.bak-cache');
