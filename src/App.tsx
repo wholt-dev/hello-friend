@@ -4962,7 +4962,7 @@ const FaucetPage = () => {
         <div className="mt-6 text-[10px] text-brand-text-muted space-y-1">
           <p>• 0.01 zkLTC + 10 Points per claim</p>
           <p>• 24 hour cooldown between claims</p>
-          <p>• Requires LitDeX NFT + .lit domain</p>
+          <p>• Requires LitDEX NFT + .lit domain</p>
         </div>
       </Card>
     </motion.div>
@@ -5138,7 +5138,7 @@ const FaucetModal = ({ open, onClose, wallet }: { open: boolean; onClose: () => 
               <div className="mb-4 p-3 rounded-xl bg-white/[0.02] border border-white/10 text-[11px] space-y-1.5">
                 <p className="text-white/80 font-bold uppercase tracking-widest text-[10px]">Eligibility</p>
                 <p className={eligibility.nft ? 'text-white/70' : 'text-white/40'}>
-                  {eligibility.nft ? '✓' : '✗'} Hold a LitDeX NFT
+                  {eligibility.nft ? '✓' : '✗'} Hold a LitDEX NFT
                 </p>
                 <p className={eligibility.domain ? 'text-white/70' : 'text-white/40'}>
                   {eligibility.domain ? '✓' : '✗'} Own a .lit domain

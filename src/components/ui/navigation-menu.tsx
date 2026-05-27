@@ -89,6 +89,12 @@ export function AnimatedNavFramer({ activePage, onPageChange }: { activePage: st
   const { scrollY } = useScroll();
   const lastScrollY = React.useRef(0);
   const scrollPositionOnCollapse = React.useRef(0);
+  // Virtual-scroll accumulator. Pages that handle scrolling inside a
+  // fixed/overflow container (Hub views, profile, market…) never bump
+  // window.scrollY, so the nav would otherwise stay frozen. We listen
+  // to wheel/touch events on the document and feed the accumulator
+  // through the same expand/collapse logic.
+  const virtualScroll = React.useRef(0);
 
   useMotionValueEvent(scrollY, "change", (latest) => {
     if (isTouchDevice) {
@@ -107,6 +113,33 @@ export function AnimatedNavFramer({ activePage, onPageChange }: { activePage: st
     
     lastScrollY.current = latest;
   });
+
+  // Fallback wheel listener — same expand/collapse logic but driven
+  // by wheel deltas so nested scroll containers (Hub) still trigger
+  // it. Touch devices are skipped to keep the existing mobile UX.
+  React.useEffect(() => {
+    if (isTouchDevice) return;
+
+    const onWheel = (e: WheelEvent) => {
+      virtualScroll.current = Math.max(0, virtualScroll.current + e.deltaY);
+      const v = virtualScroll.current;
+      const prev = lastScrollY.current;
+
+      if (isExpanded && e.deltaY > 0 && v > 150) {
+        setExpanded(false);
+        scrollPositionOnCollapse.current = v;
+      } else if (!isExpanded && e.deltaY < 0 && (scrollPositionOnCollapse.current - v > EXPAND_SCROLL_THRESHOLD)) {
+        setExpanded(true);
+      }
+
+      // Keep the motion-value tracker in sync so window-driven scrolls
+      // and wheel-driven scrolls don't fight each other.
+      if (Math.abs(v - prev) > 1) lastScrollY.current = v;
+    };
+
+    window.addEventListener("wheel", onWheel, { passive: true });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, [isExpanded, isTouchDevice]);
 
   const handleNavClick = (e: React.MouseEvent) => {
     if (!isExpanded) {
