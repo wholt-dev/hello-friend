@@ -274,7 +274,7 @@ export type Token = { address: string; symbol: string; image?: string };
 export type RouterKey = "liteswap" | "omnifun";
 
 export const ROUTERS: Record<RouterKey, { address: string; label: string; factory?: string }> = {
-  liteswap: { address: LITESWAP_ROUTER, label: "LitDeX", factory: LITESWAP_FACTORY },
+  liteswap: { address: LITESWAP_ROUTER, label: "LitDEX", factory: LITESWAP_FACTORY },
   omnifun:  { address: OMNIFUN_ROUTER,  label: "OmniFun" },
 };
 
@@ -1071,8 +1071,8 @@ export const QUESTS: Quest[] = [
   { id: "like_rt_7", title: "Like & RT post #7", url: "https://x.com/LitDeXApp/status/2049925659766706361", pts: 10, icon: "x", group: "like" },
   { id: "like_rt_8", title: "Like & RT post #8", url: "https://x.com/LitDeXApp/status/2048850659819376794", pts: 10, icon: "x", group: "like" },
   // Telegram
-  { id: "tg_group",   title: "Join LitDeX Group",   url: "https://t.me/litdex_discussion", pts: 50, icon: "tg", group: "tg" },
-  { id: "tg_channel", title: "Join LitDeX Channel", url: "https://t.me/litdex_app",        pts: 50, icon: "tg", group: "tg" },
+  { id: "tg_group",   title: "Join LitDEX Group",   url: "https://t.me/litdex_discussion", pts: 50, icon: "tg", group: "tg" },
+  { id: "tg_channel", title: "Join LitDEX Channel", url: "https://t.me/litdex_app",        pts: 50, icon: "tg", group: "tg" },
 ];
 
 export const questApi = {
@@ -1186,7 +1186,7 @@ export async function getSwapQuote(
   try {
     const router = new Contract(LITESWAP_ROUTER, ROUTER_ABI, readProvider);
     const amounts = await router.getAmountsOut(amountInWei, path);
-    return { amountOut: formatEther(amounts[amounts.length - 1]), router: "LitDeX", routerKey: "liteswap", path };
+    return { amountOut: formatEther(amounts[amounts.length - 1]), router: "LitDEX", routerKey: "liteswap", path };
   } catch (e) {
     // Try OmniFun router
     try {
