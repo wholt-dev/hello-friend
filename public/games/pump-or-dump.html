@@ -1,0 +1,1604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Pump or Dump — LitDeX</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka+One&family=Permanent+Marker&family=JetBrains+Mono:wght@400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #0a0a0a;
+    color: #fff;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    font-family: 'Fredoka One', cursive;
+  }
+
+  #game-container {
+    position: relative;
+    width: 100%; height: 100%;
+  }
+
+  canvas {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: block;
+  }
+  #chart-canvas { z-index: 1; }
+  #fx-canvas    { z-index: 2; pointer-events: none; }
+
+  /* ── HUD TOP BAR ───────────────────────────────────────────── */
+  #hud-top {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 5;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    padding: 12px 12px 0;
+    pointer-events: none;
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+  .hud-chip {
+    background: linear-gradient(180deg, rgba(20,20,20,0.92), rgba(10,10,10,0.85));
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 8px 6px 7px;
+    text-align: center;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .hud-label {
+    font-family: 'Fredoka One', cursive;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: rgba(255,255,255,0.55);
+    text-transform: uppercase;
+    line-height: 1;
+  }
+  .hud-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 18px;
+    color: #fff;
+    letter-spacing: 0.5px;
+    margin-top: 3px;
+    line-height: 1;
+  }
+  .hud-val.pot      { color: #fff; text-shadow: 0 0 12px rgba(255,255,255,0.4); }
+  .hud-val.streak   { color: #fff; }
+  .hud-val.next     { color: rgba(255,255,255,0.85); }
+  .hud-val.timer    { font-variant-numeric: tabular-nums; }
+
+  /* ── TIMER BAR ─────────────────────────────────────────────── */
+  #timer-bar {
+    position: absolute;
+    top: calc(78px + env(safe-area-inset-top));
+    left: 16px; right: 16px;
+    height: 3px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    overflow: hidden;
+    z-index: 5;
+    pointer-events: none;
+  }
+  #timer-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #fff, rgba(255,255,255,0.6));
+    transition: width 1s linear;
+  }
+  #timer-fill.danger { background: linear-gradient(90deg, #ef4956, #ff7a85); }
+
+  /* ── BOTTOM BUTTONS ────────────────────────────────────────── */
+  #hud-bottom {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    z-index: 5;
+    padding: 12px 12px max(20px, env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .game-btn {
+    border: none;
+    background: #0f0f0f;
+    color: #fff;
+    font-family: 'Bangers', cursive;
+    font-size: 30px;
+    letter-spacing: 4px;
+    padding: 22px 12px;
+    border-radius: 18px;
+    cursor: pointer;
+    transition: transform 0.08s ease-out, box-shadow 0.2s, background 0.15s;
+    border: 2px solid rgba(255,255,255,0.18);
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+    line-height: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  .game-btn:active { transform: scale(0.97); }
+  .game-btn.locked { opacity: 0.35; pointer-events: none; }
+
+  .pump-btn {
+    background: linear-gradient(180deg, #103820, #0a1f12);
+    border-color: rgba(62,207,142,0.5);
+    color: #3ecf8e;
+    text-shadow: 0 0 20px rgba(62,207,142,0.5);
+  }
+  .pump-btn:active { box-shadow: inset 0 0 30px rgba(62,207,142,0.4); }
+
+  .dump-btn {
+    background: linear-gradient(180deg, #3a1015, #200a0d);
+    border-color: rgba(239,73,86,0.5);
+    color: #ef4956;
+    text-shadow: 0 0 20px rgba(239,73,86,0.5);
+  }
+  .dump-btn:active { box-shadow: inset 0 0 30px rgba(239,73,86,0.4); }
+
+  .pump-arrow, .dump-arrow {
+    display: block;
+    font-size: 22px;
+    margin-top: 4px;
+    letter-spacing: 0;
+    opacity: 0.7;
+  }
+
+  /* ── CASH OUT FLOAT BUTTON ────────────────────────────────── */
+  #cashout-btn {
+    position: absolute;
+    bottom: calc(120px + env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%) scale(0.85);
+    z-index: 6;
+    background: #fff;
+    color: #0a0a0a;
+    font-family: 'Bangers', cursive;
+    font-size: 22px;
+    letter-spacing: 4px;
+    padding: 14px 32px;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 8px 30px rgba(255,255,255,0.25), 0 0 60px rgba(255,255,255,0.15);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    touch-action: manipulation;
+  }
+  #cashout-btn.visible {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+    pointer-events: auto;
+    animation: cashoutPulse 1.6s ease-in-out infinite;
+  }
+  #cashout-btn.locked { opacity: 0.4; pointer-events: none; }
+  @keyframes cashoutPulse {
+    0%, 100% { box-shadow: 0 8px 30px rgba(255,255,255,0.25), 0 0 60px rgba(255,255,255,0.15); }
+    50%      { box-shadow: 0 8px 40px rgba(255,255,255,0.45), 0 0 100px rgba(255,255,255,0.3); }
+  }
+
+  /* ── SCREENS (overlays) ────────────────────────────────────── */
+  .screen {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(8,8,8,0.96);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: opacity 0.4s;
+  }
+  .screen.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .game-title {
+    font-family: 'Bangers', cursive;
+    font-size: clamp(48px, 12vw, 84px);
+    letter-spacing: 6px;
+    line-height: 1;
+    color: #fff;
+    text-shadow:
+      0 0 30px rgba(255,255,255,0.35),
+      0 4px 8px rgba(0,0,0,0.8);
+    margin-bottom: 6px;
+    text-align: center;
+  }
+  .game-subtitle {
+    font-family: 'Fredoka One', cursive;
+    font-size: 14px;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.5);
+    margin-bottom: 26px;
+    text-align: center;
+  }
+
+  .wallet-card {
+    background: rgba(15,15,15,0.85);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px;
+    padding: 16px 20px;
+    width: 100%;
+    max-width: 360px;
+    margin-bottom: 18px;
+    text-align: center;
+  }
+  .wallet-card .wc-label {
+    font-family: 'Fredoka One', cursive;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(255,255,255,0.45);
+    text-transform: uppercase;
+  }
+  .wallet-card .wc-addr {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    color: #fff;
+    margin-top: 4px;
+  }
+  .wc-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  .wc-cell .wc-cell-label {
+    font-family: 'Fredoka One', cursive;
+    font-size: 9px;
+    letter-spacing: 2.5px;
+    color: rgba(255,255,255,0.4);
+    text-transform: uppercase;
+  }
+  .wc-cell .wc-cell-val {
+    font-family: 'Bangers', cursive;
+    font-size: 22px;
+    letter-spacing: 1.5px;
+    color: #fff;
+    margin-top: 2px;
+  }
+
+  .start-btn, .connect-btn {
+    background: #fff;
+    color: #0a0a0a;
+    border: none;
+    font-family: 'Bangers', cursive;
+    font-size: 24px;
+    letter-spacing: 5px;
+    padding: 16px 50px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: transform 0.08s, opacity 0.2s, box-shadow 0.3s;
+    box-shadow: 0 8px 30px rgba(255,255,255,0.2);
+    touch-action: manipulation;
+  }
+  .start-btn:active, .connect-btn:active { transform: scale(0.96); }
+  .start-btn:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+  .game-desc {
+    font-family: 'Fredoka One', cursive;
+    font-size: 13px;
+    color: rgba(255,255,255,0.55);
+    text-align: center;
+    margin-bottom: 18px;
+    max-width: 360px;
+    line-height: 1.5;
+  }
+
+  .err-msg {
+    font-family: 'Fredoka One', cursive;
+    font-size: 13px;
+    color: #ef4956;
+    text-align: center;
+    margin-top: 14px;
+    max-width: 340px;
+    display: none;
+  }
+
+  /* ── TUTORIAL ──────────────────────────────────────────────── */
+  .tut-step {
+    text-align: center;
+    max-width: 420px;
+  }
+  .tut-icon-row {
+    display: flex; gap: 16px; justify-content: center;
+    margin: 16px 0 22px;
+  }
+  .tut-icon {
+    width: 76px; height: 76px;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Bangers', cursive;
+    font-size: 32px;
+    letter-spacing: 1px;
+    border: 2px solid rgba(255,255,255,0.2);
+  }
+  .tut-icon.up   { background: rgba(62,207,142,0.12); color: #3ecf8e; border-color: rgba(62,207,142,0.5); }
+  .tut-icon.down { background: rgba(239,73,86,0.12);  color: #ef4956; border-color: rgba(239,73,86,0.5); }
+  .tut-line {
+    font-family: 'Fredoka One', cursive;
+    font-size: 15px;
+    color: rgba(255,255,255,0.7);
+    line-height: 1.6;
+    margin-bottom: 14px;
+  }
+  .tut-line strong { color: #fff; font-weight: 400; }
+  .tut-hint {
+    font-family: 'Fredoka One', cursive;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: rgba(255,255,255,0.35);
+    text-transform: uppercase;
+    margin-top: 18px;
+  }
+  .tut-progress {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    margin-top: 22px;
+  }
+  .tut-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.2); }
+  .tut-dot.active { background: #fff; }
+
+  /* ── GAME OVER ─────────────────────────────────────────────── */
+  .go-card {
+    background: #0a0a0a;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 18px;
+    padding: 28px 24px;
+    width: 100%;
+    max-width: 380px;
+    text-align: center;
+  }
+  .go-reason {
+    font-family: 'Bangers', cursive;
+    font-size: 26px;
+    letter-spacing: 5px;
+    color: #fff;
+    margin-bottom: 4px;
+  }
+  .go-sub {
+    font-family: 'Fredoka One', cursive;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: rgba(255,255,255,0.45);
+    text-transform: uppercase;
+    margin-bottom: 22px;
+  }
+  .go-pot-label {
+    font-family: 'Fredoka One', cursive;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+  }
+  .go-pot-val {
+    font-family: 'Bangers', cursive;
+    font-size: 64px;
+    line-height: 1;
+    color: #fff;
+    text-shadow: 0 0 30px rgba(255,255,255,0.35);
+    margin: 4px 0 6px;
+  }
+  .go-profit {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 16px;
+    margin-bottom: 22px;
+  }
+  .go-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 22px;
+    text-align: left;
+  }
+  .go-stat {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .go-stat-label {
+    font-family: 'Fredoka One', cursive;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: rgba(255,255,255,0.4);
+    text-transform: uppercase;
+  }
+  .go-stat-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 16px;
+    color: #fff;
+    margin-top: 2px;
+  }
+  .go-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .go-btn {
+    border: none;
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-family: 'Bangers', cursive;
+    font-size: 14px;
+    letter-spacing: 3px;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: transform 0.08s;
+  }
+  .go-btn:active { transform: scale(0.96); }
+  .go-btn.primary { background: #fff; color: #0a0a0a; }
+  .go-btn.ghost   { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,0.25); }
+
+  /* ── FX (popups, flashes) ─────────────────────────────────── */
+  .pot-popup {
+    position: absolute;
+    z-index: 8;
+    pointer-events: none;
+    font-family: 'Bangers', cursive;
+    font-size: 38px;
+    letter-spacing: 2px;
+    text-shadow: 0 0 24px currentColor, 0 4px 8px rgba(0,0,0,0.6);
+    animation: potPopup 1s ease-out forwards;
+    will-change: transform, opacity;
+  }
+  .pot-popup.up   { color: #3ecf8e; }
+  .pot-popup.down { color: #ef4956; }
+  @keyframes potPopup {
+    0%   { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+    20%  { transform: translate(-50%, -10px) scale(1.2); opacity: 1; }
+    100% { transform: translate(-50%, -90px) scale(1); opacity: 0; }
+  }
+
+  .flash-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .flash-overlay.flash-up {
+    background: radial-gradient(circle at center, rgba(62,207,142,0.3), transparent 60%);
+    opacity: 1;
+  }
+  .flash-overlay.flash-down {
+    background: radial-gradient(circle at center, rgba(239,73,86,0.4), transparent 60%);
+    opacity: 1;
+  }
+
+  .shake { animation: shake 0.45s ease-in-out; }
+  @keyframes shake {
+    0%, 100% { transform: translate(0, 0); }
+    20% { transform: translate(-10px, 4px); }
+    40% { transform: translate(10px, -4px); }
+    60% { transform: translate(-6px, 2px); }
+    80% { transform: translate(6px, -2px); }
+  }
+
+  .anti-bot-banner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 100;
+    background: rgba(15,15,15,0.95);
+    border: 1px solid rgba(239,73,86,0.5);
+    border-radius: 16px;
+    padding: 20px 24px;
+    text-align: center;
+    max-width: 340px;
+    display: none;
+  }
+  .anti-bot-banner.visible { display: block; }
+  .anti-bot-banner .ab-title {
+    font-family: 'Bangers', cursive;
+    font-size: 20px;
+    letter-spacing: 3px;
+    color: #ef4956;
+    margin-bottom: 8px;
+  }
+  .anti-bot-banner .ab-msg {
+    font-family: 'Fredoka One', cursive;
+    font-size: 13px;
+    color: rgba(255,255,255,0.7);
+    line-height: 1.5;
+  }
+
+  /* ── MOBILE TWEAKS ─────────────────────────────────────────── */
+  @media (max-width: 380px) {
+    .game-btn { font-size: 24px; padding: 18px 8px; letter-spacing: 3px; }
+    .hud-val { font-size: 16px; }
+    .game-title { font-size: 56px; letter-spacing: 4px; }
+    .go-pot-val { font-size: 52px; }
+  }
+  @media (max-height: 640px) {
+    #cashout-btn { bottom: calc(100px + env(safe-area-inset-bottom)); padding: 11px 26px; font-size: 19px; }
+    .game-btn { padding: 16px 8px; }
+  }
+</style>
+</head>
+<body>
+<div id="game-container">
+  <canvas id="chart-canvas"></canvas>
+  <canvas id="fx-canvas"></canvas>
+  <div class="flash-overlay" id="flash-overlay"></div>
+
+  <!-- HUD top -->
+  <div id="hud-top">
+    <div class="hud-chip">
+      <div class="hud-label">POT</div>
+      <div class="hud-val pot" id="hud-pot">0</div>
+    </div>
+    <div class="hud-chip">
+      <div class="hud-label">STREAK</div>
+      <div class="hud-val streak" id="hud-streak">0</div>
+    </div>
+    <div class="hud-chip">
+      <div class="hud-label">+NEXT</div>
+      <div class="hud-val next" id="hud-next-gain">10</div>
+    </div>
+    <div class="hud-chip">
+      <div class="hud-label">TIMER</div>
+      <div class="hud-val timer" id="hud-timer">8.0</div>
+    </div>
+  </div>
+
+  <!-- Timer bar -->
+  <div id="timer-bar"><div id="timer-fill"></div></div>
+
+  <!-- Cash out floating button -->
+  <button id="cashout-btn">CASH OUT <span id="cashout-amt" style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;letter-spacing:0;margin-left:6px;">0</span></button>
+
+  <!-- Bottom buttons -->
+  <div id="hud-bottom">
+    <button class="game-btn dump-btn" id="dump-btn">DUMP <span class="dump-arrow">▼</span></button>
+    <button class="game-btn pump-btn" id="pump-btn">PUMP <span class="pump-arrow">▲</span></button>
+  </div>
+
+  <!-- Anti-bot detection banner -->
+  <div class="anti-bot-banner" id="anti-bot-banner">
+    <div class="ab-title">⚠ AUTOMATION DETECTED</div>
+    <div class="ab-msg" id="ab-msg">Suspicious activity detected. Reward forfeited.</div>
+  </div>
+
+  <!-- ── WALLET SCREEN ── -->
+  <div class="screen" id="wallet-screen">
+    <div class="game-title">PUMP<br>OR DUMP</div>
+    <div class="game-subtitle">PREDICT THE NEXT CANDLE</div>
+    <div class="game-desc">Connect your wallet to play.<br>Each game costs <strong style="color:#fff">100 PTS</strong>.</div>
+    <button class="connect-btn" id="connect-btn">CONNECT WALLET</button>
+    <div class="err-msg" id="wallet-error"></div>
+  </div>
+
+  <!-- ── START SCREEN ── -->
+  <div class="screen hidden" id="start-screen">
+    <div class="game-title">PUMP<br>OR DUMP</div>
+    <div class="game-subtitle">PREDICT THE NEXT CANDLE</div>
+
+    <div class="wallet-card">
+      <div class="wc-label">WALLET</div>
+      <div class="wc-addr" id="wallet-addr">—</div>
+      <div class="wc-row">
+        <div class="wc-cell">
+          <div class="wc-cell-label">NFT TIER</div>
+          <div class="wc-cell-val" id="nft-tier-label">—</div>
+        </div>
+        <div class="wc-cell">
+          <div class="wc-cell-label">BALANCE</div>
+          <div class="wc-cell-val" id="balance-label">—</div>
+        </div>
+      </div>
+      <div class="wc-row">
+        <div class="wc-cell">
+          <div class="wc-cell-label">+ PER CORRECT</div>
+          <div class="wc-cell-val" id="increment-label">+10</div>
+        </div>
+        <div class="wc-cell">
+          <div class="wc-cell-label">GAMES LEFT</div>
+          <div class="wc-cell-val" id="games-left-label">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="game-desc">
+      Entry <strong style="color:#fff">100 PTS</strong>. Each correct = pot grows.<br>
+      Cash out anytime. Wrong guess = lose pot.
+    </div>
+
+    <button class="start-btn" id="start-btn">PLAY · 100 PTS</button>
+    <div class="err-msg" id="start-error"></div>
+    <div id="nft-hint" style="display:none;font-family:'Fredoka One',cursive;color:rgba(255,255,255,0.4);margin-top:14px;font-size:12px;text-align:center;max-width:340px;letter-spacing:1px;">Hold an NFT for bigger increments &amp; more time per round</div>
+  </div>
+
+  <!-- ── TUTORIAL ── -->
+  <div class="screen hidden" id="tutorial-overlay">
+    <div class="tut-step">
+      <div class="tut-icon-row">
+        <div class="tut-icon up">▲</div>
+        <div class="tut-icon down">▼</div>
+      </div>
+      <div class="tut-line">Read the chart. Predict if the next candle will <strong>PUMP ▲</strong> or <strong>DUMP ▼</strong>.</div>
+      <div class="tut-line">Each correct → <strong>+10</strong> to your pot.<br>(110 → 120 → 130 → …)</div>
+      <div class="tut-line"><strong>Wrong</strong> → game over, pot lost.<br><strong>Cash out</strong> anytime to bank the pot.</div>
+      <div class="tut-progress"><div class="tut-dot active"></div></div>
+      <div class="tut-hint">TAP ANYWHERE TO START</div>
+    </div>
+  </div>
+
+  <!-- ── GAME OVER ── -->
+  <div class="screen hidden" id="gameover-screen">
+    <div class="go-card">
+      <div class="go-reason" id="go-reason">GAME OVER</div>
+      <div class="go-sub">SESSION ENDED</div>
+
+      <div class="go-pot-label">FINAL POT</div>
+      <div class="go-pot-val" id="go-final-pot">0</div>
+      <div class="go-profit" id="go-profit">+0</div>
+
+      <div class="go-stats">
+        <div class="go-stat">
+          <div class="go-stat-label">STREAK</div>
+          <div class="go-stat-val" id="go-streak">0</div>
+        </div>
+        <div class="go-stat">
+          <div class="go-stat-label">ACCURACY</div>
+          <div class="go-stat-val" id="go-correct">0/0</div>
+        </div>
+        <div class="go-stat">
+          <div class="go-stat-label">BEST POT</div>
+          <div class="go-stat-val" id="go-best-pot">0</div>
+        </div>
+        <div class="go-stat">
+          <div class="go-stat-label">BEST STREAK</div>
+          <div class="go-stat-val" id="go-best-streak">0</div>
+        </div>
+      </div>
+
+      <div class="err-msg" id="go-error"></div>
+
+      <div class="go-actions">
+        <button class="go-btn primary" id="go-play-again">PLAY AGAIN</button>
+        <button class="go-btn ghost" id="go-exit">EXIT</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ════════════════════════════════════════════════════════════════
+//  PUMP OR DUMP — LitDeX
+//  Predict next candle. Pot grows on each correct. Cash out anytime.
+// ════════════════════════════════════════════════════════════════
+
+(() => {
+
+  // ── CONFIG ────────────────────────────────────────────────────
+  const API           = 'https://game.test-hub.xyz';
+  const CHAIN         = '0x115D'; // 4441
+  const ENTRY_COST    = 100;
+  const ROUND_TIME_MS = 8000;
+  const VISIBLE_CANDLES = 8;
+
+  const NFT_TIERS       = { 0: '—', 1: 'COMMON', 2: 'RARE', 3: 'EPIC' };
+  const TIER_COLORS     = { 0: '#666', 1: '#999', 2: '#ccc', 3: '#fff' };
+  const TIER_INCREMENT  = { 0: 10, 1: 12, 2: 14, 3: 16 };
+  const TIER_TIME_BONUS = { 0: 0, 1: 1000, 2: 2000, 3: 3000 };
+
+  // ── DOM ───────────────────────────────────────────────────────
+  const el = (id) => document.getElementById(id);
+  const chartCanvas = el('chart-canvas');
+  const fxCanvas    = el('fx-canvas');
+  const chartCtx    = chartCanvas.getContext('2d');
+  const fxCtx       = fxCanvas.getContext('2d');
+  const flashEl     = el('flash-overlay');
+
+  // ── STATE ─────────────────────────────────────────────────────
+  let candles      = [];
+  let pot          = 0;
+  let streak       = 0;
+  let totalCorrect = 0;
+  let totalWrong   = 0;
+  let gameRunning  = false;
+  let waiting      = false;     // waiting for user guess
+  let roundStart   = 0;
+  let roundTimer   = null;
+  let timerTickIv  = null;
+  let nftTier      = 0;
+  let increment    = TIER_INCREMENT[0];
+  let roundTimeMs  = ROUND_TIME_MS;
+  let walletAddr   = null;
+  let session      = null;      // { sessionId, token, nonce }
+  let demoMode     = true;      // true if no backend (local PRNG)
+  let demoRng      = null;
+  let demoTrend    = 0;
+  let nextDemoSeed = 1;
+  let bestPot      = Number(localStorage.getItem('pd_best_pot') || 0);
+  let bestStreak   = Number(localStorage.getItem('pd_best_streak') || 0);
+
+  // ── CANVAS RESIZE ─────────────────────────────────────────────
+  function resizeCanvases() {
+    const dpr = window.devicePixelRatio || 1;
+    [chartCanvas, fxCanvas].forEach((c) => {
+      c.width  = c.clientWidth  * dpr;
+      c.height = c.clientHeight * dpr;
+      c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+    });
+    if (candles.length) drawChart(false);
+  }
+  window.addEventListener('resize', resizeCanvases);
+  window.addEventListener('orientationchange', () => setTimeout(resizeCanvases, 200));
+
+  // ════════════════════════════════════════════════════════════════
+  //  ANTI-BOT TELEMETRY
+  // ════════════════════════════════════════════════════════════════
+  const telemetry = {
+    sessionStart   : 0,
+    pointerEvents  : 0,
+    uniqueCoords   : new Set(),
+    lastPointer    : null,
+    reactionTimes  : [],
+    decisions      : [],
+    fingerprint    : null,
+  };
+
+  function startTelemetry() {
+    telemetry.sessionStart   = Date.now();
+    telemetry.pointerEvents  = 0;
+    telemetry.uniqueCoords   = new Set();
+    telemetry.reactionTimes  = [];
+    telemetry.decisions      = [];
+  }
+
+  function recordPointer(e) {
+    telemetry.pointerEvents++;
+    let cx = e.clientX, cy = e.clientY;
+    if (e.touches && e.touches[0]) { cx = e.touches[0].clientX; cy = e.touches[0].clientY; }
+    if (cx == null || cy == null) return;
+    const x = Math.round(cx / 4);
+    const y = Math.round(cy / 4);
+    telemetry.uniqueCoords.add(`${x},${y}`);
+    telemetry.lastPointer = { x, y, t: performance.now() };
+  }
+
+  function pointerEntropy() {
+    return telemetry.pointerEvents > 0
+      ? telemetry.uniqueCoords.size / telemetry.pointerEvents
+      : 0;
+  }
+
+  // Lightweight client-side bot heuristic. Server has the final say.
+  function detectBotSignal() {
+    const flags = [];
+    const rts = telemetry.reactionTimes;
+    if (rts.length >= 3) {
+      const min = Math.min(...rts);
+      const mean = rts.reduce((a, b) => a + b, 0) / rts.length;
+      const variance = rts.reduce((s, r) => s + (r - mean) ** 2, 0) / rts.length;
+      const std = Math.sqrt(variance);
+      if (min < 150) flags.push('rt_too_fast');
+      if (rts.length >= 5 && std < 25) flags.push('rt_too_consistent');
+    }
+    if (telemetry.pointerEvents > 8 && pointerEntropy() < 0.04) flags.push('low_pointer_entropy');
+    return flags;
+  }
+
+  async function browserFingerprint() {
+    try {
+      const c = document.createElement('canvas');
+      c.width = 200; c.height = 50;
+      const ctx = c.getContext('2d');
+      ctx.textBaseline = 'top';
+      ctx.font = '14px Arial';
+      ctx.fillStyle = '#f60'; ctx.fillRect(0, 0, 200, 50);
+      ctx.fillStyle = '#069';
+      ctx.fillText('LitDeX-FP-' + (navigator.userAgent || '').slice(0, 30), 2, 15);
+      const data = c.toDataURL();
+      const buf = new TextEncoder().encode(
+        data + (navigator.userAgent || '') + screen.width + screen.height +
+        new Date().getTimezoneOffset() + (navigator.language || '') +
+        (navigator.hardwareConcurrency || 0) + (navigator.platform || '')
+      );
+      const hash = await crypto.subtle.digest('SHA-256', buf);
+      return Array.from(new Uint8Array(hash))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('').slice(0, 32);
+    } catch {
+      return 'fp_unavailable_' + Math.random().toString(36).slice(2);
+    }
+  }
+
+  async function solvePoW(challenge, difficulty) {
+    if (!challenge) return null;
+    let nonce = 0;
+    const prefix = '0'.repeat(Math.max(1, Math.min(8, difficulty || 4)));
+    while (nonce < 5_000_000) {
+      const buf = new TextEncoder().encode(challenge + ':' + nonce);
+      const h = await crypto.subtle.digest('SHA-256', buf);
+      const hex = Array.from(new Uint8Array(h))
+        .map((b) => b.toString(16).padStart(2, '0')).join('');
+      if (hex.startsWith(prefix)) return nonce;
+      nonce++;
+    }
+    return null;
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  CHART RENDERING
+  // ════════════════════════════════════════════════════════════════
+  function drawChart(highlightLast = false) {
+    const W = chartCanvas.clientWidth;
+    const H = chartCanvas.clientHeight;
+    chartCtx.clearRect(0, 0, W, H);
+
+    // Reserve space for HUD top (~120px) and bottom buttons (~150px)
+    const padTop    = 120;
+    const padBottom = 160;
+    const drawH = Math.max(120, H - padTop - padBottom);
+    const drawY = padTop;
+
+    // Background grid
+    chartCtx.strokeStyle = 'rgba(255,255,255,0.04)';
+    chartCtx.lineWidth = 1;
+    for (let i = 0; i < 6; i++) {
+      const y = drawY + (drawH * (i + 0.5)) / 6;
+      chartCtx.beginPath();
+      chartCtx.moveTo(0, y);
+      chartCtx.lineTo(W, y);
+      chartCtx.stroke();
+    }
+
+    if (candles.length === 0) return;
+
+    // Determine price range
+    let minP = Infinity, maxP = -Infinity;
+    candles.forEach((c) => {
+      minP = Math.min(minP, c.l);
+      maxP = Math.max(maxP, c.h);
+    });
+    if (!isFinite(minP) || !isFinite(maxP) || minP === maxP) {
+      minP = (minP || 100) - 1;
+      maxP = (maxP || 100) + 1;
+    }
+    const range = maxP - minP;
+    minP -= range * 0.08;
+    maxP += range * 0.08;
+
+    const slotW = W / (VISIBLE_CANDLES + 0.5);
+    const candleW = slotW * 0.6;
+
+    const priceToY = (p) => drawY + drawH - ((p - minP) / (maxP - minP)) * drawH;
+
+    candles.forEach((c, i) => {
+      const cx = slotW * (i + 0.75);
+      const isLast = i === candles.length - 1;
+      const isUp = c.dir === 'up';
+      const color = isUp ? '#3ecf8e' : '#ef4956';
+
+      // Wick
+      chartCtx.strokeStyle = color;
+      chartCtx.globalAlpha = 0.85;
+      chartCtx.lineWidth = 1.6;
+      chartCtx.beginPath();
+      chartCtx.moveTo(cx, priceToY(c.h));
+      chartCtx.lineTo(cx, priceToY(c.l));
+      chartCtx.stroke();
+
+      // Body
+      const yo = priceToY(c.o);
+      const yc = priceToY(c.c);
+      const top = Math.min(yo, yc);
+      const bottom = Math.max(yo, yc);
+      const bodyH = Math.max(2, bottom - top);
+
+      if (highlightLast && isLast) {
+        chartCtx.shadowColor = color;
+        chartCtx.shadowBlur = 28;
+        chartCtx.globalAlpha = 1;
+      }
+      chartCtx.fillStyle = color;
+      chartCtx.fillRect(cx - candleW / 2, top, candleW, bodyH);
+      chartCtx.shadowBlur = 0;
+      chartCtx.globalAlpha = 1;
+
+      // Subtle outline on last candle
+      if (isLast) {
+        chartCtx.strokeStyle = 'rgba(255,255,255,0.6)';
+        chartCtx.lineWidth = 1;
+        chartCtx.strokeRect(cx - candleW / 2, top, candleW, bodyH);
+      }
+    });
+
+    // Question mark for the "next" candle slot
+    const nextCx = slotW * (candles.length + 0.75);
+    if (nextCx < W) {
+      chartCtx.fillStyle = 'rgba(255,255,255,0.06)';
+      chartCtx.fillRect(nextCx - candleW / 2, drawY + 10, candleW, drawH - 20);
+      chartCtx.fillStyle = 'rgba(255,255,255,0.45)';
+      chartCtx.font = `bold ${Math.min(40, slotW * 0.9)}px "Bangers", cursive`;
+      chartCtx.textAlign = 'center';
+      chartCtx.textBaseline = 'middle';
+      chartCtx.fillText('?', nextCx, drawY + drawH / 2);
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  CANDLE GENERATION (DEMO MODE — local fallback)
+  // ════════════════════════════════════════════════════════════════
+  function mulberry32(seed) {
+    let s = seed >>> 0;
+    return () => {
+      s = (s + 0x6D2B79F5) >>> 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function nextDemoCandle(prev) {
+    const lastClose = (prev && prev.c) || 100;
+    const greenProb = 0.5 + demoTrend * 0.3;
+    const goingUp = demoRng() < greenProb;
+    const dir = goingUp ? 'up' : 'down';
+    const range = lastClose * (0.005 + demoRng() * 0.025);
+    const o = lastClose;
+    const move = range * (0.4 + demoRng() * 0.6);
+    const c = goingUp ? lastClose + move : lastClose - move;
+    const h = Math.max(o, c) + demoRng() * range * 0.3;
+    const l = Math.min(o, c) - demoRng() * range * 0.3;
+
+    if (demoRng() < 0.08) demoTrend = (demoRng() - 0.5) * 2;
+    else demoTrend = Math.max(-1, Math.min(1, demoTrend + (demoRng() - 0.5) * 0.2));
+
+    return { dir, o, c, h, l };
+  }
+
+  function seedDemo(initial = VISIBLE_CANDLES) {
+    demoRng   = mulberry32(Date.now() & 0xffffffff);
+    demoTrend = (demoRng() - 0.5) * 1.4;
+    candles = [];
+    let prev = { c: 100 };
+    for (let i = 0; i < initial; i++) {
+      const c = nextDemoCandle(prev);
+      candles.push(c);
+      prev = c;
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  AUDIO (WebAudio synth)
+  // ════════════════════════════════════════════════════════════════
+  let audioCtx = null;
+  function tone(freq, durMs, type = 'sine', gain = 0.18) {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = type;
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(gain, audioCtx.currentTime + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + durMs / 1000);
+      o.connect(g).connect(audioCtx.destination);
+      o.start();
+      o.stop(audioCtx.currentTime + durMs / 1000);
+    } catch {}
+  }
+  function sndCorrect() { tone(660, 90, 'square', 0.15); setTimeout(() => tone(880, 140, 'square', 0.16), 80); }
+  function sndWrong()   { tone(180, 280, 'sawtooth', 0.20); setTimeout(() => tone(120, 320, 'sawtooth', 0.18), 120); }
+  function sndCash()    { tone(523, 70, 'square', 0.15); setTimeout(() => tone(659, 70, 'square', 0.15), 80); setTimeout(() => tone(784, 140, 'square', 0.18), 160); }
+  function sndTick()    { tone(900, 30, 'sine', 0.06); }
+  function sndStart()   { tone(440, 120, 'square', 0.14); setTimeout(() => tone(554, 120, 'square', 0.14), 100); setTimeout(() => tone(659, 200, 'square', 0.16), 200); }
+
+  // ════════════════════════════════════════════════════════════════
+  //  GAME LOOP
+  // ════════════════════════════════════════════════════════════════
+  function startRound() {
+    if (!gameRunning) return;
+    waiting = true;
+    roundStart = performance.now();
+
+    // Timer bar animation
+    const fill = el('timer-fill');
+    fill.classList.remove('danger');
+    fill.style.transition = 'none';
+    fill.style.width = '100%';
+    void fill.offsetWidth; // reflow
+    fill.style.transition = `width ${roundTimeMs}ms linear`;
+    fill.style.width = '0%';
+
+    // Numeric timer
+    clearInterval(timerTickIv);
+    const startT = performance.now();
+    timerTickIv = setInterval(() => {
+      const left = Math.max(0, (roundTimeMs - (performance.now() - startT)) / 1000);
+      el('hud-timer').textContent = left.toFixed(1);
+      if (left <= 2 && !fill.classList.contains('danger')) {
+        fill.classList.add('danger');
+        sndTick();
+      }
+    }, 80);
+
+    // Forced timeout = wrong
+    clearTimeout(roundTimer);
+    roundTimer = setTimeout(() => {
+      if (waiting) handleGuess(null);
+    }, roundTimeMs);
+
+    drawChart(false);
+  }
+
+  async function handleGuess(guess) {
+    if (!waiting) return;
+    waiting = false;
+    clearTimeout(roundTimer);
+    clearInterval(timerTickIv);
+
+    const reactionMs = Math.round(performance.now() - roundStart);
+    telemetry.reactionTimes.push(reactionMs);
+    telemetry.decisions.push({
+      g: guess,
+      rt: reactionMs,
+      pe: telemetry.pointerEvents,
+      ent: pointerEntropy(),
+      t: Date.now(),
+    });
+
+    lockButtons(true);
+
+    let correct, actualDir, nextCandle;
+
+    if (demoMode) {
+      const next = nextDemoCandle(candles[candles.length - 1]);
+      actualDir  = next.dir;
+      correct    = guess === actualDir;
+      nextCandle = next;
+    } else {
+      try {
+        const r = await fetch(`${API}/pumpdump/play`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: session.sessionId,
+            token: session.token,
+            nonce: session.nonce,
+            guess,
+            telemetry: {
+              rt: reactionMs,
+              pe: telemetry.pointerEvents,
+              ent: Number(pointerEntropy().toFixed(4)),
+              fp: telemetry.fingerprint,
+              flags: detectBotSignal(),
+            },
+          }),
+        });
+        const data = await r.json();
+        if (!r.ok || data.error) {
+          if (data && data.botDetected) {
+            showAntiBotBanner(data.error || 'Automation detected.');
+            return endGame('anti_bot', null);
+          }
+          return endGame('error', (data && data.error) || 'Network error');
+        }
+        actualDir  = data.actualDir;
+        correct    = !!data.correct;
+        nextCandle = data.nextCandle;
+        session.nonce = data.nonce;
+        if (data.pot != null) pot = data.pot;       // server is source of truth
+      } catch (err) {
+        return endGame('error', 'Network error');
+      }
+    }
+
+    // Append the revealed candle, scroll old ones out
+    candles.push(nextCandle);
+    if (candles.length > VISIBLE_CANDLES) candles.shift();
+
+    flashEl.classList.remove('flash-up', 'flash-down');
+    void flashEl.offsetWidth;
+    flashEl.classList.add(correct ? 'flash-up' : 'flash-down');
+    setTimeout(() => flashEl.classList.remove('flash-up', 'flash-down'), 240);
+
+    drawChart(true);
+
+    if (correct) {
+      if (demoMode) pot += increment; // server already updated in live mode
+      streak++;
+      totalCorrect++;
+      sndCorrect();
+      popup(`+${increment}`, 'up');
+      updateHud();
+      showCashoutBtn(true);
+      await sleep(720);
+      lockButtons(false);
+      startRound();
+    } else {
+      totalWrong++;
+      sndWrong();
+      popup(`-${pot}`, 'down');
+      const root = el('game-container');
+      root.classList.add('shake');
+      setTimeout(() => root.classList.remove('shake'), 460);
+      await sleep(1100);
+      endGame('wrong', null);
+    }
+  }
+
+  async function cashOut() {
+    if (!gameRunning || pot <= 0) return;
+    waiting = false;
+    gameRunning = false;
+    clearTimeout(roundTimer);
+    clearInterval(timerTickIv);
+
+    let credited = pot;
+    let txInfo   = null;
+
+    if (!demoMode && session) {
+      try {
+        const r = await fetch(`${API}/pumpdump/cashout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: session.sessionId, token: session.token }),
+        });
+        const data = await r.json();
+        if (r.ok && data) {
+          credited = data.credited != null ? data.credited : credited;
+          txInfo   = data;
+        }
+      } catch {}
+    }
+
+    sndCash();
+    popup(`+${credited} BANKED`, 'up');
+    await sleep(700);
+    endGame('cashout', null, credited, txInfo);
+  }
+
+  function endGame(reason, errMsg, finalCredited = 0, txInfo = null) {
+    gameRunning = false;
+    waiting = false;
+    clearTimeout(roundTimer);
+    clearInterval(timerTickIv);
+    showCashoutBtn(false);
+    lockButtons(true);
+
+    const finalPot = reason === 'cashout' ? finalCredited : 0;
+    const profit   = finalPot - ENTRY_COST;
+
+    if (pot > bestPot) { bestPot = pot; localStorage.setItem('pd_best_pot', String(pot)); }
+    if (streak > bestStreak) { bestStreak = streak; localStorage.setItem('pd_best_streak', String(streak)); }
+
+    el('go-reason').textContent = ({
+      wrong   : 'WRONG CALL',
+      cashout : 'CASHED OUT',
+      timeout : 'TIME OUT',
+      error   : 'ERROR',
+      anti_bot: 'BLOCKED',
+    }[reason] || 'GAME OVER');
+
+    el('go-final-pot').textContent = finalPot;
+    el('go-streak').textContent    = streak;
+    el('go-correct').textContent   = `${totalCorrect}/${totalCorrect + totalWrong}`;
+    el('go-best-pot').textContent  = bestPot;
+    el('go-best-streak').textContent = bestStreak;
+
+    const profitEl = el('go-profit');
+    profitEl.textContent = (profit >= 0 ? '+' : '') + profit + ' PTS';
+    profitEl.style.color = profit >= 0 ? '#3ecf8e' : '#ef4956';
+
+    const errBox = el('go-error');
+    if (errMsg) {
+      errBox.textContent  = '⚠ ' + errMsg;
+      errBox.style.display = 'block';
+    } else {
+      errBox.style.display = 'none';
+    }
+
+    el('gameover-screen').classList.remove('hidden');
+
+    // postMessage to React parent
+    try {
+      window.parent && window.parent.postMessage({
+        type: 'litdex:pumpdump:end',
+        reason,
+        pot: finalPot,
+        streak,
+        correct: totalCorrect,
+        wrong: totalWrong,
+        profit,
+        best: bestPot,
+        bestStreak,
+        txInfo,
+      }, '*');
+    } catch {}
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  UI HELPERS
+  // ════════════════════════════════════════════════════════════════
+  function updateHud() {
+    el('hud-pot').textContent       = pot;
+    el('hud-streak').textContent    = streak;
+    el('hud-next-gain').textContent = increment;
+    el('cashout-amt').textContent   = pot;
+  }
+
+  function showCashoutBtn(show) {
+    const b = el('cashout-btn');
+    if (show) b.classList.add('visible');
+    else b.classList.remove('visible');
+  }
+
+  function lockButtons(lock) {
+    ['pump-btn', 'dump-btn', 'cashout-btn'].forEach((id) => {
+      const node = el(id);
+      if (!node) return;
+      if (lock) node.classList.add('locked');
+      else      node.classList.remove('locked');
+    });
+  }
+
+  function popup(text, kind) {
+    const node = document.createElement('div');
+    node.className = `pot-popup ${kind}`;
+    node.textContent = text;
+    node.style.left = '50%';
+    node.style.top  = '36%';
+    document.getElementById('game-container').appendChild(node);
+    setTimeout(() => node.remove(), 1100);
+  }
+
+  function showAntiBotBanner(msg) {
+    const b = el('anti-bot-banner');
+    el('ab-msg').textContent = msg || 'Suspicious activity. Reward forfeited.';
+    b.classList.add('visible');
+    setTimeout(() => b.classList.remove('visible'), 4000);
+  }
+
+  function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+  // ════════════════════════════════════════════════════════════════
+  //  INPUT WIRING
+  // ════════════════════════════════════════════════════════════════
+  el('pump-btn').addEventListener('click', () => { if (waiting) handleGuess('up'); });
+  el('dump-btn').addEventListener('click', () => { if (waiting) handleGuess('down'); });
+  el('cashout-btn').addEventListener('click', () => cashOut());
+
+  window.addEventListener('keydown', (e) => {
+    if (!gameRunning) return;
+    if (waiting && (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W')) handleGuess('up');
+    else if (waiting && (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S')) handleGuess('down');
+    else if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); cashOut(); }
+  });
+
+  // Pointer telemetry (passive, low-cost)
+  window.addEventListener('pointermove', recordPointer, { passive: true });
+  window.addEventListener('touchmove',   recordPointer, { passive: true });
+  window.addEventListener('pointerdown', recordPointer);
+
+  // Swipe gestures on chart
+  let swipeStart = null;
+  chartCanvas.addEventListener('pointerdown', (e) => { swipeStart = { x: e.clientX, y: e.clientY }; });
+  chartCanvas.addEventListener('pointerup', (e) => {
+    if (!swipeStart || !waiting) { swipeStart = null; return; }
+    const dx = e.clientX - swipeStart.x;
+    const dy = e.clientY - swipeStart.y;
+    swipeStart = null;
+    if (Math.abs(dy) < 30 || Math.abs(dy) < Math.abs(dx)) return;
+    if (dy < 0) handleGuess('up');     // swipe up = pump
+    else        handleGuess('down');   // swipe down = dump
+  });
+
+  // Tutorial dismiss
+  el('tutorial-overlay').addEventListener('click', () => {
+    el('tutorial-overlay').classList.add('hidden');
+    doStartGame();
+  });
+
+  // Start button
+  el('start-btn').addEventListener('click', () => {
+    if (!walletAddr) return;
+    if (localStorage.getItem('pd_seen_tutorial') !== '1') {
+      el('start-screen').classList.add('hidden');
+      el('tutorial-overlay').classList.remove('hidden');
+      localStorage.setItem('pd_seen_tutorial', '1');
+    } else {
+      el('start-screen').classList.add('hidden');
+      doStartGame();
+    }
+  });
+
+  // Game over actions
+  el('go-play-again').addEventListener('click', async () => {
+    el('gameover-screen').classList.add('hidden');
+    await loadStats();
+    doStartGame();
+  });
+  el('go-exit').addEventListener('click', () => {
+    try { window.parent && window.parent.postMessage({ type: 'litdex:pumpdump:exit' }, '*'); } catch {}
+    el('gameover-screen').classList.add('hidden');
+    el('start-screen').classList.remove('hidden');
+  });
+
+  // ════════════════════════════════════════════════════════════════
+  //  GAME LIFECYCLE
+  // ════════════════════════════════════════════════════════════════
+  async function doStartGame() {
+    pot = 0; streak = 0; totalCorrect = 0; totalWrong = 0;
+    gameRunning = true; waiting = false;
+    lockButtons(false);
+    showCashoutBtn(false);
+    updateHud();
+    startTelemetry();
+    sndStart();
+
+    if (demoMode || !walletAddr) {
+      seedDemo(VISIBLE_CANDLES);
+      increment   = TIER_INCREMENT[nftTier] || 10;
+      roundTimeMs = ROUND_TIME_MS + (TIER_TIME_BONUS[nftTier] || 0);
+      updateHud();
+      drawChart(false);
+      await sleep(450);
+      startRound();
+      return;
+    }
+
+    // ── Live mode ──
+    try {
+      // 1. Fingerprint (computed once per session)
+      if (!telemetry.fingerprint) telemetry.fingerprint = await browserFingerprint();
+
+      // 2. PoW challenge (optional — backend may skip)
+      let powNonce = null, powChallenge = null;
+      try {
+        const ch = await fetch(`${API}/pumpdump/challenge`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wallet: walletAddr, fingerprint: telemetry.fingerprint }),
+        });
+        if (ch.ok) {
+          const cd = await ch.json();
+          powChallenge = cd.challenge;
+          powNonce     = await solvePoW(cd.challenge, cd.difficulty || 4);
+        }
+      } catch {}
+
+      // 3. Start session
+      const r = await fetch(`${API}/pumpdump/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet: walletAddr,
+          fingerprint: telemetry.fingerprint,
+          powChallenge,
+          powNonce,
+          ts: Date.now(),
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        gameRunning = false;
+        const err = el('go-error') || el('start-error');
+        if (err) {
+          err.textContent  = '⚠ ' + (data.error || 'Could not start');
+          err.style.display = 'block';
+        }
+        el('start-screen').classList.remove('hidden');
+        return;
+      }
+
+      session = {
+        sessionId: data.sessionId,
+        token:     data.token,
+        nonce:     data.nonce || 0,
+      };
+      candles     = Array.isArray(data.candles) && data.candles.length ? data.candles : (seedDemo(VISIBLE_CANDLES), candles);
+      increment   = data.increment   != null ? data.increment   : TIER_INCREMENT[nftTier];
+      roundTimeMs = data.roundTimeMs != null ? data.roundTimeMs : ROUND_TIME_MS + (TIER_TIME_BONUS[nftTier] || 0);
+
+      updateHud();
+      drawChart(false);
+      await sleep(450);
+      startRound();
+    } catch (err) {
+      gameRunning = false;
+      const errEl = el('start-error');
+      errEl.textContent  = '⚠ Network error. Check connection.';
+      errEl.style.display = 'block';
+      el('start-screen').classList.remove('hidden');
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  LITDEX SHELL — wallet, stats, session
+  // ════════════════════════════════════════════════════════════════
+  async function switchChain() {
+    try {
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: CHAIN }],
+      });
+      return true;
+    } catch (err) {
+      if (err && err.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: CHAIN,
+              chainName: 'LiteForge (LitVM)',
+              nativeCurrency: { name: 'LTC', symbol: 'LTC', decimals: 18 },
+              rpcUrls: ['https://liteforge.rpc.caldera.xyz/http'],
+              blockExplorerUrls: [],
+            }],
+          });
+          return true;
+        } catch { return false; }
+      }
+      return false;
+    }
+  }
+
+  async function connectWallet() {
+    const btn  = el('connect-btn');
+    const errE = el('wallet-error');
+    errE.style.display = 'none';
+
+    if (!window.ethereum) {
+      errE.textContent = '⚠ MetaMask not detected. Install it and reload.';
+      errE.style.display = 'block';
+      return;
+    }
+
+    btn.textContent = 'CONNECTING…';
+    btn.style.opacity = '0.5';
+    btn.style.pointerEvents = 'none';
+
+    try {
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      if (!accounts || !accounts.length) throw new Error('No accounts');
+      walletAddr = accounts[0].toLowerCase();
+
+      el('wallet-screen').classList.add('hidden');
+      el('start-screen').classList.remove('hidden');
+      el('wallet-addr').textContent = walletAddr.slice(0, 6) + '…' + walletAddr.slice(-4);
+
+      await loadStats();
+    } catch (err) {
+      errE.textContent = '⚠ ' + (err.message || 'Connection failed');
+      errE.style.display = 'block';
+      btn.textContent = 'CONNECT WALLET';
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = 'auto';
+    }
+  }
+
+  async function loadStats() {
+    if (!walletAddr) return;
+    // Pump-Dump stats endpoint (parity with /simple/stats); if missing, fall back to /simple/stats.
+    let data = null;
+    try {
+      const r = await fetch(`${API}/pumpdump/stats/${walletAddr}`);
+      if (r.ok) data = await r.json();
+    } catch {}
+    if (!data) {
+      try {
+        const r2 = await fetch(`${API}/simple/stats/${walletAddr}`);
+        if (r2.ok) data = await r2.json();
+      } catch {}
+    }
+    if (!data) {
+      // No backend reachable → demo mode (free play, no PTS movement).
+      demoMode = true;
+      el('balance-label').textContent     = 'DEMO';
+      el('games-left-label').textContent  = '∞';
+      el('start-btn').textContent         = 'PLAY (DEMO)';
+      el('nft-tier-label').textContent    = NFT_TIERS[0];
+      el('nft-tier-label').style.color    = TIER_COLORS[0];
+      el('nft-hint').style.display        = 'block';
+      return;
+    }
+
+    demoMode = false;
+    nftTier  = Number(data.nftTier || 0);
+    el('nft-tier-label').textContent = NFT_TIERS[nftTier] || '—';
+    el('nft-tier-label').style.color = TIER_COLORS[nftTier] || '#888';
+
+    const bal       = Number(data.pointsBalance ?? data.balance ?? data.totalPoints ?? 0);
+    const gamesLeft = Number(data.gamesLeft ?? 0);
+    increment       = Number(data.increment   ?? TIER_INCREMENT[nftTier] ?? 10);
+    roundTimeMs     = Number(data.roundTimeMs ?? (ROUND_TIME_MS + (TIER_TIME_BONUS[nftTier] || 0)));
+
+    el('balance-label').textContent     = bal;
+    el('games-left-label').textContent  = data.gamesLeft != null ? gamesLeft : '—';
+    el('increment-label').textContent   = '+' + increment;
+
+    const startBtn = el('start-btn');
+    if (bal < ENTRY_COST) {
+      startBtn.textContent = 'NEED 100 PTS';
+      startBtn.disabled = true;
+    } else if (gamesLeft <= 0 && data.gamesLeft != null) {
+      startBtn.textContent = 'LIMIT REACHED';
+      startBtn.disabled = true;
+    } else {
+      startBtn.textContent = 'PLAY · 100 PTS';
+      startBtn.disabled = false;
+    }
+
+    el('nft-hint').style.display = nftTier === 0 ? 'block' : 'none';
+    updateHud();
+  }
+
+  // ── BOOT ──────────────────────────────────────────────────────
+  async function init() {
+    resizeCanvases();
+
+    // Show animated demo chart on the wallet screen for visual polish
+    seedDemo(VISIBLE_CANDLES);
+    drawChart(false);
+
+    el('connect-btn').addEventListener('click', connectWallet);
+
+    const params = new URLSearchParams(window.location.search);
+    const walletFromUrl = params.get('wallet');
+    const autoStart     = params.get('autostart') === '1';
+
+    if (walletFromUrl) {
+      walletAddr = walletFromUrl.toLowerCase();
+      el('wallet-screen').classList.add('hidden');
+      el('start-screen').classList.remove('hidden');
+      el('wallet-addr').textContent = walletAddr.slice(0, 6) + '…' + walletAddr.slice(-4);
+      await loadStats();
+      if (autoStart && !demoMode) {
+        el('start-screen').classList.add('hidden');
+        doStartGame();
+      }
+    } else if (window.ethereum) {
+      try {
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        if (accounts && accounts.length) {
+          walletAddr = accounts[0].toLowerCase();
+          el('wallet-screen').classList.add('hidden');
+          el('start-screen').classList.remove('hidden');
+          el('wallet-addr').textContent = walletAddr.slice(0, 6) + '…' + walletAddr.slice(-4);
+          await loadStats();
+        }
+      } catch {}
+      try {
+        window.ethereum.on && window.ethereum.on('accountsChanged', () => location.reload());
+      } catch {}
+    }
+  }
+
+  init();
+
+  // expose for parent debugging
+  window.LitDexPumpDump = {
+    getState: () => ({ pot, streak, gameRunning, waiting, demoMode, walletAddr, candles: candles.length }),
+  };
+})();
+</script>
+</body>
+</html>
