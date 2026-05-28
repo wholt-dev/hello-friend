@@ -476,12 +476,18 @@ export default function BridgeCard({ className = "", onNavigate }: { className?:
   const swapChains = () => setFromChain((c) => (c === "litvm" ? "sepolia" : "litvm"));
 
   const setMax = () => {
-    const maxN = Math.min(selected.max, Number(formatEther(balance)));
+    const cap = fromChain === "sepolia" && selected.symbol === "ETH"
+      ? Math.min(selected.max, 0.2)
+      : selected.max;
+    const maxN = Math.min(cap, Number(formatEther(balance)));
     setAmount(maxN > 0 ? maxN.toFixed(6).replace(/\.?0+$/, "") : "0");
   };
 
   const setPct = (pct: number) => {
-    const maxN = Math.min(selected.max, Number(formatEther(balance)));
+    const cap = fromChain === "sepolia" && selected.symbol === "ETH"
+      ? Math.min(selected.max, 0.2)
+      : selected.max;
+    const maxN = Math.min(cap, Number(formatEther(balance)));
     const v = (maxN * pct) / 100;
     setAmount(v > 0 ? v.toFixed(6).replace(/\.?0+$/, "") : "0");
   };
@@ -537,26 +543,51 @@ export default function BridgeCard({ className = "", onNavigate }: { className?:
 
   React.useEffect(() => { fetchTotalBurned(); }, [fetchTotalBurned]);
 
-  // ===== Game requirement check =====
-  const [gamesPlayed, setGamesPlayed] = React.useState<number | null>(null);
+  // ===== Bridge eligibility (5 checks) =====
+  // We hit /bridge/eligibility/:wallet on litdex-quest-api which mirrors
+  // the relayer's hard-gates: amountCap (info), dailyLimit (2/day),
+  // points >= 200, owns a .lit domain, played >= 5 Math Slash games.
+  // Without this pre-flight the user could sign on Sepolia, lock ETH,
+  // and discover the relayer refused the unlock — costing them real gas.
+  type BridgeChecks = {
+    amountCap?: { maxEth: string; info: string };
+    dailyLimit?: { used: number; max: number; pass: boolean };
+    points?: { current: number; required: number; pass: boolean };
+    domain?: { owns: boolean; pass: boolean };
+    games?: { played: number; required: number; pass: boolean };
+  };
+  type BridgeEligibility = {
+    eligible: boolean;
+    checks?: BridgeChecks;
+    reasons?: string[];
+  };
+  const [eligibility, setEligibility] = React.useState<BridgeEligibility | null>(null);
   React.useEffect(() => {
-    if (!address) { setGamesPlayed(null); return; }
+    if (!address) { setEligibility(null); return; }
     let alive = true;
-    const fetchStats = async () => {
+    const fetchEligibility = async () => {
       try {
-        const r = await fetch(`https://game.test-hub.xyz/simple/stats/${address}`);
+        const r = await fetch(`https://api.test-hub.xyz/bridge/eligibility/${address.toLowerCase()}`);
+        if (!r.ok) return;
         const j = await r.json();
-        const n = Number(j?.gamesPlayed ?? j?.data?.gamesPlayed ?? 0);
-        if (alive) setGamesPlayed(isNaN(n) ? 0 : n);
-      } catch {
-        if (alive) setGamesPlayed((p) => p ?? 0);
-      }
+        if (alive && j && typeof j.eligible === "boolean") {
+          setEligibility({ eligible: j.eligible, checks: j.checks, reasons: j.reasons });
+        }
+      } catch { /* swallow — eligibility is non-blocking on failure */ }
     };
-    fetchStats();
-    const id = setInterval(fetchStats, 30000);
+    fetchEligibility();
+    const id = setInterval(fetchEligibility, 30000);
     return () => { alive = false; clearInterval(id); };
   }, [address]);
-  const gamesOk = (gamesPlayed ?? 0) >= 5;
+  const eligOk = eligibility?.eligible ?? false;
+  // Per-tx amount cap (matches relayer). Sepolia → LitVM bridges are
+  // gated to 0.2 ETH; LitVM-side outflow tokens stay capped at the
+  // existing token.max so we don't break LDEX/zkLTC return flow.
+  const SEPOLIA_PER_TX_CAP = 0.2;
+  const effectiveMax = fromChain === "sepolia" && selected.symbol === "ETH"
+    ? Math.min(selected.max, SEPOLIA_PER_TX_CAP)
+    : selected.max;
+  const amountWithinCap = !amount || parseFloat(amount) <= effectiveMax;
 
   const closeProgress = () => setProgress((p) => ({ ...p, open: false }));
   const bridgeAgain = () => { closeProgress(); setAmount(""); };
@@ -565,8 +596,12 @@ export default function BridgeCard({ className = "", onNavigate }: { className?:
     if (!isConnected || !address) return;
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return;
-    if (amt > selected.max) {
-      alert(`Max bridge amount is ${selected.max} ${selected.symbol}`);
+    if (amt > effectiveMax) {
+      alert(`Max bridge amount is ${effectiveMax} ${selected.symbol}`);
+      return;
+    }
+    if (!eligOk) {
+      alert("Not eligible — see the checklist above");
       return;
     }
 
@@ -658,7 +693,7 @@ export default function BridgeCard({ className = "", onNavigate }: { className?:
     }
   };
 
-  const canBridge = isConnected && !!amount && parseFloat(amount) > 0 && !isBridging && gamesOk;
+  const canBridge = isConnected && !!amount && parseFloat(amount) > 0 && !isBridging && eligOk && amountWithinCap;
   const wrongChain = isConnected && chainId !== CHAIN_INFO[fromChain].id;
   const pctVal = Math.min(selected.max, Number(formatEther(balance))) > 0
     ? Math.min(100, (Number(amount || 0) / Math.min(selected.max, Number(formatEther(balance)))) * 100)
@@ -666,38 +701,72 @@ export default function BridgeCard({ className = "", onNavigate }: { className?:
 
   return (
     <div className={cn("w-full max-w-md sm:max-w-lg mx-auto", className)}>
-      {isConnected && gamesPlayed !== null && !gamesOk && (
+      {isConnected && eligibility && !eligOk && (
         <div
           className="mb-3 rounded-lg p-4 font-mono bg-black"
           style={{ border: "1px solid #f5a623" }}
         >
           <div className="flex items-start gap-3">
-            <div className="text-2xl leading-none">🎮</div>
+            <div className="text-2xl leading-none">🛡️</div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold text-[#f5a623] uppercase tracking-wider">Play Required to Bridge</div>
+              <div className="text-sm font-bold text-[#f5a623] uppercase tracking-wider">Bridge Eligibility</div>
               <p className="text-xs text-white/80 mt-1 leading-relaxed">
-                You must play at least 5 Math Slash games today to use the bridge.
+                Anti-abuse gates active. All five checks must pass. Sepolia ETH from blocked locks stays trapped — don't sign without all green.
               </p>
-              <p className="text-[11px] text-white/60 mt-2 tabular-nums">
-                Games played today: <span className="text-white font-bold">{gamesPlayed ?? 0}</span> / 5
-              </p>
-              <button
-                onClick={() => { if (onNavigate) onNavigate("games"); else window.dispatchEvent(new CustomEvent("app:navigate", { detail: "games" })); }}
-                className="mt-3 px-3 py-2 rounded-md text-[11px] font-bold uppercase tracking-widest text-white transition-all bg-black"
-                style={{ border: "1px solid #f5a623" }}
-              >
-                Play Math Slash →
-              </button>
+              <div className="mt-3 space-y-1.5 text-[11px]">
+                <p className={eligibility.checks?.points?.pass ? "text-white/70" : "text-white/40"}>
+                  {eligibility.checks?.points?.pass ? "✓" : "✗"} Points <span className="tabular-nums">{eligibility.checks?.points?.current ?? 0}</span> / 200
+                </p>
+                <p className={eligibility.checks?.domain?.pass ? "text-white/70" : "text-white/40"}>
+                  {eligibility.checks?.domain?.pass ? "✓" : "✗"} Own a .lit domain
+                </p>
+                <p className={eligibility.checks?.games?.pass ? "text-white/70" : "text-white/40"}>
+                  {eligibility.checks?.games?.pass ? "✓" : "✗"} Math Slash games today <span className="tabular-nums">{eligibility.checks?.games?.played ?? 0}</span> / 5
+                </p>
+                <p className={eligibility.checks?.dailyLimit?.pass ? "text-white/70" : "text-white/40"}>
+                  {eligibility.checks?.dailyLimit?.pass ? "✓" : "✗"} Daily bridge limit <span className="tabular-nums">{eligibility.checks?.dailyLimit?.used ?? 0}</span> / 2
+                </p>
+                <p className="text-white/50 pt-1">• Max 0.2 ETH per single bridge</p>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {!eligibility.checks?.games?.pass && (
+                  <button
+                    onClick={() => { if (onNavigate) onNavigate("games"); else window.dispatchEvent(new CustomEvent("app:navigate", { detail: "games" })); }}
+                    className="px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest text-white bg-black"
+                    style={{ border: "1px solid #f5a623" }}
+                  >
+                    Play Math Slash →
+                  </button>
+                )}
+                {!eligibility.checks?.domain?.pass && (
+                  <button
+                    onClick={() => { if (onNavigate) onNavigate("chatui"); else window.dispatchEvent(new CustomEvent("app:navigate", { detail: "chatui" })); }}
+                    className="px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest text-white bg-black"
+                    style={{ border: "1px solid #f5a623" }}
+                  >
+                    Buy .lit →
+                  </button>
+                )}
+                {!eligibility.checks?.points?.pass && (
+                  <button
+                    onClick={() => { if (onNavigate) onNavigate("points"); else window.dispatchEvent(new CustomEvent("app:navigate", { detail: "points" })); }}
+                    className="px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest text-white bg-black"
+                    style={{ border: "1px solid #f5a623" }}
+                  >
+                    Earn Points →
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
-      {isConnected && gamesOk && (
+      {isConnected && eligOk && (
         <div
           className="mb-3 rounded-lg px-4 py-2.5 font-mono text-xs text-white bg-black"
           style={{ border: BORDER }}
         >
-          ✅ Bridge unlocked — 5 games played today!
+          ✅ Bridge unlocked — all 5 checks passed
         </div>
       )}
       <section
