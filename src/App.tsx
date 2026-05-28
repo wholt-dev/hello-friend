@@ -4347,9 +4347,343 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
+const PumpDumpPage = ({ onBack }: { onBack: () => void }) => {
+  const { address, isConnected } = useAccount();
+  const SIMPLE_API = 'https://game.test-hub.xyz';
+  const DAILY_LIMIT = 15;
+  const ENTRY_COST = 100;
+
+  const [stats, setStats] = useState<any>(null);
+  const [playing, setPlaying] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [gameOver, setGameOver] = useState<{
+    reason: string;
+    pot: number;
+    streak: number;
+    correct: number;
+    wrong: number;
+    profit: number;
+    best: number;
+    bestStreak: number;
+  } | null>(null);
+  const [autoStart, setAutoStart] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
+  const [errMsg, setErrMsg] = useState('');
+
+  const lowerAddr = address ? address.toLowerCase() : '';
+
+  const fetchStats = async () => {
+    if (!lowerAddr) return;
+    let data: any = null;
+    try {
+      const r = await fetch(`${SIMPLE_API}/pumpdump/stats/${lowerAddr}`);
+      if (r.ok) data = await r.json();
+    } catch {}
+    if (!data) {
+      try {
+        const r2 = await fetch(`${SIMPLE_API}/simple/stats/${lowerAddr}`);
+        if (r2.ok) data = await r2.json();
+      } catch {}
+    }
+    if (data) setStats(data);
+  };
+
+  useEffect(() => {
+    if (!lowerAddr) return;
+    fetchStats();
+    const t = setInterval(fetchStats, 20000);
+    return () => clearInterval(t);
+  }, [lowerAddr]);
+
+  // Listen to iframe messages
+  useEffect(() => {
+    if (!lowerAddr) return;
+    const onMsg = (e: MessageEvent) => {
+      const d: any = e?.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'litdex:pumpdump:exit') {
+        setPlaying(false);
+        setGameOver(null);
+        try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
+        try { (screen.orientation as any)?.unlock?.(); } catch {}
+        fetchStats();
+        return;
+      }
+      if (d.type === 'litdex:pumpdump:end') {
+        const profit = Number(d.profit) || 0;
+        const pot = Number(d.pot) || 0;
+        setGameOver({
+          reason: String(d.reason || 'ended'),
+          pot,
+          streak: Number(d.streak) || 0,
+          correct: Number(d.correct) || 0,
+          wrong: Number(d.wrong) || 0,
+          profit,
+          best: Number(d.best) || 0,
+          bestStreak: Number(d.bestStreak) || 0,
+        });
+        try {
+          if (d.reason === 'cashout' && profit > 0) {
+            addNotif(lowerAddr, {
+              type: 'game',
+              title: 'Pump or Dump · Cashed Out',
+              message: `Pot ${pot} PTS · profit +${profit}`,
+              link: d?.txInfo?.explorerUrl || (d?.txInfo?.txHash ? `https://liteforge.explorer.caldera.xyz/tx/${d.txInfo.txHash}` : undefined),
+            });
+          } else if (d.reason === 'wrong') {
+            addNotif(lowerAddr, {
+              type: 'game',
+              title: 'Pump or Dump · Wrong Call',
+              message: `Streak ${d.streak} · -${ENTRY_COST} PTS`,
+            });
+          }
+        } catch {}
+        fetchStats();
+      }
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [lowerAddr]);
+
+  const handlePlayAgain = () => {
+    setGameOver(null);
+    setErrMsg('');
+    setAutoStart(true);
+    setIframeKey((k) => k + 1);
+    fetchStats();
+  };
+
+  const handleGameOverExit = () => {
+    setGameOver(null);
+    setErrMsg('');
+    setPlaying(false);
+    setAutoStart(false);
+    try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.unlock?.(); } catch {}
+    fetchStats();
+  };
+
+  const handleExitGame = () => {
+    setPlaying(false);
+    setGameOver(null);
+    setAutoStart(false);
+    try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.unlock?.(); } catch {}
+    fetchStats();
+  };
+
+  useEffect(() => {
+    if (playing) document.body.classList.add('hide-nav');
+    else document.body.classList.remove('hide-nav');
+    return () => document.body.classList.remove('hide-nav');
+  }, [playing]);
+
+  const balance   = Math.max(0, Number(stats?.pointsBalance ?? stats?.balance ?? stats?.totalPoints ?? 0));
+  const gamesLeft = Math.max(0, Number(stats?.gamesLeft ?? Math.max(0, DAILY_LIMIT - Number(stats?.gamesPlayed ?? 0))));
+  const nftTier   = Number(stats?.nftTier ?? 0);
+  const NFT_NAMES = ['—', 'COMMON', 'RARE', 'EPIC'];
+  const TIER_INC  = [10, 12, 14, 16];
+  const increment = Number(stats?.increment ?? TIER_INC[nftTier] ?? 10);
+  const bestPot   = Math.max(Number(stats?.bestPot ?? 0), Number(stats?.pumpdumpBestPot ?? 0));
+  const bestStrk  = Math.max(Number(stats?.bestStreak ?? 0), Number(stats?.pumpdumpBestStreak ?? 0));
+
+  const startGame = async () => {
+    if (!lowerAddr || starting) return;
+    if (balance < ENTRY_COST) {
+      setErrMsg(`Need ${ENTRY_COST} PTS to play. You have ${balance}.`);
+      return;
+    }
+    if (gamesLeft <= 0) {
+      setErrMsg('Daily limit reached. Resets at 00:00 IST.');
+      return;
+    }
+    setErrMsg('');
+    setGameOver(null);
+    setAutoStart(true);
+    setStarting(true);
+    setPlaying(true);
+    try {
+      const elx: any = document.documentElement;
+      const req = elx.requestFullscreen || elx.webkitRequestFullscreen || elx.mozRequestFullScreen;
+      if (req) req.call(elx).catch(() => {});
+    } catch {}
+    try { (screen.orientation as any)?.lock?.('portrait').catch(() => {}); } catch {}
+    setStarting(false);
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pump-dump-page py-8 max-w-7xl mx-auto px-4">
+      <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
+
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+        {!playing && (
+          <div className="order-2 lg:order-1 space-y-5">
+            <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-[11px] uppercase text-brand-text-muted">Your Stats</div>
+                <span className="text-[9px] uppercase px-2 py-0.5 rounded-full text-black bg-white font-bold">{ENTRY_COST} PTS Entry</span>
+              </div>
+              {!isConnected ? (
+                <div className="text-brand-text-muted text-xs">Connect wallet to track your stats</div>
+              ) : (
+                <>
+                  <div className="mb-3">
+                    <div className="text-[10px] uppercase text-brand-text-muted">Balance</div>
+                    <div className="text-brand-text-primary text-sm font-bold">{balance.toLocaleString()} PTS</div>
+                  </div>
+                  <div className="mb-3">
+                    <div className="text-[10px] uppercase text-brand-text-muted">NFT Tier</div>
+                    <div className="text-brand-text-primary text-sm">{NFT_NAMES[nftTier] || '—'}</div>
+                  </div>
+                  <div className="mb-3">
+                    <div className="text-[10px] uppercase text-brand-text-muted">Per Correct</div>
+                    <div className="text-brand-text-primary text-sm">+{increment} PTS</div>
+                  </div>
+                  <div className="mb-4">
+                    <div className="text-[10px] uppercase text-brand-text-muted">Games Today</div>
+                    <div className="text-brand-text-primary text-sm">{Math.max(0, DAILY_LIMIT - gamesLeft)} / {DAILY_LIMIT}</div>
+                  </div>
+                  <div className="pt-3 border-t border-brand-border">
+                    <div className="text-[10px] uppercase text-brand-text-muted mb-2">Personal Best</div>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-brand-text-muted">Best Pot</span>
+                      <span className="text-brand-text-primary">{bestPot}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] mt-1">
+                      <span className="text-brand-text-muted">Best Streak</span>
+                      <span className="text-brand-text-primary">{bestStrk}</span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Game */}
+        <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
+          {!playing ? (
+            <div className="p-6 sm:p-8 text-center">
+              <div className="font-mono text-brand-text-primary text-base sm:text-lg mb-2">PUMP OR DUMP</div>
+              <div className="font-mono text-brand-text-muted text-xs mb-2">Predict next candle. Pot grows on each correct. Cash out anytime.</div>
+              <div className="font-mono text-[10px] text-brand-text-muted mb-6">{ENTRY_COST} PTS entry · {DAILY_LIMIT} games/day · resets 00:00 IST</div>
+              <button
+                type="button"
+                onClick={startGame}
+                onTouchEnd={(e) => { e.preventDefault(); (e.currentTarget as HTMLButtonElement).click(); }}
+                disabled={!isConnected || starting || (isConnected && (balance < ENTRY_COST || gamesLeft <= 0))}
+                className="w-full sm:w-auto min-h-12 px-8 py-3 rounded-lg bg-brand-text-primary text-brand-bg font-mono font-bold text-sm cursor-pointer touch-manipulation select-none active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                {!isConnected ? 'CONNECT WALLET' :
+                  starting ? 'STARTING…' :
+                  balance < ENTRY_COST ? `NEED ${ENTRY_COST} PTS` :
+                  gamesLeft <= 0 ? 'DAILY LIMIT REACHED' : `START · ${ENTRY_COST} PTS`}
+              </button>
+              {errMsg && (
+                <div className="mt-4 font-mono text-[11px]" style={{ color: '#c44' }}>{errMsg}</div>
+              )}
+            </div>
+          ) : (
+            <div className="relative w-screen h-screen pd-playing-root" style={{ width: '100vw', height: '100dvh', touchAction: 'none', overscrollBehavior: 'none' }}>
+              {!gameOver && (
+                <button
+                  onClick={handleExitGame}
+                  aria-label="Exit game"
+                  className="pd-exit-btn font-mono text-[11px] uppercase bg-brand-surface-2 text-brand-text-primary border border-brand-border"
+                  style={{ position: 'fixed', top: 16, right: 16, zIndex: 999999, borderRadius: 8, padding: '8px 12px' }}
+                >
+                  EXIT
+                </button>
+              )}
+              <iframe
+                key={iframeKey}
+                src={`/games/pump-or-dump.html?wallet=${lowerAddr}${autoStart ? '&autostart=1' : ''}`}
+                title="Pump or Dump"
+                style={{ border: 'none', position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none' }}
+                allow="autoplay; fullscreen"
+              />
+
+              {gameOver && (
+                <div style={{
+                  position: 'fixed', inset: 0, zIndex: 1000001,
+                  background: 'rgba(0,0,0,0.92)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: 16,
+                }}>
+                  <div className="font-mono" style={{
+                    width: '100%', maxWidth: 380,
+                    background: '#0a0a0a', border: '1px solid #1f1f1f',
+                    borderRadius: 16, padding: 24, textAlign: 'center', color: '#fff',
+                  }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 4 }}>
+                      {gameOver.reason === 'cashout' ? 'CASHED OUT' : gameOver.reason === 'wrong' ? 'WRONG CALL' : 'GAME OVER'}
+                    </div>
+                    <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#666', letterSpacing: '0.2em', marginBottom: 18 }}>
+                      Session ended
+                    </div>
+
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#777', letterSpacing: '0.15em' }}>Final Pot</div>
+                    <div style={{ fontSize: 40, fontWeight: 700, lineHeight: 1, marginTop: 4 }}>{gameOver.pot}</div>
+                    <div style={{
+                      fontSize: 14, fontWeight: 700, marginTop: 6, marginBottom: 18,
+                      color: gameOver.profit >= 0 ? '#3ecf8e' : '#ef4956',
+                    }}>
+                      {gameOver.profit >= 0 ? '+' : ''}{gameOver.profit} PTS
+                    </div>
+
+                    <div style={{ display: 'grid', gap: 10, marginBottom: 18, textAlign: 'left' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Streak</span><span>{gameOver.streak}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Accuracy</span><span>{gameOver.correct} / {gameOver.correct + gameOver.wrong}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Best Pot</span><span>{gameOver.best}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Best Streak</span><span>{gameOver.bestStreak}</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                      <button
+                        onClick={handlePlayAgain}
+                        style={{
+                          flex: 1, minHeight: 48, borderRadius: 10,
+                          background: '#fff', color: '#000', border: 'none',
+                          fontSize: 12, fontWeight: 700, letterSpacing: '0.1em',
+                          textTransform: 'uppercase', cursor: 'pointer',
+                          WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation',
+                        }}
+                      >PLAY AGAIN</button>
+                      <button
+                        onClick={handleGameOverExit}
+                        style={{
+                          flex: 1, minHeight: 48, borderRadius: 10,
+                          background: 'transparent', color: '#fff', border: '1px solid #333',
+                          fontSize: 12, fontWeight: 700, letterSpacing: '0.1em',
+                          textTransform: 'uppercase', cursor: 'pointer',
+                          WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation',
+                        }}
+                      >EXIT</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
 const GamesPage = () => {
-  const [sub, setSub] = useState<'lobby' | 'math-slash'>('lobby');
+  const [sub, setSub] = useState<'lobby' | 'math-slash' | 'pump-dump'>('lobby');
   if (sub === 'math-slash') return <MathSlashPage onBack={() => setSub('lobby')} />;
+  if (sub === 'pump-dump')  return <PumpDumpPage  onBack={() => setSub('lobby')} />;
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-12 max-w-6xl mx-auto px-4">
       <h1 className="text-3xl font-bold tracking-tighter text-white mb-8">Games</h1>
@@ -4365,6 +4699,34 @@ const GamesPage = () => {
               <h3 className="font-bold text-xl text-white mb-2">MATH SLASH</h3>
               <p className="text-sm text-[#888] mb-6 leading-relaxed">Slash the equations. Earn points, convert to zkLTC.</p>
               <button onClick={() => setSub('math-slash')} className="mt-auto w-full py-3 rounded-lg bg-white text-black font-mono font-bold text-xs uppercase tracking-widest">
+                Play Now
+              </button>
+            </div>
+          </div>
+
+          <div className="games-card-dark rounded-2xl overflow-hidden flex flex-col" style={{ background: '#0a0a0a', border: '1px solid #1f1f1f' }}>
+            <div className="h-44 flex items-center justify-center relative" style={{ background: 'linear-gradient(135deg, #0a0a0a 0%, #111 50%, #0a0a0a 100%)' }}>
+              <svg width="120" height="80" viewBox="0 0 120 80" style={{ opacity: 0.85 }}>
+                <line x1="12"  y1="44" x2="12"  y2="22" stroke="#3ecf8e" strokeWidth="1.5"/>
+                <rect x="8"  y="28" width="8" height="14" fill="#3ecf8e" />
+                <line x1="28"  y1="58" x2="28"  y2="34" stroke="#ef4956" strokeWidth="1.5"/>
+                <rect x="24" y="40" width="8" height="14" fill="#ef4956" />
+                <line x1="44"  y1="38" x2="44"  y2="14" stroke="#3ecf8e" strokeWidth="1.5"/>
+                <rect x="40" y="18" width="8" height="16" fill="#3ecf8e" />
+                <line x1="60"  y1="46" x2="60"  y2="22" stroke="#3ecf8e" strokeWidth="1.5"/>
+                <rect x="56" y="26" width="8" height="14" fill="#3ecf8e" />
+                <line x1="76"  y1="62" x2="76"  y2="38" stroke="#ef4956" strokeWidth="1.5"/>
+                <rect x="72" y="42" width="8" height="16" fill="#ef4956" />
+                <line x1="92"  y1="36" x2="92"  y2="10" stroke="#3ecf8e" strokeWidth="1.5"/>
+                <rect x="88" y="14" width="8" height="18" fill="#3ecf8e" />
+                <rect x="104" y="20" width="8" height="42" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.2)" strokeWidth="1" strokeDasharray="2,2"/>
+                <text x="108" y="46" fontFamily="Bangers, cursive" fontSize="20" fill="rgba(255,255,255,0.6)" textAnchor="middle">?</text>
+              </svg>
+            </div>
+            <div className="p-6 flex-1 flex flex-col">
+              <h3 className="font-bold text-xl text-white mb-2">PUMP OR DUMP</h3>
+              <p className="text-sm text-[#888] mb-6 leading-relaxed">Predict next candle. Pot grows on streak. Cash out anytime.</p>
+              <button onClick={() => setSub('pump-dump')} className="mt-auto w-full py-3 rounded-lg bg-white text-black font-mono font-bold text-xs uppercase tracking-widest">
                 Play Now
               </button>
             </div>
