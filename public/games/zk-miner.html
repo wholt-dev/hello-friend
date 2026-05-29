@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>ZK Miner — LitDeX</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka+One&family=JetBrains+Mono:wght@400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #060814;
+    color: #fff;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    font-family: 'Fredoka One', cursive;
+  }
+
+  #game-container { position: relative; width: 100%; height: 100%; overflow: hidden; }
+
+  /* Mine shaft sky background */
+  #sky {
+    position: absolute; inset: 0; z-index: 1;
+    background:
+      radial-gradient(ellipse 100% 60% at 50% 0%, rgba(30,80,140,0.35) 0%, transparent 60%),
+      radial-gradient(ellipse 80% 60% at 50% 105%, rgba(255,150,80,0.18) 0%, transparent 55%),
+      linear-gradient(180deg,
+        #03060e 0%,
+        #08152a 35%,
+        #0f2545 70%,
+        #1a3a5c 100%);
+  }
+  /* Faint hex/circuit pattern overlay */
+  #sky::after {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(120,200,255,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120,200,255,0.05) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  /* HUD */
+  #hud-top {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 6;
+    padding: 14px 14px 0;
+    padding-top: max(14px, env(safe-area-inset-top));
+    pointer-events: none;
+  }
+  .hud-row {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px; margin-bottom: 10px;
+  }
+  .hud-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: linear-gradient(180deg, rgba(20,30,50,0.95), rgba(8,14,28,0.92));
+    border: 1px solid rgba(140,180,255,0.18);
+    border-radius: 12px;
+    padding: 7px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.12em;
+    color: #cfe6ff;
+    text-transform: uppercase;
+    backdrop-filter: blur(6px);
+  }
+  .hud-pill .v {
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+    margin-left: 4px;
+    letter-spacing: 0.08em;
+  }
+  .hud-pill.points { background: linear-gradient(180deg, rgba(60,180,110,0.95), rgba(20,80,50,0.92)); border-color: rgba(120,255,180,0.45); color: #d2ffe2; }
+  .hud-pill.points .v { color: #fff; }
+  .hud-pill.moves  { background: linear-gradient(180deg, rgba(180,130,40,0.95), rgba(80,50,15,0.92)); border-color: rgba(255,200,90,0.45); color: #ffe9bf; }
+  .hud-pill.moves  .v { color: #fff; }
+
+  /* Mining rig charge bar */
+  #rig-wrap {
+    position: relative;
+    background: linear-gradient(180deg, rgba(15,25,45,0.85), rgba(5,10,20,0.85));
+    border: 1px solid rgba(140,180,255,0.18);
+    border-radius: 14px;
+    padding: 10px 12px 12px;
+    margin: 0 4px;
+    backdrop-filter: blur(6px);
+  }
+  .rig-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.18em;
+    color: #9fc2eb;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .rig-head .charges {
+    font-family: 'Bangers', cursive;
+    font-size: 22px; letter-spacing: 2px;
+    color: #fff;
+    text-shadow: 0 0 14px rgba(140,200,255,0.5);
+  }
+  #rig-track {
+    position: relative;
+    height: 12px;
+    background: rgba(0,0,0,0.55);
+    border-radius: 999px;
+    overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgba(140,180,255,0.18);
+  }
+  #rig-fill {
+    position: absolute; top: 0; left: 0; bottom: 0;
+    width: 0%;
+    background: linear-gradient(90deg, #2eb6ff 0%, #5be0a4 60%, #ffe97a 100%);
+    box-shadow: 0 0 16px rgba(94,210,255,0.6);
+    transition: width 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  #rig-fill.full {
+    background: linear-gradient(90deg, #ffe97a 0%, #ffae3b 100%);
+    animation: rigPulse 0.5s ease-in-out;
+  }
+  @keyframes rigPulse {
+    0%, 100% { filter: brightness(1); }
+    50%      { filter: brightness(1.6); }
+  }
+  #rig-pct {
+    position: absolute; right: 10px; top: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: rgba(255,255,255,0.7);
+    line-height: 12px;
+  }
+
+  /* Score readout */
+  #score-num {
+    position: absolute;
+    z-index: 5;
+    top: max(160px, calc(160px + env(safe-area-inset-top)));
+    right: 18px;
+    font-family: 'Bangers', cursive;
+    font-size: 56px;
+    line-height: 1;
+    color: #fff;
+    letter-spacing: 4px;
+    text-shadow: 2px 4px 0 rgba(0,0,0,0.55), 0 0 18px rgba(140,200,255,0.35);
+    pointer-events: none;
+    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  #score-num.bump { transform: scale(1.18); }
+
+  /* Combo banner */
+  #combo {
+    position: absolute;
+    left: 50%; top: 30%;
+    transform: translate(-50%, 0) scale(0.6);
+    z-index: 5;
+    font-family: 'Bangers', cursive;
+    font-size: clamp(34px, 9vw, 72px);
+    letter-spacing: 3px;
+    color: #ffe97a;
+    text-shadow: 0 3px 0 rgba(0,0,0,0.5), 0 0 24px rgba(255,213,90,0.7);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease;
+  }
+  #combo.visible {
+    transform: translate(-50%, 0) scale(1);
+    opacity: 1;
+  }
+
+  /* Score popups */
+  .score-pop {
+    position: absolute;
+    z-index: 6;
+    font-family: 'Bangers', cursive;
+    font-size: 32px;
+    letter-spacing: 2px;
+    color: #b9ff86;
+    text-shadow: 0 3px 0 rgba(0,40,10,0.6), 0 0 18px rgba(150,255,90,0.45);
+    pointer-events: none;
+    transform: translate(-50%, 0);
+    animation: popUp 0.95s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  .score-pop.gold  { color: #ffe97a; text-shadow: 0 3px 0 rgba(60,30,0,0.6), 0 0 22px rgba(255,210,90,0.6); }
+  .score-pop.charge { color: #5be0a4; font-size: 44px; text-shadow: 0 3px 0 rgba(0,40,20,0.6), 0 0 28px rgba(91,224,164,0.7); }
+  @keyframes popUp {
+    0%   { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+    25%  { transform: translate(-50%, -22px) scale(1.18); opacity: 1; }
+    100% { transform: translate(-50%, -110px) scale(0.95); opacity: 0; }
+  }
+
+  /* Board canvas */
+  #stage-canvas { position: absolute; left: 0; top: 0; z-index: 3; }
+
+  /* Camera shake target */
+  #shake-host { position: absolute; inset: 0; z-index: 2; will-change: transform; }
+
+  /* Center start/restart panel */
+  #panel {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.78);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: opacity 0.3s ease;
+  }
+  #panel.hidden { opacity: 0; pointer-events: none; }
+  .panel-card {
+    background: #0a0a14;
+    border: 1px solid #1f1f2c;
+    border-radius: 18px;
+    padding: 26px 22px;
+    text-align: center;
+    width: 88%; max-width: 360px;
+    color: #fff;
+    font-family: 'Fredoka One', cursive;
+  }
+  .panel-title {
+    font-family: 'Bangers', cursive;
+    font-size: 38px;
+    letter-spacing: 4px;
+    margin-bottom: 4px;
+    text-shadow: 0 0 18px rgba(91,224,164,0.45);
+  }
+  .panel-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: rgba(255,255,255,0.55);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .panel-stat-row {
+    display: flex; justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    margin: 6px 0;
+  }
+  .panel-stat-row .lbl { color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.12em; }
+  .panel-stat-row .val { color: #fff; font-weight: 700; }
+  .panel-big {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 44px; line-height: 1;
+    font-weight: 700;
+    margin: 14px 0 4px;
+    color: #5be0a4;
+  }
+  .panel-btns { display: flex; gap: 10px; margin-top: 14px; }
+  .panel-btn {
+    flex: 1; min-height: 48px; border-radius: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border: 1px solid #333;
+    background: transparent;
+    color: #fff;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .panel-btn.primary { background: #fff; color: #000; border: none; }
+  .panel-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  #err-banner {
+    position: absolute; top: 12px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(239,73,86,0.92);
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.1em;
+    padding: 8px 14px; border-radius: 8px;
+    z-index: 40;
+    opacity: 0; transition: opacity 0.25s ease;
+    pointer-events: none;
+  }
+  #err-banner.visible { opacity: 1; }
+
+  /* Rig drop celebration overlay */
+  #rig-burst {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    pointer-events: none;
+    background: radial-gradient(circle at 50% 35%, rgba(255,233,122,0.5) 0%, rgba(91,224,164,0.25) 30%, transparent 60%);
+    opacity: 0;
+    transition: opacity 0.18s ease;
+  }
+  #rig-burst.flash { opacity: 1; animation: burstFade 0.7s ease-out forwards; }
+  @keyframes burstFade {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+</style>
+</head>
+<body>
+<div id="game-container">
+  <div id="sky"></div>
+
+  <div id="shake-host">
+    <canvas id="stage-canvas"></canvas>
+  </div>
+
+  <div id="rig-burst"></div>
+
+  <div id="hud-top">
+    <div class="hud-row">
+      <div class="hud-pill points">CHARGES <span class="v" id="hud-charges">0/10</span></div>
+      <div class="hud-pill moves">MOVES <span class="v" id="hud-moves">30</span></div>
+    </div>
+    <div id="rig-wrap">
+      <div class="rig-head">
+        <div>MINING RIG</div>
+        <div class="charges" id="rig-pct-big">0%</div>
+      </div>
+      <div id="rig-track">
+        <div id="rig-fill"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="score-num">0</div>
+  <div id="combo">CASCADE</div>
+
+  <div id="panel">
+    <div class="panel-card" id="panel-card">
+      <div class="panel-title" id="panel-title">ZK MINER</div>
+      <div class="panel-sub" id="panel-sub">Match 3+ to charge the rig · 30 moves · 5 games / day</div>
+      <div id="panel-body"></div>
+      <div class="panel-btns">
+        <button class="panel-btn primary" id="btn-primary">PLAY</button>
+        <button class="panel-btn" id="btn-exit">EXIT</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="err-banner"><span id="err-msg"></span></div>
+</div>
+<script>
+(() => {
+  // ── URL params ─────────────────────────────────────────────
+  const params  = new URLSearchParams(location.search);
+  const wallet  = (params.get('wallet') || '').toLowerCase();
+  const API     = (params.get('api') || 'https://game.test-hub.xyz').replace(/\/$/, '');
+  const PARENT_ORIGIN = '*';
+  const postParent = (m) => { try { window.parent && window.parent.postMessage(m, PARENT_ORIGIN); } catch {} };
+
+  // ── DOM refs ───────────────────────────────────────────────
+  const stageCanvas = document.getElementById('stage-canvas');
+  const stage       = stageCanvas.getContext('2d', { alpha: true });
+  const panel       = document.getElementById('panel');
+  const panelTitle  = document.getElementById('panel-title');
+  const panelSub    = document.getElementById('panel-sub');
+  const panelBody   = document.getElementById('panel-body');
+  const btnPrimary  = document.getElementById('btn-primary');
+  const btnExit     = document.getElementById('btn-exit');
+  const errBanner   = document.getElementById('err-banner');
+  const errMsg      = document.getElementById('err-msg');
+  const hudCharges  = document.getElementById('hud-charges');
+  const hudMoves    = document.getElementById('hud-moves');
+  const rigFill     = document.getElementById('rig-fill');
+  const rigPctBig   = document.getElementById('rig-pct-big');
+  const rigBurst    = document.getElementById('rig-burst');
+  const scoreNum    = document.getElementById('score-num');
+  const comboEl     = document.getElementById('combo');
+  const shakeHost   = document.getElementById('shake-host');
+  const container   = document.getElementById('game-container');
+
+  // ── Constants (mirror backend) ────────────────────────────
+  const COLS = 7, ROWS = 8, COLORS = 5;
+  const MOVES_PER_GAME = 30;
+  const MAX_CHARGES_PER_GAME = 10;
+  const MIN_MOVE_GAP_MS = 220;          // matches >200 server floor
+  const PER_GEM_PCT = 1, FOUR_BONUS = 5, FIVE_BONUS = 10;
+  const CHARGE_PER_PT = 100;
+
+  // Visual gem palette: [base, glow, label]
+  const GEMS = [
+    { base: '#3ecf8e', glow: '#7dffc1', label: 'L', name: 'zkLTC' },
+    { base: '#ffd166', glow: '#ffeab0', label: 'D', name: 'LDEX'  },
+    { base: '#4cc1ff', glow: '#a4e3ff', label: 'U', name: 'USDC'  },
+    { base: '#c466ff', glow: '#e0a4ff', label: 'N', name: 'NFT'   },
+    { base: '#ff7a45', glow: '#ffb487', label: 'E', name: 'EN'    },
+  ];
+
+  // ── Canvas sizing ─────────────────────────────────────────
+  let DPR = 1;
+  let CELL = 44;       // CSS px per cell
+  let BOARD_W = 0;
+  let BOARD_H = 0;
+  let BOARD_X = 0;     // top-left in CSS px (within canvas)
+  let BOARD_Y = 0;
+  function resize() {
+    DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    const r = container.getBoundingClientRect();
+    stageCanvas.style.width  = r.width + 'px';
+    stageCanvas.style.height = r.height + 'px';
+    stageCanvas.width  = Math.floor(r.width * DPR);
+    stageCanvas.height = Math.floor(r.height * DPR);
+    stage.setTransform(1, 0, 0, 1, 0, 0); stage.scale(DPR, DPR);
+
+    // Board fits horizontally with 12px gutter; reserve top 220 / bottom 80.
+    const maxW = r.width - 24;
+    const reservedTop = 230;
+    const reservedBot = 70;
+    const availH = Math.max(120, r.height - reservedTop - reservedBot);
+    const cellByW = Math.floor(maxW / COLS);
+    const cellByH = Math.floor(availH / ROWS);
+    CELL = Math.max(28, Math.min(64, Math.min(cellByW, cellByH)));
+    BOARD_W = CELL * COLS;
+    BOARD_H = CELL * ROWS;
+    BOARD_X = Math.floor((r.width - BOARD_W) / 2);
+    BOARD_Y = Math.floor(reservedTop + (availH - BOARD_H) / 2);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function vw() { return container.clientWidth; }
+  function vh() { return container.clientHeight; }
+
+  // ── Audio ─────────────────────────────────────────────────
+  let audioCtx = null;
+  function tone(freq, durMs, type = 'sine', gain = 0.16) {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = type;
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(gain, audioCtx.currentTime + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + durMs / 1000);
+      o.connect(g).connect(audioCtx.destination);
+      o.start();
+      o.stop(audioCtx.currentTime + durMs / 1000);
+    } catch {}
+  }
+  function sndPop(level) { tone(440 + Math.min(level, 8) * 60, 90, 'square', 0.11); }
+  function sndSwap()     { tone(360, 60, 'sine', 0.08); }
+  function sndRevert()   { tone(220, 110, 'sawtooth', 0.10); }
+  function sndCharge() {
+    tone(660, 70, 'square', 0.16);
+    setTimeout(() => tone(880, 80, 'square', 0.15), 60);
+    setTimeout(() => tone(1320, 110, 'square', 0.13), 130);
+    setTimeout(() => tone(1760, 140, 'square', 0.10), 220);
+  }
+  function sndCascade() { tone(740, 60, 'square', 0.10); setTimeout(() => tone(1100, 80, 'square', 0.08), 50); }
+
+  // ── HMAC like backend (Web Crypto SubtleCrypto via UTF-8). ─
+  // We need to compute the same colors as the server. Backend uses
+  // HMAC-SHA256(serverSeed, `${sessionId}:${dropIdx}`) and reads
+  // first 8 hex chars as uint32 mod COLORS.
+  // We do this synchronously by importing a tiny SHA-256/HMAC impl.
+  const HMAC = (() => {
+    function rotr(n, x) { return (x >>> n) | (x << (32 - n)); }
+    const K = [
+      0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+      0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+      0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+      0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+      0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+      0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+      0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+      0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+    ];
+    function sha256(bytes) {
+      const lenBits = bytes.length * 8;
+      // pad
+      const padded = new Uint8Array(((bytes.length + 9 + 63) >> 6) << 6);
+      padded.set(bytes);
+      padded[bytes.length] = 0x80;
+      // length as 64-bit big-endian
+      const lo = lenBits >>> 0;
+      const hi = Math.floor(lenBits / 0x100000000);
+      const dv = new DataView(padded.buffer);
+      dv.setUint32(padded.length - 8, hi);
+      dv.setUint32(padded.length - 4, lo);
+
+      let h0=0x6a09e667,h1=0xbb67ae85,h2=0x3c6ef372,h3=0xa54ff53a,
+          h4=0x510e527f,h5=0x9b05688c,h6=0x1f83d9ab,h7=0x5be0cd19;
+      const w = new Uint32Array(64);
+      for (let i = 0; i < padded.length; i += 64) {
+        for (let t = 0; t < 16; t++) {
+          w[t] = dv.getUint32(i + t * 4);
+        }
+        for (let t = 16; t < 64; t++) {
+          const s0 = rotr(7, w[t-15]) ^ rotr(18, w[t-15]) ^ (w[t-15] >>> 3);
+          const s1 = rotr(17, w[t-2]) ^ rotr(19, w[t-2]) ^ (w[t-2] >>> 10);
+          w[t] = (w[t-16] + s0 + w[t-7] + s1) >>> 0;
+        }
+        let a=h0,b=h1,c=h2,d=h3,e=h4,f=h5,g=h6,hh=h7;
+        for (let t = 0; t < 64; t++) {
+          const S1 = rotr(6,e) ^ rotr(11,e) ^ rotr(25,e);
+          const ch = (e & f) ^ (~e & g);
+          const T1 = (hh + S1 + ch + K[t] + w[t]) >>> 0;
+          const S0 = rotr(2,a) ^ rotr(13,a) ^ rotr(22,a);
+          const mj = (a & b) ^ (a & c) ^ (b & c);
+          const T2 = (S0 + mj) >>> 0;
+          hh = g; g = f; f = e; e = (d + T1) >>> 0;
+          d = c; c = b; b = a; a = (T1 + T2) >>> 0;
+        }
+        h0=(h0+a)>>>0; h1=(h1+b)>>>0; h2=(h2+c)>>>0; h3=(h3+d)>>>0;
+        h4=(h4+e)>>>0; h5=(h5+f)>>>0; h6=(h6+g)>>>0; h7=(h7+hh)>>>0;
+      }
+      const out = new Uint8Array(32);
+      const outDv = new DataView(out.buffer);
+      outDv.setUint32(0,h0); outDv.setUint32(4,h1); outDv.setUint32(8,h2); outDv.setUint32(12,h3);
+      outDv.setUint32(16,h4); outDv.setUint32(20,h5); outDv.setUint32(24,h6); outDv.setUint32(28,h7);
+      return out;
+    }
+    function hmacSha256(keyStr, msgStr) {
+      const enc = new TextEncoder();
+      let key = enc.encode(keyStr);
+      const block = 64;
+      if (key.length > block) key = sha256(key);
+      const padded = new Uint8Array(block); padded.set(key);
+      const oKey = new Uint8Array(block); const iKey = new Uint8Array(block);
+      for (let i = 0; i < block; i++) { oKey[i] = padded[i] ^ 0x5c; iKey[i] = padded[i] ^ 0x36; }
+      const msg = enc.encode(msgStr);
+      const inner = new Uint8Array(iKey.length + msg.length);
+      inner.set(iKey, 0); inner.set(msg, iKey.length);
+      const innerHash = sha256(inner);
+      const outer = new Uint8Array(oKey.length + innerHash.length);
+      outer.set(oKey, 0); outer.set(innerHash, oKey.length);
+      return sha256(outer);
+    }
+    function toHex(bytes) {
+      let s = '';
+      for (let i = 0; i < bytes.length; i++) s += bytes[i].toString(16).padStart(2, '0');
+      return s;
+    }
+    return { hmacSha256, toHex };
+  })();
+
+  function colorAt(serverSeed, sessionId, dropIdx) {
+    const out = HMAC.hmacSha256(serverSeed, `${sessionId}:${dropIdx}`);
+    const hex = HMAC.toHex(out).slice(0, 8);
+    return parseInt(hex, 16) % COLORS;
+  }
+
+  // ── Game state ────────────────────────────────────────────
+  const ST = {
+    sessionId: null, token: null, serverSeed: null,
+    board: [], dropIdx: 0,
+    movesLeft: 0, charges: 0, pct: 0,
+    moves: [],            // [{ a:[r,c], b:[r,c], t }]
+    startedAt: 0,
+    lastMoveAt: -1e9,
+    busy: false,          // true while animating
+    running: false,
+    starting: false,
+    selected: null,       // [r,c]
+    dragStart: null,      // { x,y, r,c, t }
+    pieces: [],           // visual cells: [{r,c, x,y, color, scale, alpha}] - mirrors board
+    falling: [],          // pieces currently falling
+    sparks: [],           // particles
+    shakeAmp: 0,
+    shakeDecay: 0,
+    cascadeDepth: 0,
+    gamesLeft: 0,
+  };
+
+  // ── Helpers ───────────────────────────────────────────────
+  function showErr(m) {
+    errMsg.textContent = m || 'error';
+    errBanner.classList.add('visible');
+    setTimeout(() => errBanner.classList.remove('visible'), 2400);
+  }
+  function showCombo(text) {
+    comboEl.textContent = text;
+    comboEl.classList.remove('visible');
+    void comboEl.offsetWidth;
+    comboEl.classList.add('visible');
+    clearTimeout(showCombo._t);
+    showCombo._t = setTimeout(() => comboEl.classList.remove('visible'), 700);
+  }
+  function popup(text, x, y, kind) {
+    const el = document.createElement('div');
+    el.className = 'score-pop ' + (kind || '');
+    el.textContent = text;
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 950);
+  }
+  function setScore(n) {
+    scoreNum.textContent = String(n);
+    scoreNum.classList.remove('bump');
+    void scoreNum.offsetWidth;
+    scoreNum.classList.add('bump');
+  }
+  function updateHud() {
+    hudCharges.textContent = `${ST.charges}/${MAX_CHARGES_PER_GAME}`;
+    hudMoves.textContent = String(Math.max(0, ST.movesLeft));
+    const pct = Math.max(0, Math.min(100, ST.pct));
+    rigFill.style.width = pct + '%';
+    rigPctBig.textContent = `${ST.charges}/${MAX_CHARGES_PER_GAME}`;
+    setScore(ST.charges);
+  }
+  function showPanel(title, sub, bodyHTML, primaryLabel, primaryAction) {
+    panelTitle.textContent = title;
+    panelSub.textContent   = sub;
+    panelBody.innerHTML    = bodyHTML || '';
+    btnPrimary.textContent = primaryLabel;
+    btnPrimary.onclick     = primaryAction;
+    panel.classList.remove('hidden');
+  }
+  function hidePanel() { panel.classList.add('hidden'); }
+  btnExit.onclick = () => postParent({ type: 'litdex:zkminer:exit' });
+
+  function addShake(amp, durMs) {
+    ST.shakeAmp = Math.max(ST.shakeAmp, amp);
+    ST.shakeDecay = ST.shakeAmp / (durMs / 1000);
+  }
+
+  // ── Backend wiring ────────────────────────────────────────
+  async function fetchStats() {
+    if (!wallet) return null;
+    try {
+      const r = await fetch(`${API}/zkminer/stats/${wallet}`);
+      if (!r.ok) return null;
+      return await r.json();
+    } catch { return null; }
+  }
+
+  async function showLobby() {
+    ST.running = false;
+    ST.board = []; ST.pieces = []; ST.falling = []; ST.sparks = [];
+    ST.charges = 0; ST.pct = 0; ST.movesLeft = MOVES_PER_GAME;
+    updateHud();
+    drawStage();
+
+    const stats = await fetchStats();
+    const left = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 5;
+    ST.gamesLeft = left;
+    const best = stats ? Number(stats.bestCharges || 0) : 0;
+
+    const noGames = left <= 0;
+    const body = `
+      <div class="panel-stat-row"><span class="lbl">Reward</span><span class="val">+1 PT / charge</span></div>
+      <div class="panel-stat-row"><span class="lbl">Cap / Game</span><span class="val">${MAX_CHARGES_PER_GAME}</span></div>
+      <div class="panel-stat-row"><span class="lbl">Moves</span><span class="val">${MOVES_PER_GAME}</span></div>
+      <div class="panel-stat-row"><span class="lbl">Games Today</span><span class="val">${5 - left} / 5</span></div>
+      <div class="panel-stat-row"><span class="lbl">Best Charges</span><span class="val">${best}</span></div>
+    `;
+    showPanel(
+      'ZK MINER',
+      noGames ? 'Daily limit reached · resets 00:00 IST' : 'Match 3+ gems to charge the rig',
+      body,
+      noGames ? 'NO GAMES LEFT' : 'PLAY',
+      noGames ? () => {} : startGame
+    );
+    btnPrimary.disabled = noGames;
+  }
+
+  async function startGame() {
+    if (!wallet) { showErr('No wallet'); return; }
+    if (ST.starting) return;
+    ST.starting = true;
+    btnPrimary.disabled = true;
+    btnPrimary.textContent = 'STARTING…';
+
+    try {
+      const r = await fetch(`${API}/zkminer/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet }),
+      });
+      const data = await r.json();
+      if (!r.ok || data.error) {
+        showErr(data?.error === 'daily_limit_reached' ? 'Daily limit reached' : (data?.error || 'start_failed'));
+        ST.starting = false;
+        btnPrimary.disabled = false;
+        btnPrimary.textContent = 'PLAY';
+        return;
+      }
+      ST.sessionId  = data.sessionId;
+      ST.token      = data.token;
+      ST.serverSeed = data.serverSeed;
+      ST.gamesLeft  = Number(data.gamesLeft || 0);
+      initRun();
+    } catch (e) {
+      showErr('Network error');
+      ST.starting = false;
+      btnPrimary.disabled = false;
+      btnPrimary.textContent = 'PLAY';
+    }
+  }
+
+  // ── Match-3 engine (mirrors backend exactly) ──────────────
+  function buildInitialBoard() {
+    const board = Array.from({ length: ROWS }, () => new Array(COLS).fill(-1));
+    let dropIdx = 0;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        let color = -1, tries = 0;
+        while (tries < 32) {
+          color = colorAt(ST.serverSeed, ST.sessionId, dropIdx++);
+          if (c >= 2 && board[r][c-1] === color && board[r][c-2] === color) { tries++; continue; }
+          if (r >= 2 && board[r-1][c] === color && board[r-2][c] === color) { tries++; continue; }
+          break;
+        }
+        board[r][c] = color;
+      }
+    }
+    return { board, dropIdx };
+  }
+
+  function findMatches(board) {
+    const cleared = new Set();
+    for (let r = 0; r < ROWS; r++) {
+      let run = 1;
+      for (let c = 1; c <= COLS; c++) {
+        const same = c < COLS && board[r][c] !== -1 && board[r][c] === board[r][c-1];
+        if (same) { run++; }
+        else { if (run >= 3) for (let k = 0; k < run; k++) cleared.add(`${r},${c-1-k}`); run = 1; }
+      }
+    }
+    for (let c = 0; c < COLS; c++) {
+      let run = 1;
+      for (let r = 1; r <= ROWS; r++) {
+        const same = r < ROWS && board[r][c] !== -1 && board[r][c] === board[r-1][c];
+        if (same) { run++; }
+        else { if (run >= 3) for (let k = 0; k < run; k++) cleared.add(`${r-1-k},${c}`); run = 1; }
+      }
+    }
+    return cleared;
+  }
+
+  function maxRunInCleared(cleared) {
+    let max = 0;
+    for (let r = 0; r < ROWS; r++) {
+      let run = 0;
+      for (let c = 0; c < COLS; c++) {
+        if (cleared.has(`${r},${c}`)) { run++; if (run > max) max = run; } else run = 0;
+      }
+    }
+    for (let c = 0; c < COLS; c++) {
+      let run = 0;
+      for (let r = 0; r < ROWS; r++) {
+        if (cleared.has(`${r},${c}`)) { run++; if (run > max) max = run; } else run = 0;
+      }
+    }
+    return max;
+  }
+
+  // ── Run init ──────────────────────────────────────────────
+  function initRun() {
+    ST.starting = false;
+    ST.running  = true;
+    const built = buildInitialBoard();
+    ST.board    = built.board;
+    ST.dropIdx  = built.dropIdx;
+    ST.movesLeft = MOVES_PER_GAME;
+    ST.charges = 0;
+    ST.pct = 0;
+    ST.moves = [];
+    ST.startedAt = performance.now();
+    ST.lastMoveAt = -1e9;
+    ST.busy = false;
+    ST.selected = null;
+    ST.dragStart = null;
+    ST.cascadeDepth = 0;
+    ST.shakeAmp = 0;
+
+    // Build initial pieces array.
+    ST.pieces = [];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        ST.pieces.push({
+          r, c,
+          x: BOARD_X + c * CELL,
+          y: BOARD_Y + r * CELL,
+          color: ST.board[r][c],
+          scale: 1, alpha: 1,
+          settle: 0,
+        });
+      }
+    }
+    updateHud();
+    hidePanel();
+    lastT = 0;
+    requestAnimationFrame(loop);
+  }
+
+  function pieceAt(r, c) {
+    return ST.pieces.find((p) => p.r === r && p.c === c);
+  }
+
+  // ── Input ─────────────────────────────────────────────────
+  function pointerToCell(clientX, clientY) {
+    const r = container.getBoundingClientRect();
+    const x = clientX - r.left - BOARD_X;
+    const y = clientY - r.top  - BOARD_Y;
+    if (x < 0 || y < 0 || x >= BOARD_W || y >= BOARD_H) return null;
+    return [Math.floor(y / CELL), Math.floor(x / CELL)];
+  }
+
+  function onPointerDown(e) {
+    if (!ST.running || ST.busy) return;
+    if (!panel.classList.contains('hidden')) return;
+    e.preventDefault?.();
+    const cx = e.clientX ?? e.touches?.[0]?.clientX;
+    const cy = e.clientY ?? e.touches?.[0]?.clientY;
+    if (cx == null || cy == null) return;
+    const cell = pointerToCell(cx, cy);
+    if (!cell) return;
+    ST.dragStart = { x: cx, y: cy, r: cell[0], c: cell[1] };
+    ST.selected = cell;
+  }
+
+  function onPointerMove(e) {
+    if (!ST.dragStart || ST.busy) return;
+    e.preventDefault?.();
+    const cx = e.clientX ?? e.touches?.[0]?.clientX;
+    const cy = e.clientY ?? e.touches?.[0]?.clientY;
+    if (cx == null || cy == null) return;
+    const dx = cx - ST.dragStart.x;
+    const dy = cy - ST.dragStart.y;
+    const swipeMin = CELL * 0.4;
+    if (Math.abs(dx) < swipeMin && Math.abs(dy) < swipeMin) return;
+    const a = [ST.dragStart.r, ST.dragStart.c];
+    let b;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      b = [a[0], a[1] + (dx > 0 ? 1 : -1)];
+    } else {
+      b = [a[0] + (dy > 0 ? 1 : -1), a[1]];
+    }
+    if (b[0] < 0 || b[0] >= ROWS || b[1] < 0 || b[1] >= COLS) {
+      ST.dragStart = null; ST.selected = null; return;
+    }
+    ST.dragStart = null;
+    ST.selected = null;
+    attemptSwap(a, b);
+  }
+
+  function onPointerUp(e) {
+    if (!ST.dragStart) return;
+    // Tap-tap-to-swap fallback: if a cell was already selected and
+    // user taps an adjacent cell, swap.
+    const cx = e.clientX ?? e.changedTouches?.[0]?.clientX;
+    const cy = e.clientY ?? e.changedTouches?.[0]?.clientY;
+    const cell = pointerToCell(cx, cy);
+    if (cell && ST.dragStart.r === cell[0] && ST.dragStart.c === cell[1]) {
+      // Plain tap: keep selection so next tap on neighbor swaps.
+      ST.dragStart = null;
+      // Toggle selection: if same as previous selection, deselect.
+      if (ST._prevSel && ST._prevSel[0] === cell[0] && ST._prevSel[1] === cell[1]) {
+        ST._prevSel = null;
+        ST.selected = null;
+      } else if (ST._prevSel) {
+        const dr = Math.abs(ST._prevSel[0] - cell[0]);
+        const dc = Math.abs(ST._prevSel[1] - cell[1]);
+        if (dr + dc === 1) {
+          attemptSwap(ST._prevSel, cell);
+          ST._prevSel = null;
+        } else {
+          ST._prevSel = cell;
+          ST.selected = cell;
+        }
+      } else {
+        ST._prevSel = cell;
+        ST.selected = cell;
+      }
+    } else {
+      ST.dragStart = null;
+    }
+  }
+
+  container.addEventListener('pointerdown', onPointerDown);
+  container.addEventListener('pointermove', onPointerMove);
+  container.addEventListener('pointerup',   onPointerUp);
+  container.addEventListener('pointercancel', () => { ST.dragStart = null; });
+  container.addEventListener('touchstart', (e) => onPointerDown(e), { passive: false });
+  container.addEventListener('touchmove',  (e) => onPointerMove(e), { passive: false });
+  container.addEventListener('touchend',   (e) => onPointerUp(e),   { passive: false });
+  ['btn-primary','btn-exit'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    el.addEventListener('touchstart',  (e) => e.stopPropagation());
+  });
+
+  // ── Swap + cascade orchestration ──────────────────────────
+  async function attemptSwap(a, b) {
+    if (ST.busy) return;
+    if (ST.movesLeft <= 0) return;
+    const now = performance.now();
+    if (now - ST.lastMoveAt < MIN_MOVE_GAP_MS) return;
+    ST.lastMoveAt = now;
+
+    sndSwap();
+    ST.busy = true;
+    // Animate visual swap.
+    const pa = pieceAt(a[0], a[1]);
+    const pb = pieceAt(b[0], b[1]);
+    if (!pa || !pb) { ST.busy = false; return; }
+    await animateMove([
+      { p: pa, x: BOARD_X + b[1] * CELL, y: BOARD_Y + b[0] * CELL },
+      { p: pb, x: BOARD_X + a[1] * CELL, y: BOARD_Y + a[0] * CELL },
+    ], 160);
+
+    // Apply to logical board.
+    const t = ST.board[a[0]][a[1]];
+    ST.board[a[0]][a[1]] = ST.board[b[0]][b[1]];
+    ST.board[b[0]][b[1]] = t;
+    // Update piece coords.
+    pa.r = b[0]; pa.c = b[1];
+    pb.r = a[0]; pb.c = a[1];
+
+    let cleared = findMatches(ST.board);
+    if (cleared.size === 0) {
+      // Revert visually + logically.
+      sndRevert();
+      await animateMove([
+        { p: pa, x: BOARD_X + a[1] * CELL, y: BOARD_Y + a[0] * CELL },
+        { p: pb, x: BOARD_X + b[1] * CELL, y: BOARD_Y + b[0] * CELL },
+      ], 140);
+      const t2 = ST.board[a[0]][a[1]];
+      ST.board[a[0]][a[1]] = ST.board[b[0]][b[1]];
+      ST.board[b[0]][b[1]] = t2;
+      pa.r = a[0]; pa.c = a[1];
+      pb.r = b[0]; pb.c = b[1];
+      ST.busy = false;
+      return;
+    }
+
+    // Valid move — record + spend a move.
+    ST.movesLeft--;
+    ST.moves.push({ a, b, t: Math.round(now - ST.startedAt) });
+    updateHud();
+    ST.cascadeDepth = 0;
+
+    // Cascade loop.
+    while (cleared.size > 0) {
+      await resolveCleared(cleared, ST.cascadeDepth);
+      if (ST.charges >= MAX_CHARGES_PER_GAME) break;
+      gravityAndRefill(cleared);
+      await animateSettle(180);
+      cleared = findMatches(ST.board);
+      ST.cascadeDepth++;
+      if (ST.cascadeDepth >= 2) {
+        sndCascade();
+        if (cleared.size > 0) showCombo(`CASCADE x${ST.cascadeDepth + 1}`);
+      }
+    }
+
+    ST.busy = false;
+
+    if (ST.charges >= MAX_CHARGES_PER_GAME || ST.movesLeft <= 0) {
+      setTimeout(() => endGame(ST.charges >= MAX_CHARGES_PER_GAME ? 'cap' : 'moves_out'), 500);
+    }
+  }
+
+  // Animate a list of pieces moving to (x,y) over durMs.
+  function animateMove(list, durMs) {
+    return new Promise((resolve) => {
+      const start = performance.now();
+      const init = list.map(({ p }) => ({ x: p.x, y: p.y }));
+      function step() {
+        const t = (performance.now() - start) / durMs;
+        const k = Math.min(1, t);
+        const e = 1 - Math.pow(1 - k, 3);
+        for (let i = 0; i < list.length; i++) {
+          const { p, x, y } = list[i];
+          p.x = init[i].x + (x - init[i].x) * e;
+          p.y = init[i].y + (y - init[i].y) * e;
+        }
+        if (k < 1) requestAnimationFrame(step);
+        else resolve();
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  // Animate settle (used after gravity refill — every piece eases
+  // down to its target row).
+  function animateSettle(durMs) {
+    return new Promise((resolve) => {
+      const start = performance.now();
+      const init = ST.pieces.map((p) => ({ y: p.y, x: p.x }));
+      const targets = ST.pieces.map((p) => ({
+        x: BOARD_X + p.c * CELL,
+        y: BOARD_Y + p.r * CELL,
+      }));
+      function step() {
+        const k = Math.min(1, (performance.now() - start) / durMs);
+        const e = 1 - Math.pow(1 - k, 3);
+        for (let i = 0; i < ST.pieces.length; i++) {
+          const p = ST.pieces[i];
+          p.x = init[i].x + (targets[i].x - init[i].x) * e;
+          p.y = init[i].y + (targets[i].y - init[i].y) * e;
+          // Tiny landing squash.
+          if (k > 0.85) p.settle = 1 - (k - 0.85) / 0.15;
+        }
+        if (k < 1) requestAnimationFrame(step);
+        else { for (const p of ST.pieces) p.settle = 0; resolve(); }
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  async function resolveCleared(cleared, depth) {
+    const cellCount = cleared.size;
+    const longestRun = maxRunInCleared(cleared);
+    let gain = cellCount * PER_GEM_PCT;
+    if (longestRun >= 5) gain += FIVE_BONUS;
+    else if (longestRun >= 4) gain += FOUR_BONUS;
+    const mult = Math.min(3, 1 + 0.5 * depth);
+    gain = gain * mult;
+
+    // Spawn pop animation + sparks for each cleared cell.
+    for (const k of cleared) {
+      const [r, c] = k.split(',').map(Number);
+      const p = pieceAt(r, c);
+      if (!p) continue;
+      spawnSparks(p.x + CELL / 2, p.y + CELL / 2, p.color);
+    }
+    sndPop(depth);
+
+    // Animate cleared pieces shrinking + fading.
+    await new Promise((resolve) => {
+      const start = performance.now();
+      const dur = 180;
+      const set = cleared;
+      function step() {
+        const k = Math.min(1, (performance.now() - start) / dur);
+        const ease = 1 - Math.pow(1 - k, 2);
+        for (const p of ST.pieces) {
+          if (set.has(`${p.r},${p.c}`)) {
+            p.scale = 1 - ease;
+            p.alpha = 1 - ease;
+          }
+        }
+        if (k < 1) requestAnimationFrame(step);
+        else resolve();
+      }
+      requestAnimationFrame(step);
+    });
+
+    // Show floating gain.
+    if (cleared.size > 0) {
+      const [r, c] = [...cleared][0].split(',').map(Number);
+      const p = pieceAt(r, c) || { x: BOARD_X + c * CELL, y: BOARD_Y + r * CELL };
+      popup(`+${Math.round(gain)}%`, p.x + CELL / 2, p.y - 10, 'gold');
+    }
+
+    // Apply charge.
+    ST.pct += gain;
+    while (ST.pct >= CHARGE_PER_PT) {
+      ST.pct -= CHARGE_PER_PT;
+      ST.charges++;
+      sndCharge();
+      addShake(8, 350);
+      flashRig();
+      const cx = vw() / 2;
+      const cy = BOARD_Y + 40;
+      popup(`+1 PT · CHARGE!`, cx, cy, 'charge');
+      if (ST.charges >= MAX_CHARGES_PER_GAME) { ST.pct = 0; break; }
+    }
+    updateHud();
+  }
+
+  function flashRig() {
+    rigBurst.classList.remove('flash');
+    void rigBurst.offsetWidth;
+    rigBurst.classList.add('flash');
+    rigFill.classList.add('full');
+    setTimeout(() => rigFill.classList.remove('full'), 400);
+  }
+
+  function gravityAndRefill(cleared) {
+    // Mark cleared cells empty in board.
+    for (const k of cleared) {
+      const [r, c] = k.split(',').map(Number);
+      ST.board[r][c] = -1;
+    }
+    // Remove cleared pieces.
+    ST.pieces = ST.pieces.filter((p) => !cleared.has(`${p.r},${p.c}`));
+
+    // Per-column gravity.
+    for (let c = 0; c < COLS; c++) {
+      // Collect surviving colors top-to-bottom.
+      const stack = [];
+      for (let r = ROWS - 1; r >= 0; r--) {
+        if (ST.board[r][c] !== -1) stack.push({ color: ST.board[r][c], piece: pieceAt(r, c) });
+      }
+      // Reseat from bottom.
+      for (let r = ROWS - 1; r >= 0; r--) {
+        if (stack.length) {
+          const { color, piece } = stack.shift();
+          ST.board[r][c] = color;
+          if (piece) {
+            piece.r = r;
+            // Visual y will be eased by animateSettle.
+          }
+        } else {
+          ST.board[r][c] = -1;
+        }
+      }
+    }
+    // Refill: iterate r,c row-major same as backend.
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (ST.board[r][c] === -1) {
+          const color = colorAt(ST.serverSeed, ST.sessionId, ST.dropIdx++);
+          ST.board[r][c] = color;
+          // New piece spawns above the board to fall in.
+          ST.pieces.push({
+            r, c,
+            x: BOARD_X + c * CELL,
+            y: BOARD_Y - (ROWS - r) * CELL,
+            color,
+            scale: 1, alpha: 1, settle: 0,
+          });
+        }
+      }
+    }
+  }
+
+  function spawnSparks(x, y, color) {
+    const g = GEMS[color] || GEMS[0];
+    for (let i = 0; i < 8; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const sp  = 80 + Math.random() * 140;
+      ST.sparks.push({
+        x, y,
+        vx: Math.cos(ang) * sp,
+        vy: Math.sin(ang) * sp - 60,
+        life: 0.5 + Math.random() * 0.3,
+        maxLife: 0.7,
+        size: 2 + Math.random() * 3,
+        color: g.glow,
+      });
+    }
+  }
+
+  // ── Loop ──────────────────────────────────────────────────
+  let lastT = 0;
+  function loop(t) {
+    if (!t) t = performance.now();
+    if (!lastT) lastT = t;
+    const dt = Math.min(0.05, (t - lastT) / 1000);
+    lastT = t;
+
+    update(dt);
+    drawStage();
+    applyShake();
+
+    if (ST.running || ST.sparks.length) requestAnimationFrame(loop);
+  }
+
+  function update(dt) {
+    // Sparks.
+    const alive = [];
+    for (const p of ST.sparks) {
+      p.vy += 320 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life > 0) alive.push(p);
+    }
+    ST.sparks = alive;
+  }
+
+  function applyShake() {
+    if (ST.shakeAmp > 0) {
+      ST.shakeAmp = Math.max(0, ST.shakeAmp - ST.shakeDecay * 0.016);
+      const a = ST.shakeAmp;
+      const dx = (Math.random() - 0.5) * 2 * a;
+      const dy = (Math.random() - 0.5) * 2 * a;
+      shakeHost.style.transform = `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px)`;
+    } else {
+      shakeHost.style.transform = '';
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────
+  function drawStage() {
+    const W = stageCanvas.clientWidth, H = stageCanvas.clientHeight;
+    stage.clearRect(0, 0, W, H);
+
+    // Board frame
+    if (BOARD_W > 0 && BOARD_H > 0) {
+      // Outer glow
+      const grd = stage.createLinearGradient(BOARD_X, BOARD_Y, BOARD_X, BOARD_Y + BOARD_H);
+      grd.addColorStop(0, 'rgba(140,200,255,0.08)');
+      grd.addColorStop(1, 'rgba(140,200,255,0.02)');
+      stage.fillStyle = grd;
+      roundRect(stage, BOARD_X - 10, BOARD_Y - 10, BOARD_W + 20, BOARD_H + 20, 14);
+      stage.fill();
+      stage.strokeStyle = 'rgba(140,200,255,0.22)';
+      stage.lineWidth = 1.5;
+      roundRect(stage, BOARD_X - 8, BOARD_Y - 8, BOARD_W + 16, BOARD_H + 16, 12);
+      stage.stroke();
+
+      // Cell grid (faint)
+      stage.strokeStyle = 'rgba(140,200,255,0.06)';
+      stage.lineWidth = 1;
+      for (let i = 1; i < COLS; i++) {
+        const x = BOARD_X + i * CELL + 0.5;
+        stage.beginPath(); stage.moveTo(x, BOARD_Y); stage.lineTo(x, BOARD_Y + BOARD_H); stage.stroke();
+      }
+      for (let i = 1; i < ROWS; i++) {
+        const y = BOARD_Y + i * CELL + 0.5;
+        stage.beginPath(); stage.moveTo(BOARD_X, y); stage.lineTo(BOARD_X + BOARD_W, y); stage.stroke();
+      }
+
+      // Selected cell highlight.
+      if (ST.selected) {
+        const sx = BOARD_X + ST.selected[1] * CELL;
+        const sy = BOARD_Y + ST.selected[0] * CELL;
+        stage.strokeStyle = '#fff';
+        stage.lineWidth = 2.5;
+        roundRect(stage, sx + 2, sy + 2, CELL - 4, CELL - 4, 6);
+        stage.stroke();
+      }
+    }
+
+    // Gems
+    for (const p of ST.pieces) drawGem(p);
+
+    // Sparks
+    for (const sp of ST.sparks) drawSpark(sp);
+  }
+
+  function drawGem(p) {
+    if (p.alpha <= 0.02) return;
+    const gem = GEMS[p.color] || GEMS[0];
+    const cx = p.x + CELL / 2;
+    const cy = p.y + CELL / 2;
+    const settleSquash = p.settle ? Math.sin(p.settle * Math.PI) * 0.06 : 0;
+    const r = (CELL * 0.42) * p.scale * (1 - settleSquash);
+
+    stage.save();
+    stage.globalAlpha = p.alpha;
+
+    // Soft shadow under gem.
+    stage.fillStyle = 'rgba(0,0,0,0.35)';
+    stage.beginPath();
+    stage.ellipse(cx, cy + r * 0.85, r * 0.85, r * 0.25, 0, 0, Math.PI * 2);
+    stage.fill();
+
+    // Gem body — radial gradient.
+    const grd = stage.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
+    grd.addColorStop(0, gem.glow);
+    grd.addColorStop(0.55, gem.base);
+    grd.addColorStop(1, shade(gem.base, -38));
+    stage.fillStyle = grd;
+    stage.beginPath();
+    // Hex-ish rounded square for gem look.
+    roundRectCircle(stage, cx, cy, r, 6);
+    stage.fill();
+
+    // Outline ring.
+    stage.strokeStyle = 'rgba(0,0,0,0.35)';
+    stage.lineWidth = 1.5;
+    stage.stroke();
+    stage.strokeStyle = 'rgba(255,255,255,0.4)';
+    stage.lineWidth = 1;
+    stage.beginPath();
+    roundRectCircle(stage, cx, cy, r * 0.75, 5);
+    stage.stroke();
+
+    // Letter token — first character of token name.
+    stage.fillStyle = 'rgba(255,255,255,0.92)';
+    stage.font = `bold ${Math.floor(r * 0.95)}px 'Bangers', cursive`;
+    stage.textAlign = 'center';
+    stage.textBaseline = 'middle';
+    stage.fillText(gem.label, cx, cy + 1);
+
+    // Tiny highlight blob.
+    stage.fillStyle = 'rgba(255,255,255,0.55)';
+    stage.beginPath();
+    stage.ellipse(cx - r * 0.4, cy - r * 0.45, r * 0.22, r * 0.13, -0.4, 0, Math.PI * 2);
+    stage.fill();
+
+    stage.restore();
+  }
+
+  function roundRectCircle(c, cx, cy, r, rad) {
+    // Rounded square inscribed at radius r (flat sides), corner radius rad.
+    const x = cx - r, y = cy - r, w = r * 2, h = r * 2;
+    rad = Math.max(0, Math.min(rad, w / 2, h / 2));
+    c.beginPath();
+    c.moveTo(x + rad, y);
+    c.lineTo(x + w - rad, y); c.quadraticCurveTo(x + w, y, x + w, y + rad);
+    c.lineTo(x + w, y + h - rad); c.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
+    c.lineTo(x + rad, y + h); c.quadraticCurveTo(x, y + h, x, y + h - rad);
+    c.lineTo(x, y + rad); c.quadraticCurveTo(x, y, x + rad, y);
+    c.closePath();
+  }
+
+  function drawSpark(p) {
+    const a = Math.max(0, p.life / p.maxLife);
+    stage.save();
+    stage.globalAlpha = a;
+    stage.fillStyle = p.color;
+    stage.shadowColor = p.color;
+    stage.shadowBlur = 8;
+    stage.beginPath();
+    stage.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    stage.fill();
+    stage.restore();
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y); c.quadraticCurveTo(x + w, y, x + w, y + r);
+    c.lineTo(x + w, y + h - r); c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    c.lineTo(x + r, y + h); c.quadraticCurveTo(x, y + h, x, y + h - r);
+    c.lineTo(x, y + r); c.quadraticCurveTo(x, y, x + r, y);
+    c.closePath();
+  }
+
+  function shade(hex, amt) {
+    const c = hex.replace('#', '');
+    const r = parseInt(c.substr(0,2), 16);
+    const g = parseInt(c.substr(2,2), 16);
+    const b = parseInt(c.substr(4,2), 16);
+    const adj = (v) => Math.max(0, Math.min(255, v + amt));
+    const to = (v) => v.toString(16).padStart(2, '0');
+    return '#' + to(adj(r)) + to(adj(g)) + to(adj(b));
+  }
+
+  // ── End game ──────────────────────────────────────────────
+  async function endGame(reason) {
+    ST.running = false;
+    let resp = null;
+    try {
+      const r = await fetch(`${API}/zkminer/end`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: ST.sessionId,
+          token:     ST.token,
+          moves:     ST.moves,
+        }),
+      });
+      resp = await r.json();
+      if (!r.ok || resp.error) showErr(resp?.reason || resp?.error || 'end_failed');
+    } catch {
+      showErr('Network error');
+    }
+
+    const awarded = Number(resp?.awarded ?? ST.charges ?? 0);
+    const charges = Number(resp?.charges ?? ST.charges ?? 0);
+    const best    = Number(resp?.bestCharges ?? 0);
+
+    postParent({
+      type: 'litdex:zkminer:end',
+      reason: reason === 'cap' ? 'cap' : (reason === 'moves_out' ? 'moves_out' : 'end'),
+      charges, awarded, best,
+    });
+
+    const stats = await fetchStats();
+    const left  = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 0;
+    ST.gamesLeft = left;
+
+    const body = `
+      <div class="panel-big">+${awarded} PTS</div>
+      <div class="panel-stat-row"><span class="lbl">Charges</span><span class="val">${charges}</span></div>
+      <div class="panel-stat-row"><span class="lbl">Best</span><span class="val">${best}</span></div>
+      <div class="panel-stat-row"><span class="lbl">Cap</span><span class="val">${MAX_CHARGES_PER_GAME}</span></div>
+    `;
+    panelTitle.textContent = reason === 'cap' ? 'RIG MAXED' : 'OUT OF MOVES';
+    panelSub.textContent   = reason === 'cap' ? 'Daily cap on this run.' : 'Match more next time.';
+    panelBody.innerHTML    = body;
+    btnPrimary.disabled    = left <= 0;
+    btnPrimary.textContent = left <= 0 ? 'NO GAMES LEFT' : 'PLAY AGAIN';
+    btnPrimary.onclick     = left <= 0 ? () => {} : startGame;
+    panel.classList.remove('hidden');
+  }
+
+  // ── Boot ──────────────────────────────────────────────────
+  (async () => {
+    if (!wallet) {
+      showPanel(
+        'ZK MINER',
+        'Wallet missing',
+        '<div style="color:#ef4956;font-family:JetBrains Mono,monospace;font-size:11px">Open this game from the LitDeX games page.</div>',
+        'CLOSE',
+        () => postParent({ type: 'litdex:zkminer:exit' })
+      );
+      return;
+    }
+    await showLobby();
+  })();
+})();
+</script>
+</body>
+</html>
