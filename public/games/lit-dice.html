@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Lit Dice — LitDeX</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka+One&family=JetBrains+Mono:wght@400;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #050912; color: #fff; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; font-family: 'Fredoka One', cursive; }
+  #game { position: relative; width: 100%; height: 100%; overflow: hidden;
+    background: radial-gradient(ellipse 100% 50% at 50% 0%, rgba(70,120,200,0.18) 0%, transparent 60%), linear-gradient(180deg, #04070d 0%, #0a1226 100%); }
+  #hud { position: absolute; top: 0; left: 0; right: 0; z-index: 6; padding: 14px 12px 0; padding-top: max(14px, env(safe-area-inset-top)); display: flex; justify-content: space-between; gap: 8px; pointer-events: none; }
+  .pill { flex: 1; background: linear-gradient(180deg, rgba(15,25,45,0.95), rgba(5,10,20,0.92)); border: 1px solid rgba(140,180,255,0.18); border-radius: 12px; padding: 7px 10px 8px; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.16em; color: #aac6ee; text-transform: uppercase; text-align: center; backdrop-filter: blur(6px); }
+  .pill .v { display: block; color: #fff; font-weight: 700; font-size: 16px; margin-top: 3px; letter-spacing: 0.5px; }
+  .pill.bal .v   { color: #5be0a4; }
+  .pill.mult .v  { color: #ffe97a; font-size: 18px; }
+  .pill.games .v { color: #aac6ee; }
+
+  #stage { position: absolute; left: 0; right: 0; top: 78px; bottom: 290px; z-index: 4; display: flex; align-items: center; justify-content: center; padding: 0 20px; }
+  #roll-display { font-family: 'Bangers', cursive; font-size: clamp(80px, 22vw, 200px); line-height: 1; color: #fff; text-shadow: 0 6px 0 rgba(0,0,0,0.45), 0 0 36px rgba(140,200,255,0.4); letter-spacing: 4px; transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1), color 0.2s ease; }
+  #roll-display.win { color: #5be0a4; text-shadow: 0 6px 0 rgba(0,40,20,0.5), 0 0 36px rgba(91,224,164,0.7); }
+  #roll-display.loss { color: #ff8a8a; text-shadow: 0 6px 0 rgba(60,0,0,0.5), 0 0 36px rgba(255,138,140,0.55); }
+  #roll-display.bump { transform: scale(1.12); }
+
+  #slider-zone { position: absolute; left: 0; right: 0; bottom: 174px; z-index: 5; padding: 0 16px; }
+  .slider-track { position: relative; height: 16px; background: linear-gradient(90deg, #ff8a8a 0%, #ff8a8a var(--pivot, 50%), #5be0a4 var(--pivot, 50%), #5be0a4 100%); border-radius: 999px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18), 0 0 24px rgba(0,0,0,0.5); }
+  .slider-track .marker { position: absolute; left: var(--pivot, 50%); top: -8px; width: 2px; height: 32px; background: #fff; box-shadow: 0 0 12px rgba(255,255,255,0.7); transform: translateX(-1px); }
+  .slider-track .roll-marker { position: absolute; left: var(--roll, 50%); top: -10px; transform: translateX(-50%); pointer-events: none; transition: left 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  .slider-track .roll-marker .pin { width: 10px; height: 36px; background: #ffd166; border-radius: 6px; box-shadow: 0 0 18px rgba(255,213,90,0.8), 0 0 0 2px rgba(0,0,0,0.55); }
+  .slider-track .roll-marker .lbl { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #ffe97a; font-weight: 700; text-align: center; margin-top: 4px; text-shadow: 0 2px 0 rgba(0,0,0,0.6); }
+  .slider-row { margin-top: 14px; display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: rgba(255,255,255,0.55); letter-spacing: 0.1em; }
+
+  #stat-row { position: absolute; left: 12px; right: 12px; bottom: 110px; z-index: 5; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .sbox { background: linear-gradient(180deg, rgba(15,25,45,0.95), rgba(5,10,20,0.92)); border: 1px solid rgba(140,180,255,0.18); border-radius: 10px; padding: 6px 6px 7px; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.14em; color: #aac6ee; text-transform: uppercase; }
+  .sbox .v { display: block; color: #fff; font-weight: 700; font-size: 14px; margin-top: 2px; }
+  .sbox .v.green { color: #5be0a4; }
+  .sbox .v.gold  { color: #ffe97a; }
+
+  #controls { position: absolute; left: 12px; right: 12px; bottom: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 6; display: flex; gap: 10px; }
+  #dir-toggle { display: flex; gap: 4px; flex: 1; background: rgba(15,25,45,0.85); border: 1px solid rgba(140,180,255,0.22); border-radius: 12px; padding: 4px; }
+  .dir-btn { flex: 1; min-height: 40px; border-radius: 8px; border: none; background: transparent; color: rgba(255,255,255,0.55); font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .dir-btn.on { background: linear-gradient(180deg, #5be0a4, #1f9c66); color: #04241a; box-shadow: 0 2px 0 rgba(0,0,0,0.3); }
+  #target-input { flex: 0 0 96px; min-height: 48px; border-radius: 12px; background: rgba(15,25,45,0.85); border: 1px solid rgba(140,180,255,0.22); color: #fff; font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 700; text-align: center; padding: 0 8px; }
+  #roll-btn { flex: 1.4; min-height: 56px; border-radius: 12px; border: none; background: linear-gradient(180deg, #ffd166, #c98b16); color: #5a3a0a; font-family: 'Bangers', cursive; font-size: 24px; letter-spacing: 4px; text-shadow: 0 2px 0 rgba(255,255,255,0.2); box-shadow: 0 6px 0 #6e4d04, 0 0 28px rgba(255,213,90,0.4); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  #roll-btn:active, #roll-btn.held { transform: translateY(3px); box-shadow: 0 3px 0 #6e4d04, 0 0 36px rgba(255,213,90,0.5); }
+  #roll-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Panel */
+  #panel { position: absolute; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.78); backdrop-filter: blur(6px); transition: opacity 0.3s ease; }
+  #panel.hidden { opacity: 0; pointer-events: none; }
+  .panel-card { background: #0a0e1a; border: 1px solid #1f2638; border-radius: 18px; padding: 26px 22px; text-align: center; width: 88%; max-width: 360px; color: #fff; }
+  .panel-title { font-family: 'Bangers', cursive; font-size: 38px; letter-spacing: 4px; margin-bottom: 4px; text-shadow: 0 0 18px rgba(140,200,255,0.4); }
+  .panel-sub   { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.18em; color: rgba(255,255,255,0.55); text-transform: uppercase; margin-bottom: 16px; }
+  .panel-row   { display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 12px; margin: 6px 0; }
+  .panel-row .lbl { color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.12em; }
+  .panel-row .val { color: #fff; font-weight: 700; }
+  .panel-big { font-family: 'JetBrains Mono', monospace; font-size: 44px; line-height: 1; font-weight: 700; margin: 14px 0 4px; }
+  .panel-big.green { color: #5be0a4; } .panel-big.red { color: #ff8a8a; }
+  .panel-btns { display: flex; gap: 10px; margin-top: 14px; }
+  .panel-btn { flex: 1; min-height: 48px; border-radius: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; border: 1px solid #333; background: transparent; color: #fff; -webkit-tap-highlight-color: transparent; }
+  .panel-btn.primary { background: #fff; color: #000; border: none; }
+  .panel-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  #err-banner { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(239,73,86,0.92); color: #fff; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.1em; padding: 8px 14px; border-radius: 8px; z-index: 40; opacity: 0; transition: opacity 0.25s ease; pointer-events: none; }
+  #err-banner.visible { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="hud">
+    <div class="pill bal">BALANCE<span class="v" id="hud-bal">0</span></div>
+    <div class="pill mult">MULTIPLIER<span class="v" id="hud-mult">2.00x</span></div>
+    <div class="pill games">GAMES<span class="v" id="hud-games">0/20</span></div>
+  </div>
+  <div id="stage"><div id="roll-display">—</div></div>
+
+  <div id="slider-zone">
+    <div class="slider-track" id="slider-track">
+      <div class="roll-marker" id="roll-marker"><div class="pin"></div><div class="lbl" id="roll-lbl">0.00</div></div>
+      <div class="marker" id="pivot-marker"></div>
+    </div>
+    <div class="slider-row">
+      <span>0</span><span>50</span><span>99.99</span>
+    </div>
+  </div>
+
+  <div id="stat-row">
+    <div class="sbox">CHANCE<span class="v green" id="stat-chance">50.00%</span></div>
+    <div class="sbox">PAYOUT<span class="v gold" id="stat-payout">9 PTS</span></div>
+    <div class="sbox">PROFIT<span class="v gold" id="stat-profit">+4 PTS</span></div>
+  </div>
+
+  <div id="controls">
+    <div id="dir-toggle">
+      <button class="dir-btn on"  id="dir-under" data-dir="under">UNDER</button>
+      <button class="dir-btn"     id="dir-over"  data-dir="over">OVER</button>
+    </div>
+    <input type="number" id="target-input" min="2" max="98" value="50">
+    <button id="roll-btn">ROLL · 5</button>
+  </div>
+
+  <div id="panel">
+    <div class="panel-card">
+      <div class="panel-title" id="panel-title">LIT DICE</div>
+      <div class="panel-sub" id="panel-sub">Pick a target · pick a side · roll the dice</div>
+      <div id="panel-body"></div>
+      <div class="panel-btns">
+        <button class="panel-btn primary" id="btn-primary">PLAY · 5 PTS</button>
+        <button class="panel-btn" id="btn-exit">EXIT</button>
+      </div>
+    </div>
+  </div>
+  <div id="err-banner"><span id="err-msg"></span></div>
+</div>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const wallet = (params.get('wallet') || '').toLowerCase();
+  const API = (params.get('api') || 'https://game.test-hub.xyz').replace(/\/$/, '');
+  const postParent = (m) => { try { window.parent && window.parent.postMessage(m, '*'); } catch {} };
+
+  const STAKE = 5;
+  const RTP = 0.97;
+  const DAILY = 20;
+
+  const $ = (id) => document.getElementById(id);
+  const panel = $('panel'), pTitle = $('panel-title'), pSub = $('panel-sub'), pBody = $('panel-body');
+  const btnP = $('btn-primary'), btnX = $('btn-exit');
+  const hudBal = $('hud-bal'), hudMult = $('hud-mult'), hudGames = $('hud-games');
+  const rollDisp = $('roll-display'), rollMarker = $('roll-marker'), rollLbl = $('roll-lbl');
+  const pivot = $('pivot-marker'), track = $('slider-track');
+  const stChance = $('stat-chance'), stPayout = $('stat-payout'), stProfit = $('stat-profit');
+  const dirUnder = $('dir-under'), dirOver = $('dir-over');
+  const inpTarget = $('target-input'), btnRoll = $('roll-btn');
+  const errBanner = $('err-banner'), errMsg = $('err-msg');
+
+  let audioCtx = null;
+  function tone(f, dur, type='sine', g=0.16) { try { if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); if (audioCtx.state==='suspended') audioCtx.resume(); const o=audioCtx.createOscillator(), gN=audioCtx.createGain(); o.type=type; o.frequency.value=f; gN.gain.setValueAtTime(0.0001,audioCtx.currentTime); gN.gain.exponentialRampToValueAtTime(g,audioCtx.currentTime+0.008); gN.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+dur/1000); o.connect(gN).connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+dur/1000); } catch{} }
+  function sndRoll() { tone(440, 80, 'square', 0.12); }
+  function sndWin()  { tone(880,70,'square',0.16); setTimeout(()=>tone(1320,90,'square',0.15),60); setTimeout(()=>tone(1760,140,'square',0.13),130); }
+  function sndLoss() { tone(180,300,'sawtooth',0.16); }
+
+  const ST = { roundId: null, token: null, stake: STAKE, busy: false, dir: 'under', target: 50, gamesLeft: 0 };
+
+  function showErr(m) { errMsg.textContent = m||'error'; errBanner.classList.add('visible'); setTimeout(()=>errBanner.classList.remove('visible'), 2400); }
+
+  function winChance(t, dir) {
+    const T = Math.max(2, Math.min(98, Number(t)||0));
+    return dir === 'under' ? T : 100 - T;
+  }
+  function multiplierFor(t, dir) {
+    const wcp = winChance(t, dir);
+    if (wcp <= 0) return 1;
+    return Math.floor((99 / wcp) * RTP * 100) / 100;
+  }
+  function refreshSummary() {
+    const t = Math.max(2, Math.min(98, Math.floor(Number(inpTarget.value)||50)));
+    inpTarget.value = String(t);
+    ST.target = t;
+    const wcp = winChance(t, ST.dir);
+    const m = multiplierFor(t, ST.dir);
+    const payout = Math.floor(STAKE * m * 100) / 100;
+    const profit = (payout - STAKE).toFixed(2);
+    stChance.textContent = `${wcp.toFixed(2)}%`;
+    stPayout.textContent = `${payout.toFixed(2)} PTS`;
+    stProfit.textContent = `${profit >= 0 ? '+' : ''}${profit} PTS`;
+    hudMult.textContent = `${m.toFixed(2)}x`;
+    pivot.style.setProperty('--pivot', `${t}%`);
+    track.style.setProperty('--pivot', `${t}%`);
+    // Track gradient: under = red on left, green on right (and vice versa).
+    if (ST.dir === 'under') track.style.background = `linear-gradient(90deg, #5be0a4 0%, #5be0a4 ${t}%, #ff8a8a ${t}%, #ff8a8a 100%)`;
+    else                   track.style.background = `linear-gradient(90deg, #ff8a8a 0%, #ff8a8a ${t}%, #5be0a4 ${t}%, #5be0a4 100%)`;
+  }
+  inpTarget.addEventListener('input', refreshSummary);
+  inpTarget.addEventListener('change', refreshSummary);
+  function setDir(d) {
+    ST.dir = d;
+    dirUnder.classList.toggle('on', d === 'under');
+    dirOver.classList.toggle('on',  d === 'over');
+    refreshSummary();
+  }
+  dirUnder.onclick = () => setDir('under');
+  dirOver.onclick  = () => setDir('over');
+
+  async function fetchStats() {
+    if (!wallet) return null;
+    try { const r = await fetch(`${API}/litdice/stats/${wallet}`); if (!r.ok) return null; return await r.json(); } catch { return null; }
+  }
+
+  async function showLobby() {
+    const stats = await fetchStats();
+    const left = stats ? Math.max(0, Number(stats.gamesLeft||0)) : DAILY;
+    const bal  = stats ? Number(stats.pointsBalance||0) : 0;
+    const bestM = stats ? Number(stats.bestMultiplier||0) : 0;
+    ST.gamesLeft = left;
+    hudBal.textContent = String(bal);
+    hudGames.textContent = `${DAILY-left}/${DAILY}`;
+    const noGames = left <= 0;
+    const lowBal = bal < STAKE;
+    pTitle.textContent = 'LIT DICE';
+    pSub.textContent = noGames ? 'Daily limit reached' : (lowBal ? `Need ${STAKE} PTS to roll` : 'Pick a target · pick a side · roll');
+    pBody.innerHTML = `
+      <div class="panel-row"><span class="lbl">Stake</span><span class="val">${STAKE} PTS</span></div>
+      <div class="panel-row"><span class="lbl">RTP</span><span class="val">${(RTP*100).toFixed(0)}%</span></div>
+      <div class="panel-row"><span class="lbl">Games Today</span><span class="val">${DAILY-left}/${DAILY}</span></div>
+      <div class="panel-row"><span class="lbl">Best Multiplier</span><span class="val">${bestM.toFixed(2)}x</span></div>
+    `;
+    btnP.disabled = noGames || lowBal;
+    btnP.textContent = noGames ? 'NO GAMES LEFT' : (lowBal ? 'NOT ENOUGH PTS' : `PLAY · ${STAKE} PTS`);
+    btnP.onclick = (noGames || lowBal) ? () => {} : startRound;
+    panel.classList.remove('hidden');
+  }
+  btnX.onclick = () => postParent({ type: 'litdex:litdice:exit' });
+
+  async function startRound() {
+    if (!wallet) { showErr('No wallet'); return; }
+    btnP.disabled = true; btnP.textContent = 'STAKING…';
+    try {
+      const r = await fetch(`${API}/litdice/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wallet }) });
+      const d = await r.json();
+      if (!r.ok || d.error) { showErr(d?.error || 'start_failed'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; return; }
+      ST.roundId = d.roundId; ST.token = d.token; ST.stake = d.stake; ST.gamesLeft = d.gamesLeft;
+      panel.classList.add('hidden');
+      rollDisp.textContent = '—';
+      rollDisp.classList.remove('win','loss');
+      rollMarker.style.left = '50%';
+      rollLbl.textContent = '';
+      hudGames.textContent = `${DAILY-ST.gamesLeft}/${DAILY}`;
+      refreshSummary();
+      // Refresh balance in HUD.
+      fetchStats().then((s) => { if (s) hudBal.textContent = String(s.pointsBalance || 0); });
+    } catch { showErr('Network error'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; }
+  }
+
+  btnRoll.onclick = async () => {
+    if (!ST.roundId || ST.busy) return;
+    ST.busy = true;
+    btnRoll.disabled = true;
+    sndRoll();
+    // Spin animation: cycle a random number for ~600ms.
+    const start = performance.now();
+    const spin = () => {
+      const t = performance.now() - start;
+      if (t > 550) { return; }
+      const fake = Math.random() * 100;
+      rollDisp.textContent = fake.toFixed(2);
+      rollMarker.style.left = `${fake}%`;
+      rollLbl.textContent = fake.toFixed(2);
+      requestAnimationFrame(spin);
+    };
+    spin();
+    try {
+      const r = await fetch(`${API}/litdice/play`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roundId: ST.roundId, token: ST.token, target: ST.target, direction: ST.dir }),
+      });
+      const d = await r.json();
+      // Wait until spin finishes before showing result.
+      setTimeout(() => {
+        if (!r.ok || d.error) { showErr(d?.error || 'play_failed'); ST.busy = false; btnRoll.disabled = false; return; }
+        const roll = Number(d.roll);
+        rollDisp.textContent = roll.toFixed(2);
+        rollMarker.style.left = `${roll}%`;
+        rollLbl.textContent = roll.toFixed(2);
+        rollDisp.classList.remove('win','loss','bump');
+        void rollDisp.offsetWidth;
+        rollDisp.classList.add('bump', d.won ? 'win' : 'loss');
+        if (d.won) sndWin(); else sndLoss();
+        endPanel(d);
+      }, 600);
+    } catch { showErr('Network error'); ST.busy = false; btnRoll.disabled = false; }
+  };
+
+  function endPanel(d) {
+    pTitle.textContent = d.won ? 'YOU WIN' : 'YOU LOSE';
+    pSub.textContent = d.won ? `Banked +${d.awarded} PTS` : `Lost ${d.stake} PTS`;
+    pBody.innerHTML = `
+      <div class="panel-big ${d.won ? 'green' : 'red'}">${d.won ? `+${d.awarded}` : `-${d.stake}`}</div>
+      <div class="panel-row"><span class="lbl">Roll</span><span class="val">${d.roll.toFixed(2)}</span></div>
+      <div class="panel-row"><span class="lbl">Target</span><span class="val">${d.direction.toUpperCase()} ${d.target}</span></div>
+      <div class="panel-row"><span class="lbl">Multiplier</span><span class="val">${d.multiplier.toFixed(2)}x</span></div>
+      <div class="panel-row"><span class="lbl">Profit</span><span class="val" style="color:${d.profit >= 0 ? '#5be0a4' : '#ff8a8a'}">${d.profit >= 0 ? '+' : ''}${d.profit} PTS</span></div>
+      ${d.explorerUrl ? `<div class="panel-row"><span class="lbl">Tx</span><a class="val" style="color:#5be0a4;text-decoration:underline" href="${d.explorerUrl}" target="_blank" rel="noreferrer">${(d.txHash||'').slice(0,10)}…</a></div>` : ''}
+    `;
+    postParent({ type: 'litdex:litdice:end', won: d.won, multiplier: d.multiplier, awarded: d.awarded, profit: d.profit, stake: d.stake, txInfo: d.txHash ? { txHash: d.txHash, explorerUrl: d.explorerUrl } : null });
+    fetchStats().then((s) => {
+      const left = s ? Math.max(0, Number(s.gamesLeft||0)) : 0;
+      const bal  = s ? Number(s.pointsBalance||0) : 0;
+      ST.gamesLeft = left;
+      hudBal.textContent = String(bal);
+      hudGames.textContent = `${DAILY-left}/${DAILY}`;
+      btnP.disabled = left <= 0 || bal < STAKE;
+      btnP.textContent = left <= 0 ? 'NO GAMES LEFT' : (bal < STAKE ? 'NOT ENOUGH PTS' : `PLAY AGAIN · ${STAKE} PTS`);
+      btnP.onclick = (left <= 0 || bal < STAKE) ? () => {} : startRound;
+    });
+    panel.classList.remove('hidden');
+    ST.busy = false;
+    btnRoll.disabled = false;
+  }
+
+  (async () => {
+    if (!wallet) { pTitle.textContent = 'LIT DICE'; pSub.textContent = 'Wallet missing'; pBody.innerHTML = '<div style="color:#ef4956;font-family:JetBrains Mono,monospace;font-size:11px">Open this game from the LitDeX games page.</div>'; btnP.textContent = 'CLOSE'; btnP.onclick = () => postParent({ type: 'litdex:litdice:exit' }); return; }
+    refreshSummary();
+    await showLobby();
+  })();
+})();
+</script>
+</body>
+</html>

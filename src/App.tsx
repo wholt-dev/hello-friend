@@ -5820,19 +5820,495 @@ const BlockChainPage = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
+const LitDicePage = ({ onBack }: { onBack: () => void }) => {
+  const { address, isConnected } = useAccount();
+  const SIMPLE_API = 'https://game.test-hub.xyz';
+  const STAKE = 5;
+  const DAILY_LIMIT = 20;
+  const [stats, setStats] = useState<any>(null);
+  const [playing, setPlaying] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
+  const [errMsg, setErrMsg] = useState('');
+  const lowerAddr = address ? address.toLowerCase() : '';
+
+  const fetchStats = async () => {
+    if (!lowerAddr) return;
+    try { const r = await fetch(`${SIMPLE_API}/litdice/stats/${lowerAddr}`); if (r.ok) setStats(await r.json()); } catch {}
+  };
+  useEffect(() => {
+    if (!lowerAddr) return;
+    fetchStats();
+    const t = setInterval(fetchStats, 20000);
+    return () => clearInterval(t);
+  }, [lowerAddr]);
+  useEffect(() => {
+    if (!lowerAddr) return;
+    const onMsg = (e: MessageEvent) => {
+      const d: any = e?.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'litdex:litdice:exit') {
+        setPlaying(false);
+        try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
+        try { (screen.orientation as any)?.unlock?.(); } catch {}
+        fetchStats();
+        return;
+      }
+      if (d.type === 'litdex:litdice:end') {
+        try {
+          addNotif(lowerAddr, {
+            type: 'game',
+            title: d.won ? 'Lit Dice · Won' : 'Lit Dice · Lost',
+            message: `${Number(d.multiplier || 0).toFixed(2)}x · ${d.profit >= 0 ? '+' : ''}${d.profit} PTS`,
+            link: d?.txInfo?.explorerUrl,
+          });
+        } catch {}
+        fetchStats();
+      }
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [lowerAddr]);
+
+  useEffect(() => {
+    if (playing) document.body.classList.add('hide-nav');
+    else document.body.classList.remove('hide-nav');
+    return () => document.body.classList.remove('hide-nav');
+  }, [playing]);
+
+  const balance   = Math.max(0, Number(stats?.pointsBalance ?? 0));
+  const gamesLeft = Math.max(0, Number(stats?.gamesLeft ?? Math.max(0, DAILY_LIMIT - Number(stats?.gamesPlayed ?? 0))));
+  const bestMult  = Number(stats?.bestMultiplier ?? 0);
+
+  const startGame = async () => {
+    if (!lowerAddr || starting) return;
+    if (balance < STAKE) { setErrMsg(`Need ${STAKE} PTS.`); return; }
+    if (gamesLeft <= 0) { setErrMsg('Daily limit reached.'); return; }
+    setErrMsg(''); setStarting(true); setPlaying(true);
+    try { const elx: any = document.documentElement; const req = elx.requestFullscreen || elx.webkitRequestFullscreen || elx.mozRequestFullScreen; if (req) req.call(elx).catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.lock?.('portrait').catch(() => {}); } catch {}
+    setStarting(false);
+  };
+  const handleExitGame = () => {
+    setPlaying(false);
+    try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.unlock?.(); } catch {}
+    fetchStats();
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-dice-page py-8 max-w-7xl mx-auto px-4">
+      <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+        {!playing && (
+          <div className="order-2 lg:order-1 space-y-5">
+            <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-[11px] uppercase text-brand-text-muted">Your Stats</div>
+                <span className="text-[9px] uppercase px-2 py-0.5 rounded-full text-black bg-white font-bold">{STAKE} PTS Stake</span>
+              </div>
+              {!isConnected ? <div className="text-brand-text-muted text-xs">Connect wallet to track your stats</div> : (
+                <>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">Balance</div><div className="text-brand-text-primary text-sm font-bold">{balance.toLocaleString()} PTS</div></div>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">RTP</div><div className="text-brand-text-primary text-sm">97%</div></div>
+                  <div className="mb-4"><div className="text-[10px] uppercase text-brand-text-muted">Games Today</div><div className="text-brand-text-primary text-sm">{Math.max(0, DAILY_LIMIT - gamesLeft)} / {DAILY_LIMIT}</div></div>
+                  <div className="pt-3 border-t border-brand-border">
+                    <div className="text-[10px] uppercase text-brand-text-muted mb-2">Personal Best</div>
+                    <div className="flex items-center justify-between text-[11px]"><span className="text-brand-text-muted">Best Multiplier</span><span className="text-brand-text-primary">{bestMult.toFixed(2)}x</span></div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+        <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
+          {!playing ? (
+            <div className="p-6 sm:p-8 text-center">
+              <div className="font-mono text-brand-text-primary text-base sm:text-lg mb-2">LIT DICE</div>
+              <div className="font-mono text-brand-text-muted text-xs mb-2">Pick a target (2–98), choose UNDER or OVER, roll the dice. 97% RTP.</div>
+              <div className="font-mono text-[10px] text-brand-text-muted mb-6">{STAKE} PTS stake · {DAILY_LIMIT} games/day · provably fair</div>
+              <button type="button" onClick={startGame} disabled={!isConnected || starting || (isConnected && (gamesLeft <= 0 || balance < STAKE))}
+                className="w-full sm:w-auto min-h-12 px-8 py-3 rounded-lg bg-brand-text-primary text-brand-bg font-mono font-bold text-sm cursor-pointer touch-manipulation select-none active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                {!isConnected ? 'CONNECT WALLET' : starting ? 'STARTING…' : balance < STAKE ? `NEED ${STAKE} PTS` : gamesLeft <= 0 ? 'DAILY LIMIT REACHED' : `START · ${STAKE} PTS`}
+              </button>
+              {errMsg && <div className="mt-4 font-mono text-[11px]" style={{ color: '#c44' }}>{errMsg}</div>}
+            </div>
+          ) : (
+            <div className="relative w-screen h-screen" style={{ width: '100vw', height: '100dvh', overscrollBehavior: 'none' }}>
+              <button onClick={handleExitGame} aria-label="Exit game" className="font-mono text-[11px] uppercase bg-brand-surface-2 text-brand-text-primary border border-brand-border" style={{ position: 'fixed', bottom: 16, left: 16, zIndex: 999999, borderRadius: 8, padding: '8px 12px' }}>EXIT</button>
+              <iframe key={iframeKey} src={`/games/lit-dice.html?wallet=${lowerAddr}`} title="Lit Dice" style={{ border: 'none', position: 'absolute', inset: 0, width: '100%', height: '100%' }} allow="autoplay; fullscreen" />
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+const LitLimboPage = ({ onBack }: { onBack: () => void }) => {
+  const { address, isConnected } = useAccount();
+  const SIMPLE_API = 'https://game.test-hub.xyz';
+  const STAKE = 5;
+  const DAILY_LIMIT = 20;
+  const [stats, setStats] = useState<any>(null);
+  const [playing, setPlaying] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
+  const [errMsg, setErrMsg] = useState('');
+  const lowerAddr = address ? address.toLowerCase() : '';
+
+  const fetchStats = async () => {
+    if (!lowerAddr) return;
+    try { const r = await fetch(`${SIMPLE_API}/litlimbo/stats/${lowerAddr}`); if (r.ok) setStats(await r.json()); } catch {}
+  };
+  useEffect(() => {
+    if (!lowerAddr) return;
+    fetchStats();
+    const t = setInterval(fetchStats, 20000);
+    return () => clearInterval(t);
+  }, [lowerAddr]);
+  useEffect(() => {
+    if (!lowerAddr) return;
+    const onMsg = (e: MessageEvent) => {
+      const d: any = e?.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'litdex:litlimbo:exit') {
+        setPlaying(false);
+        try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
+        try { (screen.orientation as any)?.unlock?.(); } catch {}
+        fetchStats();
+        return;
+      }
+      if (d.type === 'litdex:litlimbo:end') {
+        try {
+          addNotif(lowerAddr, {
+            type: 'game',
+            title: d.won ? 'Lit Limbo · Hit' : 'Lit Limbo · Missed',
+            message: `Target ${Number(d.target).toFixed(2)}x · Rolled ${Number(d.rolled).toFixed(2)}x`,
+            link: d?.txInfo?.explorerUrl,
+          });
+        } catch {}
+        fetchStats();
+      }
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [lowerAddr]);
+
+  useEffect(() => {
+    if (playing) document.body.classList.add('hide-nav');
+    else document.body.classList.remove('hide-nav');
+    return () => document.body.classList.remove('hide-nav');
+  }, [playing]);
+
+  const balance   = Math.max(0, Number(stats?.pointsBalance ?? 0));
+  const gamesLeft = Math.max(0, Number(stats?.gamesLeft ?? Math.max(0, DAILY_LIMIT - Number(stats?.gamesPlayed ?? 0))));
+  const bestRoll  = Number(stats?.bestRoll ?? 0);
+
+  const startGame = async () => {
+    if (!lowerAddr || starting) return;
+    if (balance < STAKE) { setErrMsg(`Need ${STAKE} PTS.`); return; }
+    if (gamesLeft <= 0) { setErrMsg('Daily limit reached.'); return; }
+    setErrMsg(''); setStarting(true); setPlaying(true);
+    try { const elx: any = document.documentElement; const req = elx.requestFullscreen || elx.webkitRequestFullscreen || elx.mozRequestFullScreen; if (req) req.call(elx).catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.lock?.('portrait').catch(() => {}); } catch {}
+    setStarting(false);
+  };
+  const handleExitGame = () => {
+    setPlaying(false);
+    try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.unlock?.(); } catch {}
+    fetchStats();
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-limbo-page py-8 max-w-7xl mx-auto px-4">
+      <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+        {!playing && (
+          <div className="order-2 lg:order-1 space-y-5">
+            <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-[11px] uppercase text-brand-text-muted">Your Stats</div>
+                <span className="text-[9px] uppercase px-2 py-0.5 rounded-full text-black bg-white font-bold">{STAKE} PTS Stake</span>
+              </div>
+              {!isConnected ? <div className="text-brand-text-muted text-xs">Connect wallet to track your stats</div> : (
+                <>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">Balance</div><div className="text-brand-text-primary text-sm font-bold">{balance.toLocaleString()} PTS</div></div>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">Range</div><div className="text-brand-text-primary text-sm">1.01x — 100x</div></div>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">RTP</div><div className="text-brand-text-primary text-sm">99%</div></div>
+                  <div className="mb-4"><div className="text-[10px] uppercase text-brand-text-muted">Games Today</div><div className="text-brand-text-primary text-sm">{Math.max(0, DAILY_LIMIT - gamesLeft)} / {DAILY_LIMIT}</div></div>
+                  <div className="pt-3 border-t border-brand-border">
+                    <div className="text-[10px] uppercase text-brand-text-muted mb-2">Personal Best</div>
+                    <div className="flex items-center justify-between text-[11px]"><span className="text-brand-text-muted">Best Roll</span><span className="text-brand-text-primary">{bestRoll.toFixed(2)}x</span></div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+        <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
+          {!playing ? (
+            <div className="p-6 sm:p-8 text-center">
+              <div className="font-mono text-brand-text-primary text-base sm:text-lg mb-2">LIT LIMBO</div>
+              <div className="font-mono text-brand-text-muted text-xs mb-2">Set target multiplier · roll · win if RNG ≥ target. 99% RTP.</div>
+              <div className="font-mono text-[10px] text-brand-text-muted mb-6">{STAKE} PTS stake · {DAILY_LIMIT} games/day · up to 100x</div>
+              <button type="button" onClick={startGame} disabled={!isConnected || starting || (isConnected && (gamesLeft <= 0 || balance < STAKE))}
+                className="w-full sm:w-auto min-h-12 px-8 py-3 rounded-lg bg-brand-text-primary text-brand-bg font-mono font-bold text-sm cursor-pointer touch-manipulation select-none active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                {!isConnected ? 'CONNECT WALLET' : starting ? 'STARTING…' : balance < STAKE ? `NEED ${STAKE} PTS` : gamesLeft <= 0 ? 'DAILY LIMIT REACHED' : `START · ${STAKE} PTS`}
+              </button>
+              {errMsg && <div className="mt-4 font-mono text-[11px]" style={{ color: '#c44' }}>{errMsg}</div>}
+            </div>
+          ) : (
+            <div className="relative w-screen h-screen" style={{ width: '100vw', height: '100dvh', overscrollBehavior: 'none' }}>
+              <button onClick={handleExitGame} aria-label="Exit game" className="font-mono text-[11px] uppercase bg-brand-surface-2 text-brand-text-primary border border-brand-border" style={{ position: 'fixed', bottom: 16, left: 16, zIndex: 999999, borderRadius: 8, padding: '8px 12px' }}>EXIT</button>
+              <iframe key={iframeKey} src={`/games/lit-limbo.html?wallet=${lowerAddr}`} title="Lit Limbo" style={{ border: 'none', position: 'absolute', inset: 0, width: '100%', height: '100%' }} allow="autoplay; fullscreen" />
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+const LitMinesPage = ({ onBack }: { onBack: () => void }) => {
+  const { address, isConnected } = useAccount();
+  const SIMPLE_API = 'https://game.test-hub.xyz';
+  const STAKE = 5;
+  const DAILY_LIMIT = 20;
+  const [stats, setStats] = useState<any>(null);
+  const [playing, setPlaying] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
+  const [errMsg, setErrMsg] = useState('');
+  const lowerAddr = address ? address.toLowerCase() : '';
+
+  const fetchStats = async () => {
+    if (!lowerAddr) return;
+    try { const r = await fetch(`${SIMPLE_API}/litmines/stats/${lowerAddr}`); if (r.ok) setStats(await r.json()); } catch {}
+  };
+  useEffect(() => {
+    if (!lowerAddr) return;
+    fetchStats();
+    const t = setInterval(fetchStats, 20000);
+    return () => clearInterval(t);
+  }, [lowerAddr]);
+  useEffect(() => {
+    if (!lowerAddr) return;
+    const onMsg = (e: MessageEvent) => {
+      const d: any = e?.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'litdex:litmines:exit') {
+        setPlaying(false);
+        try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
+        try { (screen.orientation as any)?.unlock?.(); } catch {}
+        fetchStats();
+        return;
+      }
+      if (d.type === 'litdex:litmines:end') {
+        try {
+          addNotif(lowerAddr, {
+            type: 'game',
+            title: d.won ? 'Lit Mines · Cashed Out' : 'Lit Mines · Boom',
+            message: `${Number(d.multiplier || 0).toFixed(2)}x · ${d.profit >= 0 ? '+' : ''}${d.profit} PTS`,
+            link: d?.txInfo?.explorerUrl,
+          });
+        } catch {}
+        fetchStats();
+      }
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [lowerAddr]);
+
+  useEffect(() => {
+    if (playing) document.body.classList.add('hide-nav');
+    else document.body.classList.remove('hide-nav');
+    return () => document.body.classList.remove('hide-nav');
+  }, [playing]);
+
+  const balance   = Math.max(0, Number(stats?.pointsBalance ?? 0));
+  const gamesLeft = Math.max(0, Number(stats?.gamesLeft ?? Math.max(0, DAILY_LIMIT - Number(stats?.gamesPlayed ?? 0))));
+  const bestMult  = Number(stats?.bestMultiplier ?? 0);
+
+  const startGame = async () => {
+    if (!lowerAddr || starting) return;
+    if (balance < STAKE) { setErrMsg(`Need ${STAKE} PTS.`); return; }
+    if (gamesLeft <= 0) { setErrMsg('Daily limit reached.'); return; }
+    setErrMsg(''); setStarting(true); setPlaying(true);
+    try { const elx: any = document.documentElement; const req = elx.requestFullscreen || elx.webkitRequestFullscreen || elx.mozRequestFullScreen; if (req) req.call(elx).catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.lock?.('portrait').catch(() => {}); } catch {}
+    setStarting(false);
+  };
+  const handleExitGame = () => {
+    setPlaying(false);
+    try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.unlock?.(); } catch {}
+    fetchStats();
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-mines-page py-8 max-w-7xl mx-auto px-4">
+      <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+        {!playing && (
+          <div className="order-2 lg:order-1 space-y-5">
+            <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-[11px] uppercase text-brand-text-muted">Your Stats</div>
+                <span className="text-[9px] uppercase px-2 py-0.5 rounded-full text-black bg-white font-bold">{STAKE} PTS Stake</span>
+              </div>
+              {!isConnected ? <div className="text-brand-text-muted text-xs">Connect wallet to track your stats</div> : (
+                <>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">Balance</div><div className="text-brand-text-primary text-sm font-bold">{balance.toLocaleString()} PTS</div></div>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">Grid</div><div className="text-brand-text-primary text-sm">5×5 · 3 / 5 / 10 bombs</div></div>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">RTP</div><div className="text-brand-text-primary text-sm">97%</div></div>
+                  <div className="mb-4"><div className="text-[10px] uppercase text-brand-text-muted">Games Today</div><div className="text-brand-text-primary text-sm">{Math.max(0, DAILY_LIMIT - gamesLeft)} / {DAILY_LIMIT}</div></div>
+                  <div className="pt-3 border-t border-brand-border">
+                    <div className="text-[10px] uppercase text-brand-text-muted mb-2">Personal Best</div>
+                    <div className="flex items-center justify-between text-[11px]"><span className="text-brand-text-muted">Best Multiplier</span><span className="text-brand-text-primary">{bestMult.toFixed(2)}x</span></div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+        <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
+          {!playing ? (
+            <div className="p-6 sm:p-8 text-center">
+              <div className="font-mono text-brand-text-primary text-base sm:text-lg mb-2">LIT MINES</div>
+              <div className="font-mono text-brand-text-muted text-xs mb-2">5×5 grid. Reveal safe tiles to grow multiplier. Cash out anytime. Bomb = lose.</div>
+              <div className="font-mono text-[10px] text-brand-text-muted mb-6">{STAKE} PTS stake · {DAILY_LIMIT} games/day · 97% RTP</div>
+              <button type="button" onClick={startGame} disabled={!isConnected || starting || (isConnected && (gamesLeft <= 0 || balance < STAKE))}
+                className="w-full sm:w-auto min-h-12 px-8 py-3 rounded-lg bg-brand-text-primary text-brand-bg font-mono font-bold text-sm cursor-pointer touch-manipulation select-none active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ WebkitTapHighlightColor: 'transparent' }}>
+                {!isConnected ? 'CONNECT WALLET' : starting ? 'STARTING…' : balance < STAKE ? `NEED ${STAKE} PTS` : gamesLeft <= 0 ? 'DAILY LIMIT REACHED' : `START · ${STAKE} PTS`}
+              </button>
+              {errMsg && <div className="mt-4 font-mono text-[11px]" style={{ color: '#c44' }}>{errMsg}</div>}
+            </div>
+          ) : (
+            <div className="relative w-screen h-screen" style={{ width: '100vw', height: '100dvh', overscrollBehavior: 'none' }}>
+              <button onClick={handleExitGame} aria-label="Exit game" className="font-mono text-[11px] uppercase bg-brand-surface-2 text-brand-text-primary border border-brand-border" style={{ position: 'fixed', bottom: 16, left: 16, zIndex: 999999, borderRadius: 8, padding: '8px 12px' }}>EXIT</button>
+              <iframe key={iframeKey} src={`/games/lit-mines.html?wallet=${lowerAddr}`} title="Lit Mines" style={{ border: 'none', position: 'absolute', inset: 0, width: '100%', height: '100%' }} allow="autoplay; fullscreen" />
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
 const GamesPage = () => {
-  const [sub, setSub] = useState<'lobby' | 'math-slash' | 'pump-dump' | 'lit-tower' | 'zk-miner' | 'lit-launch' | 'block-chain'>('lobby');
+  const [sub, setSub] = useState<'lobby' | 'math-slash' | 'pump-dump' | 'lit-tower' | 'zk-miner' | 'lit-launch' | 'block-chain' | 'lit-dice' | 'lit-limbo' | 'lit-mines'>('lobby');
+  const [tab, setTab] = useState<'fun' | 'casino'>('fun');
   if (sub === 'math-slash') return <MathSlashPage onBack={() => setSub('lobby')} />;
   if (sub === 'pump-dump')  return <PumpDumpPage  onBack={() => setSub('lobby')} />;
   if (sub === 'lit-tower')  return <LitTowerPage  onBack={() => setSub('lobby')} />;
   if (sub === 'zk-miner')   return <ZkMinerPage   onBack={() => setSub('lobby')} />;
   if (sub === 'lit-launch') return <LitLaunchPage onBack={() => setSub('lobby')} />;
   if (sub === 'block-chain') return <BlockChainPage onBack={() => setSub('lobby')} />;
+  if (sub === 'lit-dice')   return <LitDicePage   onBack={() => setSub('lobby')} />;
+  if (sub === 'lit-limbo')  return <LitLimboPage  onBack={() => setSub('lobby')} />;
+  if (sub === 'lit-mines')  return <LitMinesPage  onBack={() => setSub('lobby')} />;
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-12 max-w-6xl mx-auto px-4">
-      <h1 className="text-3xl font-bold tracking-tighter text-white mb-8">Games</h1>
+      <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
+        <h1 className="text-3xl font-bold tracking-tighter text-white">Games</h1>
+        <div className="inline-flex bg-[#0a0a0a] border border-[#1f1f1f] rounded-xl p-1 font-mono">
+          <button
+            onClick={() => setTab('fun')}
+            className={`px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors ${tab === 'fun' ? 'bg-white text-black' : 'text-white/55 hover:text-white'}`}
+          >Fun</button>
+          <button
+            onClick={() => setTab('casino')}
+            className={`px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors ${tab === 'casino' ? 'bg-white text-black' : 'text-white/55 hover:text-white'}`}
+          >Casino</button>
+        </div>
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {tab === 'casino' ? (
+            <>
+              {/* LIT DICE */}
+              <div className="games-card-dark rounded-2xl overflow-hidden flex flex-col" style={{ background: '#0a0a0a', border: '1px solid #1f1f1f' }}>
+                <div className="h-44 flex items-center justify-center relative" style={{ background: 'linear-gradient(180deg, #04070d 0%, #0a1226 100%)' }}>
+                  <svg width="160" height="120" viewBox="0 0 160 120" style={{ opacity: 0.95 }}>
+                    <defs>
+                      <linearGradient id="ldice1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#fff5d2"/><stop offset="100%" stopColor="#ffd166"/></linearGradient>
+                      <linearGradient id="ldice2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#5be0a4"/><stop offset="100%" stopColor="#1f9c66"/></linearGradient>
+                    </defs>
+                    <rect x="22" y="30" width="50" height="50" rx="10" fill="url(#ldice1)" stroke="#fff" strokeOpacity="0.4" strokeWidth="1.5" transform="rotate(-12 47 55)"/>
+                    <circle cx="38" cy="46" r="4" fill="#5a3a0a" transform="rotate(-12 47 55)"/>
+                    <circle cx="56" cy="64" r="4" fill="#5a3a0a" transform="rotate(-12 47 55)"/>
+                    <rect x="86" y="40" width="50" height="50" rx="10" fill="url(#ldice2)" stroke="#fff" strokeOpacity="0.4" strokeWidth="1.5" transform="rotate(8 111 65)"/>
+                    <circle cx="100" cy="56" r="4" fill="#04241a" transform="rotate(8 111 65)"/>
+                    <circle cx="111" cy="65" r="4" fill="#04241a" transform="rotate(8 111 65)"/>
+                    <circle cx="122" cy="74" r="4" fill="#04241a" transform="rotate(8 111 65)"/>
+                  </svg>
+                  <span className="absolute top-3 right-3 text-[9px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full" style={{ background: '#ffd166', color: '#5a3a0a' }}>5 PTS</span>
+                </div>
+                <div className="p-6 flex-1 flex flex-col">
+                  <h3 className="font-bold text-xl text-white mb-2">LIT DICE</h3>
+                  <p className="text-sm text-[#888] mb-6 leading-relaxed">Pick a target, roll the dice. Win up to 99x. Provably fair, 97% RTP.</p>
+                  <button onClick={() => setSub('lit-dice')} className="mt-auto w-full py-3 rounded-lg bg-white text-black font-mono font-bold text-xs uppercase tracking-widest">Play Now</button>
+                </div>
+              </div>
+
+              {/* LIT LIMBO */}
+              <div className="games-card-dark rounded-2xl overflow-hidden flex flex-col" style={{ background: '#0a0a0a', border: '1px solid #1f1f1f' }}>
+                <div className="h-44 flex items-center justify-center relative" style={{ background: 'linear-gradient(180deg, #04070d 0%, #1a0a2c 100%)' }}>
+                  <svg width="160" height="120" viewBox="0 0 160 120" style={{ opacity: 0.95 }}>
+                    <defs>
+                      <linearGradient id="llim1" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stopColor="#3a0e60"/><stop offset="100%" stopColor="#c466ff"/></linearGradient>
+                    </defs>
+                    <path d="M 18 96 Q 40 90 60 78 T 110 38 T 148 16" stroke="url(#llim1)" strokeWidth="3" fill="none" strokeLinecap="round" />
+                    <circle cx="148" cy="16" r="6" fill="#c466ff" />
+                    <text x="80" y="54" fontFamily="Bangers, cursive" fontSize="32" fill="#c466ff" textAnchor="middle">10x</text>
+                  </svg>
+                  <span className="absolute top-3 right-3 text-[9px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full" style={{ background: '#c466ff', color: '#fff' }}>5 PTS</span>
+                </div>
+                <div className="p-6 flex-1 flex flex-col">
+                  <h3 className="font-bold text-xl text-white mb-2">LIT LIMBO</h3>
+                  <p className="text-sm text-[#888] mb-6 leading-relaxed">Set a target multiplier. Win if RNG meets it. Up to 100x. 99% RTP.</p>
+                  <button onClick={() => setSub('lit-limbo')} className="mt-auto w-full py-3 rounded-lg bg-white text-black font-mono font-bold text-xs uppercase tracking-widest">Play Now</button>
+                </div>
+              </div>
+
+              {/* LIT MINES */}
+              <div className="games-card-dark rounded-2xl overflow-hidden flex flex-col" style={{ background: '#0a0a0a', border: '1px solid #1f1f1f' }}>
+                <div className="h-44 flex items-center justify-center relative" style={{ background: 'linear-gradient(180deg, #04070d 0%, #1a0a14 100%)' }}>
+                  <svg width="160" height="120" viewBox="0 0 160 120" style={{ opacity: 0.95 }}>
+                    <defs>
+                      <linearGradient id="lmS" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#5be0a4"/><stop offset="100%" stopColor="#1f9c66"/></linearGradient>
+                      <linearGradient id="lmB" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ff5a6e"/><stop offset="100%" stopColor="#8a1c30"/></linearGradient>
+                      <linearGradient id="lmH" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2a3450"/><stop offset="100%" stopColor="#131b30"/></linearGradient>
+                    </defs>
+                    {[0,1,2,3,4].map((r) => [0,1,2,3,4].map((c) => {
+                      const i = r*5+c;
+                      const safe = i === 6 || i === 12 || i === 13 || i === 18;
+                      const bomb = i === 8 || i === 16;
+                      return (
+                        <g key={i}>
+                          <rect x={14 + c*26} y={4 + r*22} width="22" height="18" rx="4" fill={safe ? "url(#lmS)" : bomb ? "url(#lmB)" : "url(#lmH)"} />
+                          {safe && <text x={25 + c*26} y={17 + r*22} fontSize="10" textAnchor="middle">💎</text>}
+                          {bomb && <text x={25 + c*26} y={17 + r*22} fontSize="10" textAnchor="middle">💣</text>}
+                        </g>
+                      );
+                    }))}
+                  </svg>
+                  <span className="absolute top-3 right-3 text-[9px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full" style={{ background: '#ff7a45', color: '#fff' }}>5 PTS</span>
+                </div>
+                <div className="p-6 flex-1 flex flex-col">
+                  <h3 className="font-bold text-xl text-white mb-2">LIT MINES</h3>
+                  <p className="text-sm text-[#888] mb-6 leading-relaxed">5×5 grid. Reveal safe tiles, multiplier grows. Cash out before hitting a bomb.</p>
+                  <button onClick={() => setSub('lit-mines')} className="mt-auto w-full py-3 rounded-lg bg-white text-black font-mono font-bold text-xs uppercase tracking-widest">Play Now</button>
+                </div>
+              </div>
+            </>
+          ) : (
+          <>
           <div className="games-card-dark rounded-2xl overflow-hidden flex flex-col" style={{ background: '#0a0a0a', border: '1px solid #1f1f1f' }}>
             <div className="h-44 flex items-center justify-center" style={{ background: '#111' }}>
               <div className="w-16 h-16 rounded-xl flex items-center justify-center" style={{ background: '#0a0a0a' }}>
@@ -6022,6 +6498,8 @@ const GamesPage = () => {
               </button>
             </div>
           </div>
+          </>
+          )}
         </div>
         <WeeklyLeaderboard />
       </div>

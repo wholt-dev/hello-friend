@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Lit Limbo — LitDeX</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka+One&family=JetBrains+Mono:wght@400;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #050912; color: #fff; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; font-family: 'Fredoka One', cursive; }
+  #game { position: relative; width: 100%; height: 100%; overflow: hidden;
+    background: radial-gradient(ellipse 100% 50% at 50% 0%, rgba(120,80,200,0.18) 0%, transparent 60%), linear-gradient(180deg, #04070d 0%, #0a1226 100%); }
+  #hud { position: absolute; top: 0; left: 0; right: 0; z-index: 6; padding: 14px 12px 0; padding-top: max(14px, env(safe-area-inset-top)); display: flex; justify-content: space-between; gap: 8px; pointer-events: none; }
+  .pill { flex: 1; background: linear-gradient(180deg, rgba(15,25,45,0.95), rgba(5,10,20,0.92)); border: 1px solid rgba(140,180,255,0.18); border-radius: 12px; padding: 7px 10px 8px; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.16em; color: #aac6ee; text-transform: uppercase; text-align: center; backdrop-filter: blur(6px); }
+  .pill .v { display: block; color: #fff; font-weight: 700; font-size: 16px; margin-top: 3px; letter-spacing: 0.5px; }
+  .pill.bal .v   { color: #5be0a4; }
+  .pill.target .v{ color: #c466ff; font-size: 18px; }
+  .pill.games .v { color: #aac6ee; }
+
+  #stage { position: absolute; left: 0; right: 0; top: 78px; bottom: 230px; z-index: 4; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 20px; }
+  #rolled { font-family: 'Bangers', cursive; font-size: clamp(70px, 22vw, 200px); line-height: 1; color: #fff; text-shadow: 0 6px 0 rgba(0,0,0,0.45), 0 0 36px rgba(140,200,255,0.4); letter-spacing: 4px; transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1), color 0.2s ease; }
+  #rolled.win { color: #5be0a4; text-shadow: 0 6px 0 rgba(0,40,20,0.5), 0 0 36px rgba(91,224,164,0.7); }
+  #rolled.loss { color: #ff8a8a; text-shadow: 0 6px 0 rgba(60,0,0,0.5), 0 0 36px rgba(255,138,140,0.55); }
+  #rolled.bump { transform: scale(1.12); }
+  #rolled-sub { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.18em; color: rgba(255,255,255,0.5); text-transform: uppercase; margin-top: 12px; }
+
+  #target-zone { position: absolute; left: 12px; right: 12px; bottom: 154px; z-index: 5; }
+  #target-row  { display: flex; gap: 8px; align-items: center; }
+  #target-label{ font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.18em; color: #aac6ee; text-transform: uppercase; }
+  #target-input { flex: 1; min-height: 56px; border-radius: 12px; background: rgba(15,25,45,0.85); border: 1px solid rgba(140,180,255,0.22); color: #c466ff; font-family: 'Bangers', cursive; font-size: 32px; font-weight: 700; text-align: center; padding: 0 8px; letter-spacing: 4px; }
+  #presets { display: flex; gap: 6px; margin-top: 10px; }
+  .preset { flex: 1; min-height: 36px; border-radius: 8px; border: 1px solid rgba(140,180,255,0.2); background: rgba(15,25,45,0.85); color: rgba(255,255,255,0.7); font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .preset.on { background: linear-gradient(180deg, #c466ff, #6a2d99); border-color: #c466ff; color: #fff; }
+
+  #stat-row { position: absolute; left: 12px; right: 12px; bottom: 84px; z-index: 5; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .sbox { background: linear-gradient(180deg, rgba(15,25,45,0.95), rgba(5,10,20,0.92)); border: 1px solid rgba(140,180,255,0.18); border-radius: 10px; padding: 6px 6px 7px; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 0.14em; color: #aac6ee; text-transform: uppercase; }
+  .sbox .v { display: block; color: #fff; font-weight: 700; font-size: 14px; margin-top: 2px; }
+  .sbox .v.gold  { color: #ffe97a; }
+  .sbox .v.purple{ color: #c466ff; }
+
+  #roll-btn { position: absolute; left: 12px; right: 12px; bottom: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 6; min-height: 56px; border-radius: 12px; border: none; background: linear-gradient(180deg, #c466ff, #6a2d99); color: #fff; font-family: 'Bangers', cursive; font-size: 24px; letter-spacing: 4px; text-shadow: 0 2px 0 rgba(0,0,0,0.4); box-shadow: 0 6px 0 #3a0e60, 0 0 28px rgba(196,102,255,0.4); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  #roll-btn:active, #roll-btn.held { transform: translateY(3px); box-shadow: 0 3px 0 #3a0e60, 0 0 36px rgba(196,102,255,0.6); }
+  #roll-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  #panel { position: absolute; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.78); backdrop-filter: blur(6px); transition: opacity 0.3s ease; }
+  #panel.hidden { opacity: 0; pointer-events: none; }
+  .panel-card { background: #0a0e1a; border: 1px solid #1f2638; border-radius: 18px; padding: 26px 22px; text-align: center; width: 88%; max-width: 360px; color: #fff; }
+  .panel-title { font-family: 'Bangers', cursive; font-size: 38px; letter-spacing: 4px; margin-bottom: 4px; text-shadow: 0 0 18px rgba(196,102,255,0.4); }
+  .panel-sub   { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.18em; color: rgba(255,255,255,0.55); text-transform: uppercase; margin-bottom: 16px; }
+  .panel-row   { display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 12px; margin: 6px 0; }
+  .panel-row .lbl { color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.12em; }
+  .panel-row .val { color: #fff; font-weight: 700; }
+  .panel-big { font-family: 'JetBrains Mono', monospace; font-size: 44px; line-height: 1; font-weight: 700; margin: 14px 0 4px; }
+  .panel-big.green { color: #5be0a4; } .panel-big.red { color: #ff8a8a; }
+  .panel-btns { display: flex; gap: 10px; margin-top: 14px; }
+  .panel-btn { flex: 1; min-height: 48px; border-radius: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; border: 1px solid #333; background: transparent; color: #fff; -webkit-tap-highlight-color: transparent; }
+  .panel-btn.primary { background: #fff; color: #000; border: none; }
+  .panel-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  #err-banner { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(239,73,86,0.92); color: #fff; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.1em; padding: 8px 14px; border-radius: 8px; z-index: 40; opacity: 0; transition: opacity 0.25s ease; pointer-events: none; }
+  #err-banner.visible { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="hud">
+    <div class="pill bal">BALANCE<span class="v" id="hud-bal">0</span></div>
+    <div class="pill target">TARGET<span class="v" id="hud-target">2.00x</span></div>
+    <div class="pill games">GAMES<span class="v" id="hud-games">0/20</span></div>
+  </div>
+
+  <div id="stage">
+    <div id="rolled">—</div>
+    <div id="rolled-sub">SET TARGET · ROLL · WIN IF ≥ TARGET</div>
+  </div>
+
+  <div id="target-zone">
+    <div id="target-row">
+      <input type="number" id="target-input" min="1.01" max="100" step="0.01" value="2.00">
+    </div>
+    <div id="presets">
+      <button class="preset" data-t="1.5">1.5x</button>
+      <button class="preset on" data-t="2">2x</button>
+      <button class="preset" data-t="5">5x</button>
+      <button class="preset" data-t="10">10x</button>
+      <button class="preset" data-t="50">50x</button>
+    </div>
+  </div>
+
+  <div id="stat-row">
+    <div class="sbox">CHANCE<span class="v purple" id="stat-chance">49.50%</span></div>
+    <div class="sbox">PAYOUT<span class="v gold" id="stat-payout">10 PTS</span></div>
+  </div>
+
+  <button id="roll-btn">ROLL · 5</button>
+
+  <div id="panel">
+    <div class="panel-card">
+      <div class="panel-title" id="panel-title">LIT LIMBO</div>
+      <div class="panel-sub" id="panel-sub">Set target · roll · win if hidden multiplier ≥ target</div>
+      <div id="panel-body"></div>
+      <div class="panel-btns">
+        <button class="panel-btn primary" id="btn-primary">PLAY · 5 PTS</button>
+        <button class="panel-btn" id="btn-exit">EXIT</button>
+      </div>
+    </div>
+  </div>
+  <div id="err-banner"><span id="err-msg"></span></div>
+</div>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const wallet = (params.get('wallet') || '').toLowerCase();
+  const API = (params.get('api') || 'https://game.test-hub.xyz').replace(/\/$/, '');
+  const postParent = (m) => { try { window.parent && window.parent.postMessage(m, '*'); } catch {} };
+
+  const STAKE = 5;
+  const RTP = 0.99;
+  const DAILY = 20;
+  const MIN_T = 1.01, MAX_T = 100;
+
+  const $ = (id) => document.getElementById(id);
+  const panel = $('panel'), pTitle = $('panel-title'), pSub = $('panel-sub'), pBody = $('panel-body');
+  const btnP = $('btn-primary'), btnX = $('btn-exit');
+  const hudBal = $('hud-bal'), hudTarget = $('hud-target'), hudGames = $('hud-games');
+  const rolled = $('rolled'), rolledSub = $('rolled-sub');
+  const inpTarget = $('target-input'), btnRoll = $('roll-btn');
+  const stChance = $('stat-chance'), stPayout = $('stat-payout');
+  const errBanner = $('err-banner'), errMsg = $('err-msg');
+
+  let audioCtx = null;
+  function tone(f, dur, type='sine', g=0.16) { try { if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); if (audioCtx.state==='suspended') audioCtx.resume(); const o=audioCtx.createOscillator(), gN=audioCtx.createGain(); o.type=type; o.frequency.value=f; gN.gain.setValueAtTime(0.0001,audioCtx.currentTime); gN.gain.exponentialRampToValueAtTime(g,audioCtx.currentTime+0.008); gN.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+dur/1000); o.connect(gN).connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+dur/1000); } catch{} }
+  function sndRoll() { tone(440, 80, 'square', 0.12); }
+  function sndWin()  { tone(880,70,'square',0.16); setTimeout(()=>tone(1320,90,'square',0.15),60); setTimeout(()=>tone(1760,140,'square',0.13),130); }
+  function sndLoss() { tone(180,300,'sawtooth',0.16); }
+
+  const ST = { roundId: null, token: null, stake: STAKE, busy: false, target: 2, gamesLeft: 0 };
+
+  function showErr(m) { errMsg.textContent = m||'error'; errBanner.classList.add('visible'); setTimeout(()=>errBanner.classList.remove('visible'), 2400); }
+
+  function refreshSummary() {
+    let t = Number(inpTarget.value) || 2;
+    if (!isFinite(t)) t = 2;
+    t = Math.max(MIN_T, Math.min(MAX_T, t));
+    inpTarget.value = t.toFixed(2);
+    ST.target = t;
+    const wcp = (RTP / t) * 100;
+    const payout = Math.floor(STAKE * t * 100) / 100;
+    stChance.textContent = `${wcp.toFixed(2)}%`;
+    stPayout.textContent = `${payout.toFixed(2)} PTS`;
+    hudTarget.textContent = `${t.toFixed(2)}x`;
+    document.querySelectorAll('.preset').forEach((el) => {
+      const v = Number(el.dataset.t);
+      el.classList.toggle('on', Math.abs(v - t) < 0.001);
+    });
+  }
+  inpTarget.addEventListener('input', refreshSummary);
+  inpTarget.addEventListener('change', refreshSummary);
+  document.querySelectorAll('.preset').forEach((el) => {
+    el.onclick = () => { inpTarget.value = el.dataset.t; refreshSummary(); };
+  });
+
+  async function fetchStats() {
+    if (!wallet) return null;
+    try { const r = await fetch(`${API}/litlimbo/stats/${wallet}`); if (!r.ok) return null; return await r.json(); } catch { return null; }
+  }
+
+  async function showLobby() {
+    const stats = await fetchStats();
+    const left = stats ? Math.max(0, Number(stats.gamesLeft||0)) : DAILY;
+    const bal  = stats ? Number(stats.pointsBalance||0) : 0;
+    const bestR = stats ? Number(stats.bestRoll||0) : 0;
+    ST.gamesLeft = left;
+    hudBal.textContent = String(bal);
+    hudGames.textContent = `${DAILY-left}/${DAILY}`;
+    const noGames = left <= 0;
+    const lowBal = bal < STAKE;
+    pTitle.textContent = 'LIT LIMBO';
+    pSub.textContent = noGames ? 'Daily limit reached' : (lowBal ? `Need ${STAKE} PTS to play` : 'Set a target multiplier · win if RNG meets it');
+    pBody.innerHTML = `
+      <div class="panel-row"><span class="lbl">Stake</span><span class="val">${STAKE} PTS</span></div>
+      <div class="panel-row"><span class="lbl">Range</span><span class="val">${MIN_T}x — ${MAX_T}x</span></div>
+      <div class="panel-row"><span class="lbl">RTP</span><span class="val">${(RTP*100).toFixed(0)}%</span></div>
+      <div class="panel-row"><span class="lbl">Games Today</span><span class="val">${DAILY-left}/${DAILY}</span></div>
+      <div class="panel-row"><span class="lbl">Best Roll</span><span class="val">${bestR.toFixed(2)}x</span></div>
+    `;
+    btnP.disabled = noGames || lowBal;
+    btnP.textContent = noGames ? 'NO GAMES LEFT' : (lowBal ? 'NOT ENOUGH PTS' : `PLAY · ${STAKE} PTS`);
+    btnP.onclick = (noGames || lowBal) ? () => {} : startRound;
+    panel.classList.remove('hidden');
+  }
+  btnX.onclick = () => postParent({ type: 'litdex:litlimbo:exit' });
+
+  async function startRound() {
+    if (!wallet) { showErr('No wallet'); return; }
+    btnP.disabled = true; btnP.textContent = 'STAKING…';
+    try {
+      const r = await fetch(`${API}/litlimbo/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wallet }) });
+      const d = await r.json();
+      if (!r.ok || d.error) { showErr(d?.error || 'start_failed'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; return; }
+      ST.roundId = d.roundId; ST.token = d.token; ST.stake = d.stake; ST.gamesLeft = d.gamesLeft;
+      panel.classList.add('hidden');
+      rolled.textContent = '—';
+      rolled.classList.remove('win','loss');
+      rolledSub.textContent = 'SET TARGET · ROLL · WIN IF ≥ TARGET';
+      hudGames.textContent = `${DAILY-ST.gamesLeft}/${DAILY}`;
+      refreshSummary();
+      fetchStats().then((s) => { if (s) hudBal.textContent = String(s.pointsBalance || 0); });
+    } catch { showErr('Network error'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; }
+  }
+
+  btnRoll.onclick = async () => {
+    if (!ST.roundId || ST.busy) return;
+    ST.busy = true;
+    btnRoll.disabled = true;
+    sndRoll();
+    const start = performance.now();
+    const spin = () => {
+      const t = performance.now() - start;
+      if (t > 700) return;
+      const fake = Math.pow(10, Math.random() * 2);  // 1..100 ish
+      rolled.textContent = `${fake.toFixed(2)}x`;
+      requestAnimationFrame(spin);
+    };
+    spin();
+    try {
+      const r = await fetch(`${API}/litlimbo/play`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roundId: ST.roundId, token: ST.token, target: ST.target }),
+      });
+      const d = await r.json();
+      setTimeout(() => {
+        if (!r.ok || d.error) { showErr(d?.error || 'play_failed'); ST.busy = false; btnRoll.disabled = false; return; }
+        rolled.textContent = `${d.rolled.toFixed(2)}x`;
+        rolledSub.textContent = `TARGET ${d.target.toFixed(2)}x · ${d.won ? 'WIN' : 'LOSS'}`;
+        rolled.classList.remove('win','loss','bump');
+        void rolled.offsetWidth;
+        rolled.classList.add('bump', d.won ? 'win' : 'loss');
+        if (d.won) sndWin(); else sndLoss();
+        endPanel(d);
+      }, 700);
+    } catch { showErr('Network error'); ST.busy = false; btnRoll.disabled = false; }
+  };
+
+  function endPanel(d) {
+    pTitle.textContent = d.won ? 'YOU WIN' : 'YOU LOSE';
+    pSub.textContent = d.won ? `Banked +${d.awarded} PTS` : `Lost ${d.stake} PTS`;
+    pBody.innerHTML = `
+      <div class="panel-big ${d.won ? 'green' : 'red'}">${d.won ? `+${d.awarded}` : `-${d.stake}`}</div>
+      <div class="panel-row"><span class="lbl">Rolled</span><span class="val">${d.rolled.toFixed(2)}x</span></div>
+      <div class="panel-row"><span class="lbl">Target</span><span class="val">${d.target.toFixed(2)}x</span></div>
+      <div class="panel-row"><span class="lbl">Profit</span><span class="val" style="color:${d.profit >= 0 ? '#5be0a4' : '#ff8a8a'}">${d.profit >= 0 ? '+' : ''}${d.profit} PTS</span></div>
+      ${d.explorerUrl ? `<div class="panel-row"><span class="lbl">Tx</span><a class="val" style="color:#5be0a4;text-decoration:underline" href="${d.explorerUrl}" target="_blank" rel="noreferrer">${(d.txHash||'').slice(0,10)}…</a></div>` : ''}
+    `;
+    postParent({ type: 'litdex:litlimbo:end', won: d.won, target: d.target, rolled: d.rolled, awarded: d.awarded, profit: d.profit, stake: d.stake, txInfo: d.txHash ? { txHash: d.txHash, explorerUrl: d.explorerUrl } : null });
+    fetchStats().then((s) => {
+      const left = s ? Math.max(0, Number(s.gamesLeft||0)) : 0;
+      const bal  = s ? Number(s.pointsBalance||0) : 0;
+      ST.gamesLeft = left;
+      hudBal.textContent = String(bal);
+      hudGames.textContent = `${DAILY-left}/${DAILY}`;
+      btnP.disabled = left <= 0 || bal < STAKE;
+      btnP.textContent = left <= 0 ? 'NO GAMES LEFT' : (bal < STAKE ? 'NOT ENOUGH PTS' : `PLAY AGAIN · ${STAKE} PTS`);
+      btnP.onclick = (left <= 0 || bal < STAKE) ? () => {} : startRound;
+    });
+    panel.classList.remove('hidden');
+    ST.busy = false;
+    btnRoll.disabled = false;
+  }
+
+  (async () => {
+    if (!wallet) { pTitle.textContent = 'LIT LIMBO'; pSub.textContent = 'Wallet missing'; pBody.innerHTML = '<div style="color:#ef4956;font-family:JetBrains Mono,monospace;font-size:11px">Open this game from the LitDeX games page.</div>'; btnP.textContent = 'CLOSE'; btnP.onclick = () => postParent({ type: 'litdex:litlimbo:exit' }); return; }
+    refreshSummary();
+    await showLobby();
+  })();
+})();
+</script>
+</body>
+</html>
