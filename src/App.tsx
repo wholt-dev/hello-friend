@@ -5253,20 +5253,18 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
 const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
   const { address, isConnected } = useAccount();
   const SIMPLE_API = 'https://game.test-hub.xyz';
-  const DAILY_LIMIT = 10;
-  const ENTRY_COST = 10;
+  const DAILY_LIMIT = 5;
+  const MAX_LIVES = 3;
 
   const [stats, setStats] = useState<any>(null);
   const [playing, setPlaying] = useState(false);
   const [starting, setStarting] = useState(false);
   const [gameOver, setGameOver] = useState<{
     reason: string;
-    multiplier: number;
-    altitudeKm: number;
+    score: number;
+    hits: number;
     awarded: number;
-    stake: number;
-    profit: number;
-    perfect: boolean;
+    best: number;
   } | null>(null);
   const [iframeKey, setIframeKey] = useState(0);
   const [errMsg, setErrMsg] = useState('');
@@ -5302,28 +5300,21 @@ const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
         return;
       }
       if (d.type === 'litdex:litlaunch:end') {
+        const awarded = Number(d.awarded) || 0;
         setGameOver({
-          reason:     String(d.reason || 'crash'),
-          multiplier: Number(d.multiplier) || 1,
-          altitudeKm: Number(d.altitudeKm) || 0,
-          awarded:    Number(d.awarded) || 0,
-          stake:      Number(d.stake) || ENTRY_COST,
-          profit:     Number(d.profit) || 0,
-          perfect:    !!d.perfect,
+          reason:  String(d.reason || 'gameover'),
+          score:   Number(d.score) || 0,
+          hits:    Number(d.hits) || 0,
+          awarded,
+          best:    Number(d.best) || 0,
         });
         try {
-          if (d.reason === 'cashout' && Number(d.awarded) > 0) {
+          if (awarded > 0) {
             addNotif(lowerAddr, {
               type: 'game',
-              title: d.perfect ? 'Lit Launch · PERFECT' : 'Lit Launch · Cashed Out',
-              message: `${Number(d.multiplier).toFixed(2)}x · +${d.awarded} PTS · ${Number(d.altitudeKm).toLocaleString()} km`,
+              title: 'Lit Launch · Run Banked',
+              message: `${d.score} coins · +${awarded} PTS`,
               link: d?.txInfo?.explorerUrl,
-            });
-          } else if (d.reason === 'crash' || d.reason === 'fellback') {
-            addNotif(lowerAddr, {
-              type: 'game',
-              title: 'Lit Launch · Crashed',
-              message: `Lost ${ENTRY_COST} PTS at ${Number(d.altitudeKm).toLocaleString()} km`,
             });
           }
         } catch {}
@@ -5366,12 +5357,11 @@ const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
 
   const balance     = Math.max(0, Number(stats?.pointsBalance ?? 0));
   const gamesLeft   = Math.max(0, Number(stats?.gamesLeft ?? Math.max(0, DAILY_LIMIT - Number(stats?.gamesPlayed ?? 0))));
-  const bestMult    = Number(stats?.bestMultiplier ?? 0);
-  const bestAlt     = Number(stats?.bestAltitudeKm ?? 0);
+  const bestScore   = Number(stats?.bestScore ?? 0);
+  const maxCoins    = Number(stats?.maxCoinsPerGame ?? 50);
 
   const startGame = async () => {
     if (!lowerAddr || starting) return;
-    if (balance < ENTRY_COST) { setErrMsg(`Need ${ENTRY_COST} PTS to launch.`); return; }
     if (gamesLeft <= 0) { setErrMsg('Daily limit reached. Resets at 00:00 IST.'); return; }
     setErrMsg('');
     setGameOver(null);
@@ -5396,7 +5386,7 @@ const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-[11px] uppercase text-brand-text-muted">Your Stats</div>
-                <span className="text-[9px] uppercase px-2 py-0.5 rounded-full text-black bg-white font-bold">{ENTRY_COST} PTS Stake</span>
+                <span className="text-[9px] uppercase px-2 py-0.5 rounded-full text-black bg-white font-bold">FREE</span>
               </div>
               {!isConnected ? (
                 <div className="text-brand-text-muted text-xs">Connect wallet to track your stats</div>
@@ -5407,8 +5397,12 @@ const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
                     <div className="text-brand-text-primary text-sm font-bold">{balance.toLocaleString()} PTS</div>
                   </div>
                   <div className="mb-3">
-                    <div className="text-[10px] uppercase text-brand-text-muted">Max Multiplier</div>
-                    <div className="text-brand-text-primary text-sm">25x</div>
+                    <div className="text-[10px] uppercase text-brand-text-muted">Reward</div>
+                    <div className="text-brand-text-primary text-sm">+1 PT / coin · {MAX_LIVES} lives</div>
+                  </div>
+                  <div className="mb-3">
+                    <div className="text-[10px] uppercase text-brand-text-muted">Cap / Game</div>
+                    <div className="text-brand-text-primary text-sm">{maxCoins} PTS</div>
                   </div>
                   <div className="mb-4">
                     <div className="text-[10px] uppercase text-brand-text-muted">Games Today</div>
@@ -5417,12 +5411,8 @@ const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
                   <div className="pt-3 border-t border-brand-border">
                     <div className="text-[10px] uppercase text-brand-text-muted mb-2">Personal Best</div>
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-brand-text-muted">Multiplier</span>
-                      <span className="text-brand-text-primary">{bestMult.toFixed(2)}x</span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] mt-1">
-                      <span className="text-brand-text-muted">Altitude</span>
-                      <span className="text-brand-text-primary">{bestAlt.toLocaleString()} km</span>
+                      <span className="text-brand-text-muted">Best Score</span>
+                      <span className="text-brand-text-primary">{bestScore} coins</span>
                     </div>
                   </div>
                 </>
@@ -5435,27 +5425,26 @@ const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
           {!playing ? (
             <div className="p-6 sm:p-8 text-center">
               <div className="font-mono text-brand-text-primary text-base sm:text-lg mb-2">LIT LAUNCH</div>
-              <div className="font-mono text-brand-text-muted text-xs mb-2">Tap and hold to fuel · release to launch · cash out before the rocket explodes.</div>
-              <div className="font-mono text-[10px] text-brand-text-muted mb-6">{ENTRY_COST} PTS stake · {DAILY_LIMIT} games/day · max 25x · resets 00:00 IST</div>
+              <div className="font-mono text-brand-text-muted text-xs mb-2">Drag left/right · dodge asteroids · catch coins. 3 lives, +1 PT per coin.</div>
+              <div className="font-mono text-[10px] text-brand-text-muted mb-6">Free · {DAILY_LIMIT} games/day · cap {maxCoins} coins · resets 00:00 IST</div>
               <button
                 type="button"
                 onClick={startGame}
                 onTouchEnd={(e) => { e.preventDefault(); (e.currentTarget as HTMLButtonElement).click(); }}
-                disabled={!isConnected || starting || (isConnected && (gamesLeft <= 0 || balance < ENTRY_COST))}
+                disabled={!isConnected || starting || (isConnected && gamesLeft <= 0)}
                 className="w-full sm:w-auto min-h-12 px-8 py-3 rounded-lg bg-brand-text-primary text-brand-bg font-mono font-bold text-sm cursor-pointer touch-manipulation select-none active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ WebkitTapHighlightColor: 'transparent' }}
               >
                 {!isConnected ? 'CONNECT WALLET' :
                   starting ? 'STARTING…' :
-                  balance < ENTRY_COST ? `NEED ${ENTRY_COST} PTS` :
-                  gamesLeft <= 0 ? 'DAILY LIMIT REACHED' : `START · ${ENTRY_COST} PTS`}
+                  gamesLeft <= 0 ? 'DAILY LIMIT REACHED' : 'START · FREE'}
               </button>
               {errMsg && (
                 <div className="mt-4 font-mono text-[11px]" style={{ color: '#c44' }}>{errMsg}</div>
               )}
             </div>
           ) : (
-            <div className="relative w-screen h-screen ll-playing-root" style={{ width: '100vw', height: '100dvh', touchAction: 'manipulation', overscrollBehavior: 'none' }}>
+            <div className="relative w-screen h-screen ll-playing-root" style={{ width: '100vw', height: '100dvh', touchAction: 'none', overscrollBehavior: 'none' }}>
               {!gameOver && (
                 <button
                   onClick={handleExitGame}
@@ -5487,58 +5476,42 @@ const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
                     borderRadius: 16, padding: 24, textAlign: 'center', color: '#fff',
                   }}>
                     <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 4 }}>
-                      {gameOver.reason === 'cashout' ? (gameOver.perfect ? 'PERFECT LAUNCH' : 'CASHED OUT') :
-                       gameOver.reason === 'crash'   ? 'EXPLODED' :
-                       gameOver.reason === 'fellback'? 'FELL BACK' :
-                                                      'FIZZLE'}
+                      {gameOver.reason === 'cap' ? 'COIN CAP' : 'GAME OVER'}
                     </div>
                     <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#666', letterSpacing: '0.2em', marginBottom: 18 }}>
                       Session ended
                     </div>
 
-                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#777', letterSpacing: '0.15em' }}>Multiplier</div>
-                    <div style={{
-                      fontSize: 40, fontWeight: 700, lineHeight: 1, marginTop: 4,
-                      color: gameOver.reason === 'cashout' ? '#5be0a4' :
-                             gameOver.reason === 'fizzle'  ? '#ffe97a' : '#ff8a8a',
-                    }}>
-                      {gameOver.reason === 'cashout' || gameOver.reason === 'fizzle'
-                        ? `${gameOver.multiplier.toFixed(2)}x`
-                        : 'CRASH'}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#777', marginTop: 4, marginBottom: 18, letterSpacing: '0.1em' }}>
-                      {gameOver.altitudeKm.toLocaleString()} KM
-                    </div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#777', letterSpacing: '0.15em' }}>Banked</div>
+                    <div style={{ fontSize: 40, fontWeight: 700, lineHeight: 1, marginTop: 4, color: '#5be0a4' }}>+{gameOver.awarded}</div>
+                    <div style={{ fontSize: 11, color: '#777', marginTop: 4, marginBottom: 18, letterSpacing: '0.1em' }}>POINTS</div>
 
                     <div style={{ display: 'grid', gap: 10, marginBottom: 18, textAlign: 'left' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Stake</span><span>{gameOver.stake} PTS</span>
+                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Coins</span><span>{gameOver.score}</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Profit</span>
-                        <span style={{ color: gameOver.profit >= 0 ? '#5be0a4' : '#ff8a8a' }}>
-                          {gameOver.profit >= 0 ? '+' : ''}{gameOver.profit} PTS
-                        </span>
+                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Hits</span><span>{gameOver.hits} / {MAX_LIVES}</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Banked</span><span>+{gameOver.awarded} PTS</span>
+                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Best</span><span>{gameOver.best}</span>
                       </div>
                     </div>
 
                     <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
                       <button
                         onClick={handlePlayAgain}
-                        disabled={gamesLeft <= 0 || balance < ENTRY_COST}
+                        disabled={gamesLeft <= 0}
                         style={{
                           flex: 1, minHeight: 48, borderRadius: 10,
                           background: '#fff', color: '#000', border: 'none',
                           fontSize: 12, fontWeight: 700, letterSpacing: '0.1em',
                           textTransform: 'uppercase',
-                          cursor: (gamesLeft <= 0 || balance < ENTRY_COST) ? 'not-allowed' : 'pointer',
-                          opacity: (gamesLeft <= 0 || balance < ENTRY_COST) ? 0.4 : 1,
+                          cursor: gamesLeft <= 0 ? 'not-allowed' : 'pointer',
+                          opacity: gamesLeft <= 0 ? 0.4 : 1,
                           WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation',
                         }}
-                      >{gamesLeft <= 0 ? 'NO GAMES LEFT' : balance < ENTRY_COST ? `NEED ${ENTRY_COST} PTS` : 'PLAY AGAIN'}</button>
+                      >{gamesLeft <= 0 ? 'NO GAMES LEFT' : 'PLAY AGAIN'}</button>
                       <button
                         onClick={handleGameOverExit}
                         style={{
@@ -5712,11 +5685,11 @@ const GamesPage = () => {
                 <polygon points="86,76 94,84 86,84" fill="#ff7a45"/>
                 <circle cx="80" cy="62" r="2.5" fill="#5be0a4"/>
               </svg>
-              <span className="absolute top-3 right-3 text-[9px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full" style={{ background: '#ff7a45', color: '#0a0a0a' }}>10 PTS</span>
+              <span className="absolute top-3 right-3 text-[9px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full" style={{ background: '#ff7a45', color: '#0a0a0a' }}>FREE</span>
             </div>
             <div className="p-6 flex-1 flex flex-col">
               <h3 className="font-bold text-xl text-white mb-2">LIT LAUNCH</h3>
-              <p className="text-sm text-[#888] mb-6 leading-relaxed">Hold to fuel · release to fly · cash out before crash. Up to 25x.</p>
+              <p className="text-sm text-[#888] mb-6 leading-relaxed">Drag left/right · dodge asteroids · catch coins. 3 lives, +1 PT per coin.</p>
               <button onClick={() => setSub('lit-launch')} className="mt-auto w-full py-3 rounded-lg bg-white text-black font-mono font-bold text-xs uppercase tracking-widest">
                 Play Now
               </button>

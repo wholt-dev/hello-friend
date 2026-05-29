@@ -1,21 +1,20 @@
 // ════════════════════════════════════════════════════════════════
-//  LIT LAUNCH — backend route (rocket physics trader)
+//  LIT LAUNCH — backend route (space dodge + coin catch)
 //  Drop into: /root/litvm-dex/game-server/litlaunch.js
 //  Mount in server.js:
 //      const litlaunch = require('./litlaunch');
 //      app.use('/litlaunch', litlaunch);
 //
-//  Crash-game-meets-physics. Player stakes 10 PTS, tap-and-holds
-//  to fuel the rocket (0–3s), releases to launch under classical
-//  ballistics, and taps CASHOUT mid-flight to lock the current
-//  altitude multiplier. The session has a hidden crash altitude
-//  derived from a server seed; reaching it before cashout =
-//  rocket explodes, stake lost.
+//  Free-to-play vertical dodge arcade. Rocket flies upward, player
+//  swipes left-right to dodge asteroids and catch coins. Each coin
+//  caught = +1 PT. 3 lives — asteroid hit = -1 life. 3 hits = game
+//  over. Speed grows with time so the cap is a soft ceiling.
 //
-//  Trust model: server-seed defines the hidden crash altitude and
-//  sweet-spot offset. Client receives the seed at /end so anyone
-//  can re-verify. Physics is fully deterministic given (seed,
-//  thrustHoldMs, cashoutAtMs).
+//  Trust model: server holds a seed and is the source of truth for
+//  the spawn schedule. Client generates the same schedule from the
+//  seed, plays the run locally, and reports {score, hits, durationMs,
+//  taps}. Server validates score against time budget + tap rate so a
+//  bot cannot fake a high score without spending real time playing.
 // ════════════════════════════════════════════════════════════════
 const { ethers } = require("ethers");
 const express = require('express');
@@ -36,7 +35,6 @@ const _wallet = new ethers.Wallet(process.env.PRIVATE_KEY, _provider);
 const POINTS_ADDR = "0x526B0629C81d3314929dB8166372F792F3da3419";
 const POINTS_ABI = [
   "function recordQuestFor(address user, uint256 pts, string calldata questId) external",
-  "function spendPoints(address user, uint256 amount) external",
   "function getPoints(address user) view returns (uint256 total, uint256 deployDaily, uint256 msgDaily)",
 ];
 const _points = new ethers.Contract(POINTS_ADDR, POINTS_ABI, _wallet);
@@ -54,6 +52,10 @@ async function readOnChainPoints(wallet) {
 const db = new Database('./simple_game.db');
 db.pragma('journal_mode = WAL');
 
+// Reuse existing tables; the previous physics-trader version of
+// this game used the same names. The columns we care about
+// (session_id, wallet, server_seed, started_at, settled, awarded,
+// fingerprint, expires_at) are identical so nothing breaks.
 db.exec(`
   CREATE TABLE IF NOT EXISTS litlaunch_daily (
     wallet TEXT NOT NULL,
@@ -65,7 +67,7 @@ db.exec(`
     session_id TEXT PRIMARY KEY,
     wallet TEXT NOT NULL,
     server_seed TEXT NOT NULL,
-    stake INTEGER NOT NULL,
+    stake INTEGER NOT NULL DEFAULT 0,
     started_at INTEGER NOT NULL,
     settled INTEGER DEFAULT 0,
     outcome TEXT,
@@ -95,30 +97,15 @@ db.exec(`
 `);
 
 // ── Config ────────────────────────────────────────────────────
-const ENTRY_COST          = 10;       // PTS per launch
-const DAILY_LIMIT         = 10;
-const SESSION_TTL_MS      = 5 * 60 * 1000;
-const MAX_GAME_DURATION_MS = 90 * 1000;
-
-// Physics (deterministic, integer-safe at server)
-const G                   = 9.8;       // gravity (km / s² at surface, simplified flat)
-const MAX_THRUST_MS       = 3000;      // hard hold cap
-const MIN_THRUST_MS       = 200;       // below this = fizzle
-const THRUST_TO_VEL       = 0.13;      // velocity per ms held (km/s scale)
-const MAX_ALT_KM          = 4500;      // beyond this = forced crash
-const MIN_ALT_KM          = 30;        // safe ground band
-
-// Multiplier curve: m(alt) = 1 + alt/200, capped at 25
-function multiplierAt(altKm) {
-  const m = 1 + Math.max(0, altKm) / 200;
-  return Math.min(25, Math.max(1, m));
-}
-
-// Sweet spot window for "Perfect Launch" bonus
-const SWEET_BASE_MS       = 1700;      // typical sweet spot
-const SWEET_RANGE_MS      = 800;       // ± seed-jittered up to 400ms
-const SWEET_HALFWIDTH_MS  = 180;
-const PERFECT_BONUS_X100  = 50;        // +0.50x
+const DAILY_LIMIT          = 5;
+const MAX_LIVES            = 3;
+const MAX_COINS_PER_GAME   = 50;     // hard cap — also the per-game payout ceiling
+const MIN_MS_PER_COIN      = 800;    // each coin needs at least this much wall time
+const MIN_MS_PER_TAP       = 80;     // movement events finer than this are bots
+const MAX_TAPS             = 600;
+const MIN_GAME_MS          = 3000;   // 3-2-1 countdown alone is ~3s
+const MAX_GAME_DURATION_MS = 5 * 60 * 1000;
+const SESSION_TTL_MS       = 10 * 60 * 1000;
 
 const PEPPER = process.env.LITLAUNCH_PEPPER || process.env.PUMPDUMP_PEPPER || 'CHANGE_ME_LONG_RANDOM';
 
@@ -129,37 +116,32 @@ const startLimiter = rateLimit({
   keyGenerator: (req) => ipKeyGenerator(req)
 });
 
-// ── Reward / spend queues ────────────────────────────────────
-const _txQueue = [];
-let _txRunning = false;
-function enqueueTx(fn) {
+// ── Reward queue (sequential, mirrors littower / pumpdump) ───
+const _pointsQueue = [];
+let _pointsRunning = false;
+function awardPoints(to, pts, questId) {
   return new Promise((resolve) => {
-    _txQueue.push({ fn, resolve });
-    processTxQueue();
+    _pointsQueue.push({ to, pts, questId, resolve });
+    processPointsQueue();
   });
 }
-async function processTxQueue() {
-  if (_txRunning) return;
-  _txRunning = true;
-  while (_txQueue.length > 0) {
-    const { fn, resolve } = _txQueue.shift();
+async function processPointsQueue() {
+  if (_pointsRunning) return;
+  _pointsRunning = true;
+  while (_pointsQueue.length > 0) {
+    const { to, pts, questId, resolve } = _pointsQueue.shift();
     try {
-      const tx = await fn();
+      const tx = await _points.recordQuestFor(to, BigInt(pts), questId);
       await tx.wait();
+      console.log(`[LL-Reward] +${pts} -> ${to.slice(0, 8)} tx=${tx.hash.slice(0, 10)}`);
       resolve(tx.hash);
     } catch (e) {
-      console.error('[LL-Tx]', e.shortMessage || e.message);
+      console.error('[LL-Reward] failed:', e.shortMessage || e.message);
       resolve(null);
     }
     await new Promise(r => setTimeout(r, 300));
   }
-  _txRunning = false;
-}
-function awardPoints(to, pts, questId) {
-  return enqueueTx(() => _points.recordQuestFor(to, BigInt(pts), questId));
-}
-function spendStake(from, amount) {
-  return enqueueTx(() => _points.spendPoints(from, BigInt(amount)));
+  _pointsRunning = false;
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -178,156 +160,50 @@ setInterval(() => {
   } catch {}
 }, 60_000).unref();
 
-// Derive 4 deterministic [0,1) floats from (seed, sessionId).
-function seedFloats(seed, sessionId) {
-  const h = hmac(seed, sessionId);
-  const f = (off) => parseInt(h.slice(off, off + 8), 16) / 0xffffffff;
-  return [f(0), f(8), f(16), f(24)];
-}
+// ── Validate the run report ──────────────────────────────────
+function validateRun(report, startedAt) {
+  if (!report || typeof report !== 'object') return { ok: false, reason: 'bad_report' };
 
-// Physics replay. Returns {peakKm, peakAtMs, altAt(t)}.
-//
-// thrustVel = (thrustMs - MIN_THRUST_MS) * THRUST_TO_VEL
-//   capped at MAX_THRUST_MS - MIN_THRUST_MS contribution
-// position(t) = v0*t - 0.5 * g * t²    (km, t in seconds)
-// velocity(t) = v0 - g*t
-// peak at t* = v0 / g, peakKm = v0² / (2g)
-function physics(thrustMs) {
-  const thrust = Math.max(0, Math.min(MAX_THRUST_MS, thrustMs) - MIN_THRUST_MS);
-  const v0 = Math.max(0, thrust) * THRUST_TO_VEL;        // km/s
-  const peakAtSec = v0 / G;
-  const peakKm = (v0 * v0) / (2 * G);
-  return {
-    v0,
-    peakAtMs: peakAtSec * 1000,
-    peakKm,
-    altAt(tMs) {
-      const t = tMs / 1000;
-      if (t < 0) return 0;
-      // After peak (t > 2 * peakAt) the rocket is below ground.
-      const a = v0 * t - 0.5 * G * t * t;
-      return a > 0 ? a : 0;
-    },
-  };
-}
+  const score    = Math.max(0, Number(report.score || 0));
+  const hits     = Math.max(0, Number(report.hits || 0));
+  const duration = Math.max(0, Number(report.durationMs || 0));
+  const taps     = Array.isArray(report.taps) ? report.taps : [];
 
-// Crash altitude generator: seed-jittered between 250 and 4400 km.
-// Distribution is biased a bit lower so juicy multipliers stay rare
-// (median ≈ 800 km ≈ 5x).
-function crashAltKm(seed, sessionId) {
-  const [u1] = seedFloats(seed, sessionId);
-  // Inverse-power skew toward smaller values.
-  const skew = Math.pow(u1, 2.2);
-  return 250 + skew * (MAX_ALT_KM - 350);
-}
+  if (hits > MAX_LIVES) return { ok: false, reason: 'too_many_hits' };
+  if (score > MAX_COINS_PER_GAME) return { ok: false, reason: 'over_cap' };
+  if (duration < MIN_GAME_MS) return { ok: false, reason: 'session_too_short' };
+  if (duration > MAX_GAME_DURATION_MS) return { ok: false, reason: 'session_too_long' };
 
-function sweetMs(seed, sessionId) {
-  const [, u2] = seedFloats(seed, sessionId);
-  return SWEET_BASE_MS + (u2 - 0.5) * SWEET_RANGE_MS;
-}
+  // Score must fit in the time budget (humanly impossible to catch
+  // 50 coins in 1 second).
+  const minTimeForScore = Math.max(0, score) * MIN_MS_PER_COIN;
+  if (duration < minTimeForScore) return { ok: false, reason: 'score_too_fast' };
 
-// Replay a run and return the verdict.
-//
-// Inputs (validated):
-//   thrustMs    – how long the player held the button (clamped 0..3000)
-//   cashoutAtMs – ms after release at which player cashed out, or null
-//
-// Outcomes:
-//   {outcome: 'fizzle',      altitude: 0, multX100: 100, awarded: stake×1 (refund) }
-//   {outcome: 'crash',       altitude: crashAlt, multX100: 0, awarded: 0 }
-//   {outcome: 'fellback',    altitude: 0, multX100: 0, awarded: 0 }
-//   {outcome: 'cashout',     altitude: altAtCashout, multX100, awarded }
-function replayRun(seed, sessionId, stake, thrustMs, cashoutAtMs) {
-  // Defensive parse.
-  thrustMs = Math.max(0, Math.min(MAX_THRUST_MS, Number(thrustMs) || 0));
-  cashoutAtMs = (cashoutAtMs == null || !Number.isFinite(Number(cashoutAtMs)))
-    ? null : Math.max(0, Math.min(MAX_GAME_DURATION_MS, Number(cashoutAtMs)));
-
-  // Fizzle: held too briefly to clear the launchpad.
-  if (thrustMs < MIN_THRUST_MS) {
-    return {
-      outcome: 'fizzle',
-      altitude: 0, multX100: 100, awarded: stake, perfect: false,
-      crashAlt: 0, sweet: 0, peakKm: 0,
-    };
-  }
-
-  const phy = physics(thrustMs);
-  const crashAlt = crashAltKm(seed, sessionId);
-  const sweet = sweetMs(seed, sessionId);
-
-  // Time at which rocket reaches crashAlt on ascent (if it does).
-  // Solve v0*t - 0.5*g*t² = crashAlt
-  // t = (v0 - sqrt(v0² - 2*g*crashAlt)) / g  (ascending root)
-  let crashAtMs = Infinity;
-  const disc = phy.v0 * phy.v0 - 2 * G * crashAlt;
-  if (disc >= 0) {
-    crashAtMs = ((phy.v0 - Math.sqrt(disc)) / G) * 1000;
-  }
-  // The rocket also falls back to ground at t = 2 * peakAt.
-  const fellbackAtMs = phy.peakAtMs * 2;
-
-  if (cashoutAtMs == null) {
-    // No cashout. Rocket either crashed at hidden altitude during
-    // ascent (if crashAtMs < fellbackAtMs) OR fell back to ground.
-    if (crashAtMs < fellbackAtMs) {
-      return {
-        outcome: 'crash',
-        altitude: Math.round(crashAlt),
-        multX100: 0, awarded: 0, perfect: false,
-        crashAlt: Math.round(crashAlt), sweet: Math.round(sweet),
-        peakKm: Math.round(phy.peakKm),
-      };
+  // Movement-tape sanity.
+  if (taps.length > MAX_TAPS) return { ok: false, reason: 'too_many_taps' };
+  let prevT = -Infinity;
+  for (let i = 0; i < taps.length; i++) {
+    const t = Number(taps[i]?.t);
+    if (!Number.isFinite(t) || t < 0 || t > duration) {
+      return { ok: false, reason: 'bad_tap_time' };
     }
-    return {
-      outcome: 'fellback',
-      altitude: Math.round(phy.peakKm),
-      multX100: 0, awarded: 0, perfect: false,
-      crashAlt: Math.round(crashAlt), sweet: Math.round(sweet),
-      peakKm: Math.round(phy.peakKm),
-    };
-  }
-
-  // Cashout requested. Did it happen BEFORE the rocket either crashed
-  // (hit hidden ceiling) or started falling back?
-  const limit = Math.min(crashAtMs, fellbackAtMs);
-  if (cashoutAtMs > limit) {
-    // Player tried to cash out too late.
-    if (crashAtMs < fellbackAtMs) {
-      return {
-        outcome: 'crash',
-        altitude: Math.round(crashAlt),
-        multX100: 0, awarded: 0, perfect: false,
-        crashAlt: Math.round(crashAlt), sweet: Math.round(sweet),
-        peakKm: Math.round(phy.peakKm),
-      };
+    if (t < prevT) return { ok: false, reason: 'tap_out_of_order' };
+    if (i > 0 && t - prevT < MIN_MS_PER_TAP) {
+      return { ok: false, reason: 'tap_too_fast' };
     }
-    return {
-      outcome: 'fellback',
-      altitude: Math.round(phy.peakKm),
-      multX100: 0, awarded: 0, perfect: false,
-      crashAlt: Math.round(crashAlt), sweet: Math.round(sweet),
-      peakKm: Math.round(phy.peakKm),
-    };
+    prevT = t;
   }
 
-  // Successful cashout — compute altitude at that moment.
-  const altKm = phy.altAt(cashoutAtMs);
-  const m = multiplierAt(altKm);
-  let multX100 = Math.round(m * 100);
+  // Soft signal: extremely uniform tap gaps over 12+ samples = bot.
+  if (taps.length >= 12) {
+    const gaps = [];
+    for (let i = 1; i < taps.length; i++) gaps.push(taps[i].t - taps[i-1].t);
+    const mean = gaps.reduce((a,b) => a+b, 0) / gaps.length;
+    const std  = Math.sqrt(gaps.reduce((s,g) => s + (g-mean)**2, 0) / gaps.length);
+    if (std < 14) return { ok: false, reason: 'tap_too_uniform' };
+  }
 
-  // Perfect-launch bonus if release was inside sweet window.
-  const perfect = Math.abs(thrustMs - sweet) <= SWEET_HALFWIDTH_MS;
-  if (perfect) multX100 = Math.min(2500, multX100 + PERFECT_BONUS_X100);
-
-  const awarded = Math.floor((stake * multX100) / 100);
-  return {
-    outcome: 'cashout',
-    altitude: Math.round(altKm),
-    multX100, awarded, perfect,
-    crashAlt: Math.round(crashAlt), sweet: Math.round(sweet),
-    peakKm: Math.round(phy.peakKm),
-  };
+  return { ok: true, score: Math.min(score, MAX_COINS_PER_GAME), hits, duration };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -346,26 +222,28 @@ router.get('/stats/:wallet', async (req, res) => {
 
     const ledgerRow = db.prepare(
       'SELECT COALESCE(SUM(delta), 0) AS total FROM litlaunch_ledger WHERE wallet = ? AND reason = ?'
-    ).get(w, 'cashout');
+    ).get(w, 'reward');
     const lifetimeWon = ledgerRow?.total || 0;
 
+    // Best score reuses the existing `awarded` column.
     const bestRow = db.prepare(
-      'SELECT MAX(altitude) AS best_alt, MAX(multiplier_x100) AS best_mult FROM litlaunch_sessions WHERE wallet = ?'
+      'SELECT MAX(awarded) AS best_score FROM litlaunch_sessions WHERE wallet = ?'
     ).get(w);
+    const bestScore = Number(bestRow?.best_score || 0);
 
     const onChain = await readOnChainPoints(w);
 
     res.json({
-      pointsBalance:    onChain ?? 0,
-      gamesPlayed:      played,
-      gamesLeft:        Math.max(0, DAILY_LIMIT - played),
-      dailyLimit:       DAILY_LIMIT,
-      entryCost:        ENTRY_COST,
-      maxMultiplier:    25,
-      maxThrustMs:      MAX_THRUST_MS,
-      bestAltitudeKm:   bestRow?.best_alt || 0,
-      bestMultiplier:   ((bestRow?.best_mult || 0) / 100),
+      pointsBalance:   onChain ?? 0,
+      gamesPlayed:     played,
+      gamesLeft:       Math.max(0, DAILY_LIMIT - played),
+      dailyLimit:      DAILY_LIMIT,
+      maxLives:        MAX_LIVES,
+      maxCoinsPerGame: MAX_COINS_PER_GAME,
+      perCoinPts:      1,
+      bestScore,
       lifetimeWon,
+      entryCost:       0,
     });
   } catch (e) {
     console.error('[/litlaunch/stats]', e.message);
@@ -394,11 +272,6 @@ router.post('/start', startLimiter, async (req, res) => {
       return res.status(429).json({ error: 'daily_limit_reached', gamesLeft: 0 });
     }
 
-    const balance = await readOnChainPoints(w);
-    if (balance != null && balance < ENTRY_COST) {
-      return res.status(402).json({ error: 'need_min_points', need: ENTRY_COST, have: balance });
-    }
-
     db.prepare(`
       INSERT INTO litlaunch_daily (wallet, date, games_played) VALUES (?, ?, 1)
       ON CONFLICT(wallet, date) DO UPDATE SET games_played = games_played + 1
@@ -406,38 +279,23 @@ router.post('/start', startLimiter, async (req, res) => {
 
     const sessionId  = crypto.randomBytes(16).toString('hex');
     const serverSeed = crypto.randomBytes(32).toString('hex');
-    const seedHash   = sha256(serverSeed);  // committed publicly; revealed at /end
     const now = Date.now();
 
     db.prepare(`
       INSERT INTO litlaunch_sessions
         (session_id, wallet, server_seed, stake, started_at, fingerprint, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(sessionId, w, serverSeed, ENTRY_COST, now, fingerprint || null, now + SESSION_TTL_MS);
-
-    // Burn the stake on chain. Block the response on this tx so the
-    // client never starts the round with phantom stake.
-    const burnHash = await spendStake(w, ENTRY_COST);
-    if (!burnHash) {
-      db.prepare('UPDATE litlaunch_sessions SET settled = 1 WHERE session_id = ?').run(sessionId);
-      return res.status(502).json({ error: 'stake_spend_failed' });
-    }
-    db.prepare(`
-      INSERT INTO litlaunch_ledger (wallet, session_id, delta, reason, tx_hash, ts)
-      VALUES (?, ?, ?, 'entry', ?, ?)
-    `).run(w, sessionId, -ENTRY_COST, burnHash, now);
+      VALUES (?, ?, 0, ?, ?, ?, ?)
+    `).run(sessionId, w, serverSeed, now, fingerprint || null, now + SESSION_TTL_MS);
 
     res.json({
       sessionId,
       token:           sign(sessionId),
-      seedHash,                       // commit; full seed revealed at /end
-      stake:           ENTRY_COST,
-      maxThrustMs:     MAX_THRUST_MS,
-      maxAltKm:        MAX_ALT_KM,
-      maxMultiplier:   25,
+      serverSeed,                       // shared so client can mirror spawn schedule
+      maxLives:        MAX_LIVES,
+      maxCoins:        MAX_COINS_PER_GAME,
+      perCoinPts:      1,
       gamesLeft:       Math.max(0, DAILY_LIMIT - (played + 1)),
       dailyLimit:      DAILY_LIMIT,
-      entryTxHash:     burnHash,
     });
   } catch (e) {
     console.error('[/litlaunch/start]', e.message);
@@ -447,7 +305,7 @@ router.post('/start', startLimiter, async (req, res) => {
 
 router.post('/end', async (req, res) => {
   try {
-    const { sessionId, token, thrustMs, cashoutAtMs } = req.body || {};
+    const { sessionId, token, score, hits, durationMs, taps } = req.body || {};
     if (!sessionId || !token) return res.status(400).json({ error: 'bad_request' });
     if (sign(sessionId) !== token) return res.status(403).json({ error: 'bad_token' });
 
@@ -459,50 +317,51 @@ router.post('/end', async (req, res) => {
       return res.status(410).json({ error: 'session_expired' });
     }
 
-    const verdict = replayRun(s.server_seed, sessionId, s.stake, thrustMs, cashoutAtMs);
+    const v = validateRun({ score, hits, durationMs, taps }, s.started_at);
+    if (!v.ok) {
+      db.prepare('UPDATE litlaunch_sessions SET settled = 1 WHERE session_id = ?').run(sessionId);
+      db.prepare(`
+        INSERT OR REPLACE INTO litlaunch_bots (wallet, flagged_at, flags, severity)
+        VALUES (?, ?, ?, ?)
+      `).run(s.wallet, Date.now(), JSON.stringify([v.reason]), 70);
+      return res.status(403).json({ error: 'invalid_run', reason: v.reason });
+    }
+
+    const awarded = v.score;
+    const outcome = v.hits >= MAX_LIVES ? 'gameover' : 'survived';
 
     db.prepare(
-      'UPDATE litlaunch_sessions SET settled = 1, outcome = ?, altitude = ?, multiplier_x100 = ?, awarded = ?, perfect = ? WHERE session_id = ?'
-    ).run(verdict.outcome, verdict.altitude, verdict.multX100, verdict.awarded, verdict.perfect ? 1 : 0, sessionId);
+      'UPDATE litlaunch_sessions SET settled = 1, outcome = ?, altitude = ?, multiplier_x100 = ?, awarded = ? WHERE session_id = ?'
+    ).run(outcome, v.score, v.hits, awarded, sessionId);
 
     let txHash = null;
-    if (verdict.awarded > 0) {
-      // Refund / payout via recordQuestFor (mints points back).
+    if (awarded > 0) {
       db.prepare(`
         INSERT INTO litlaunch_ledger (wallet, session_id, delta, reason, ts)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(s.wallet, sessionId, verdict.awarded, verdict.outcome === 'fizzle' ? 'refund' : 'cashout', Date.now());
+        VALUES (?, ?, ?, 'reward', ?)
+      `).run(s.wallet, sessionId, awarded, Date.now());
 
-      txHash = await awardPoints(s.wallet, verdict.awarded, `litlaunch_${sessionId.slice(0, 8)}`);
+      txHash = await awardPoints(s.wallet, awarded, `litlaunch_${sessionId.slice(0, 8)}`);
       if (txHash) {
-        db.prepare(`
-          UPDATE litlaunch_ledger SET tx_hash = ?
-          WHERE session_id = ? AND reason IN ('cashout','refund')
-        `).run(txHash, sessionId);
+        db.prepare(
+          'UPDATE litlaunch_ledger SET tx_hash = ? WHERE session_id = ? AND reason = ?'
+        ).run(txHash, sessionId, 'reward');
       }
     }
 
     const bestRow = db.prepare(
-      'SELECT MAX(altitude) AS best_alt, MAX(multiplier_x100) AS best_mult FROM litlaunch_sessions WHERE wallet = ?'
+      'SELECT MAX(awarded) AS best_score FROM litlaunch_sessions WHERE wallet = ?'
     ).get(s.wallet);
 
     res.json({
-      ok:             true,
-      outcome:        verdict.outcome,
-      altitudeKm:     verdict.altitude,
-      multiplier:     verdict.multX100 / 100,
-      awarded:        verdict.awarded,
-      perfect:        verdict.perfect,
-      stake:          s.stake,
-      // Reveal pieces so the client can verify.
-      serverSeed:     s.server_seed,
-      crashAltKm:     verdict.crashAlt,
-      sweetMs:        verdict.sweet,
-      peakKm:         verdict.peakKm,
+      ok:           true,
+      outcome,
+      score:        v.score,
+      hits:         v.hits,
+      awarded,
+      bestScore:    Number(bestRow?.best_score || 0),
       txHash,
-      explorerUrl:    txHash ? `https://liteforge.explorer.caldera.xyz/tx/${txHash}` : null,
-      bestAltitudeKm: bestRow?.best_alt || 0,
-      bestMultiplier: ((bestRow?.best_mult || 0) / 100),
+      explorerUrl:  txHash ? `https://liteforge.explorer.caldera.xyz/tx/${txHash}` : null,
     });
   } catch (e) {
     console.error('[/litlaunch/end]', e.message);
@@ -513,20 +372,14 @@ router.post('/end', async (req, res) => {
 router.get('/leaderboard', (req, res) => {
   try {
     const rows = db.prepare(`
-      SELECT wallet, MAX(multiplier_x100) AS best_mult, MAX(altitude) AS best_alt
+      SELECT wallet, MAX(awarded) AS best_score
       FROM litlaunch_sessions
-      WHERE settled = 1 AND outcome = 'cashout'
+      WHERE settled = 1
       GROUP BY wallet
-      ORDER BY best_mult DESC
+      ORDER BY best_score DESC
       LIMIT 25
     `).all();
-    res.json({
-      leaderboard: rows.map((r) => ({
-        wallet: r.wallet,
-        best_multiplier: (r.best_mult || 0) / 100,
-        best_altitude_km: r.best_alt || 0,
-      })),
-    });
+    res.json({ leaderboard: rows });
   } catch (e) {
     res.status(500).json({ error: 'leaderboard_failed' });
   }
