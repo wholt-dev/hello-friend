@@ -6200,8 +6200,281 @@ const LitMinesPage = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
+const LitPlinkoPage = ({ onBack }: { onBack: () => void }) => {
+  const { address, isConnected } = useAccount();
+  const SIMPLE_API = 'https://game.test-hub.xyz';
+  const STAKE = 5;
+  const DAILY_LIMIT = 20;
+  const [stats, setStats] = useState<any>(null);
+  const [playing, setPlaying] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
+  const [errMsg, setErrMsg] = useState('');
+  const lowerAddr = address ? address.toLowerCase() : '';
+  const fetchStats = async () => {
+    if (!lowerAddr) return;
+    try { const r = await fetch(`${SIMPLE_API}/litplinko/stats/${lowerAddr}`); if (r.ok) setStats(await r.json()); } catch {}
+  };
+  useEffect(() => { if (!lowerAddr) return; fetchStats(); const t = setInterval(fetchStats, 20000); return () => clearInterval(t); }, [lowerAddr]);
+  useEffect(() => {
+    if (!lowerAddr) return;
+    const onMsg = (e: MessageEvent) => {
+      const d: any = e?.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'litdex:litplinko:exit') { setPlaying(false); try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {} try { (screen.orientation as any)?.unlock?.(); } catch {} fetchStats(); return; }
+      if (d.type === 'litdex:litplinko:end') {
+        try { addNotif(lowerAddr, { type: 'game', title: d.won ? 'Lit Plinko · Win' : 'Lit Plinko · Loss', message: `${Number(d.multiplier || 0).toFixed(2)}x · ${d.profit >= 0 ? '+' : ''}${d.profit} PTS`, link: d?.txInfo?.explorerUrl }); } catch {}
+        fetchStats();
+      }
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [lowerAddr]);
+  useEffect(() => { if (playing) document.body.classList.add('hide-nav'); else document.body.classList.remove('hide-nav'); return () => document.body.classList.remove('hide-nav'); }, [playing]);
+  const balance = Math.max(0, Number(stats?.pointsBalance ?? 0));
+  const gamesLeft = Math.max(0, Number(stats?.gamesLeft ?? Math.max(0, DAILY_LIMIT - Number(stats?.gamesPlayed ?? 0))));
+  const bestMult = Number(stats?.bestMultiplier ?? 0);
+  const startGame = async () => {
+    if (!lowerAddr || starting) return;
+    if (balance < STAKE) { setErrMsg(`Need ${STAKE} PTS.`); return; }
+    if (gamesLeft <= 0) { setErrMsg('Daily limit reached.'); return; }
+    setErrMsg(''); setStarting(true); setPlaying(true);
+    try { const elx: any = document.documentElement; const req = elx.requestFullscreen || elx.webkitRequestFullscreen || elx.mozRequestFullScreen; if (req) req.call(elx).catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.lock?.('portrait').catch(() => {}); } catch {}
+    setStarting(false);
+  };
+  const handleExitGame = () => { setPlaying(false); try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {} try { (screen.orientation as any)?.unlock?.(); } catch {} fetchStats(); };
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-plinko-page py-8 max-w-7xl mx-auto px-4">
+      <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+        {!playing && (
+          <div className="order-2 lg:order-1 space-y-5">
+            <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-[11px] uppercase text-brand-text-muted">Your Stats</div>
+                <span className="text-[9px] uppercase px-2 py-0.5 rounded-full text-black bg-white font-bold">{STAKE} PTS Stake</span>
+              </div>
+              {!isConnected ? <div className="text-brand-text-muted text-xs">Connect wallet to track your stats</div> : (
+                <>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">Balance</div><div className="text-brand-text-primary text-sm font-bold">{balance.toLocaleString()} PTS</div></div>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">Slots</div><div className="text-brand-text-primary text-sm">13 · LOW / MED / HIGH</div></div>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">Max Multiplier</div><div className="text-brand-text-primary text-sm">130x (HIGH)</div></div>
+                  <div className="mb-4"><div className="text-[10px] uppercase text-brand-text-muted">Games Today</div><div className="text-brand-text-primary text-sm">{Math.max(0, DAILY_LIMIT - gamesLeft)} / {DAILY_LIMIT}</div></div>
+                  <div className="pt-3 border-t border-brand-border">
+                    <div className="text-[10px] uppercase text-brand-text-muted mb-2">Personal Best</div>
+                    <div className="flex items-center justify-between text-[11px]"><span className="text-brand-text-muted">Best Multiplier</span><span className="text-brand-text-primary">{bestMult.toFixed(2)}x</span></div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+        <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
+          {!playing ? (
+            <div className="p-6 sm:p-8 text-center">
+              <div className="font-mono text-brand-text-primary text-base sm:text-lg mb-2">LIT PLINKO</div>
+              <div className="font-mono text-brand-text-muted text-xs mb-2">Drop a ball through 12 rows of pegs into 13 multiplier slots. Provably fair.</div>
+              <div className="font-mono text-[10px] text-brand-text-muted mb-6">{STAKE} PTS stake · {DAILY_LIMIT} games/day · 95-97% RTP</div>
+              <button type="button" onClick={startGame} disabled={!isConnected || starting || (isConnected && (gamesLeft <= 0 || balance < STAKE))} className="w-full sm:w-auto min-h-12 px-8 py-3 rounded-lg bg-brand-text-primary text-brand-bg font-mono font-bold text-sm cursor-pointer touch-manipulation select-none active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                {!isConnected ? 'CONNECT WALLET' : starting ? 'STARTING…' : balance < STAKE ? `NEED ${STAKE} PTS` : gamesLeft <= 0 ? 'DAILY LIMIT REACHED' : `START · ${STAKE} PTS`}
+              </button>
+              {errMsg && <div className="mt-4 font-mono text-[11px]" style={{ color: '#c44' }}>{errMsg}</div>}
+            </div>
+          ) : (
+            <div className="relative w-screen h-screen" style={{ width: '100vw', height: '100dvh', overscrollBehavior: 'none' }}>
+              <button onClick={handleExitGame} aria-label="Exit game" className="font-mono text-[11px] uppercase bg-brand-surface-2 text-brand-text-primary border border-brand-border" style={{ position: 'fixed', bottom: 16, left: 16, zIndex: 999999, borderRadius: 8, padding: '8px 12px' }}>EXIT</button>
+              <iframe key={iframeKey} src={`/games/lit-plinko.html?wallet=${lowerAddr}`} title="Lit Plinko" style={{ border: 'none', position: 'absolute', inset: 0, width: '100%', height: '100%' }} allow="autoplay; fullscreen" />
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+const LitWheelPage = ({ onBack }: { onBack: () => void }) => {
+  const { address, isConnected } = useAccount();
+  const SIMPLE_API = 'https://game.test-hub.xyz';
+  const STAKE = 5;
+  const DAILY_LIMIT = 20;
+  const [stats, setStats] = useState<any>(null);
+  const [playing, setPlaying] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
+  const [errMsg, setErrMsg] = useState('');
+  const lowerAddr = address ? address.toLowerCase() : '';
+  const fetchStats = async () => { if (!lowerAddr) return; try { const r = await fetch(`${SIMPLE_API}/litwheel/stats/${lowerAddr}`); if (r.ok) setStats(await r.json()); } catch {} };
+  useEffect(() => { if (!lowerAddr) return; fetchStats(); const t = setInterval(fetchStats, 20000); return () => clearInterval(t); }, [lowerAddr]);
+  useEffect(() => {
+    if (!lowerAddr) return;
+    const onMsg = (e: MessageEvent) => {
+      const d: any = e?.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'litdex:litwheel:exit') { setPlaying(false); try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {} try { (screen.orientation as any)?.unlock?.(); } catch {} fetchStats(); return; }
+      if (d.type === 'litdex:litwheel:end') {
+        try { addNotif(lowerAddr, { type: 'game', title: d.won ? 'Lit Wheel · Win' : 'Lit Wheel · Loss', message: `${Number(d.multiplier || 0).toFixed(2)}x · ${d.profit >= 0 ? '+' : ''}${d.profit} PTS`, link: d?.txInfo?.explorerUrl }); } catch {}
+        fetchStats();
+      }
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [lowerAddr]);
+  useEffect(() => { if (playing) document.body.classList.add('hide-nav'); else document.body.classList.remove('hide-nav'); return () => document.body.classList.remove('hide-nav'); }, [playing]);
+  const balance = Math.max(0, Number(stats?.pointsBalance ?? 0));
+  const gamesLeft = Math.max(0, Number(stats?.gamesLeft ?? Math.max(0, DAILY_LIMIT - Number(stats?.gamesPlayed ?? 0))));
+  const bestMult = Number(stats?.bestMultiplier ?? 0);
+  const startGame = async () => {
+    if (!lowerAddr || starting) return;
+    if (balance < STAKE) { setErrMsg(`Need ${STAKE} PTS.`); return; }
+    if (gamesLeft <= 0) { setErrMsg('Daily limit reached.'); return; }
+    setErrMsg(''); setStarting(true); setPlaying(true);
+    try { const elx: any = document.documentElement; const req = elx.requestFullscreen || elx.webkitRequestFullscreen || elx.mozRequestFullScreen; if (req) req.call(elx).catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.lock?.('portrait').catch(() => {}); } catch {}
+    setStarting(false);
+  };
+  const handleExitGame = () => { setPlaying(false); try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {} try { (screen.orientation as any)?.unlock?.(); } catch {} fetchStats(); };
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-wheel-page py-8 max-w-7xl mx-auto px-4">
+      <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+        {!playing && (
+          <div className="order-2 lg:order-1 space-y-5">
+            <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-[11px] uppercase text-brand-text-muted">Your Stats</div>
+                <span className="text-[9px] uppercase px-2 py-0.5 rounded-full text-black bg-white font-bold">{STAKE} PTS Stake</span>
+              </div>
+              {!isConnected ? <div className="text-brand-text-muted text-xs">Connect wallet to track your stats</div> : (
+                <>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">Balance</div><div className="text-brand-text-primary text-sm font-bold">{balance.toLocaleString()} PTS</div></div>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">Segments</div><div className="text-brand-text-primary text-sm">24 · LOW / MED / HIGH</div></div>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">Max Multiplier</div><div className="text-brand-text-primary text-sm">20x (HIGH)</div></div>
+                  <div className="mb-4"><div className="text-[10px] uppercase text-brand-text-muted">Games Today</div><div className="text-brand-text-primary text-sm">{Math.max(0, DAILY_LIMIT - gamesLeft)} / {DAILY_LIMIT}</div></div>
+                  <div className="pt-3 border-t border-brand-border">
+                    <div className="text-[10px] uppercase text-brand-text-muted mb-2">Personal Best</div>
+                    <div className="flex items-center justify-between text-[11px]"><span className="text-brand-text-muted">Best Multiplier</span><span className="text-brand-text-primary">{bestMult.toFixed(2)}x</span></div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+        <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
+          {!playing ? (
+            <div className="p-6 sm:p-8 text-center">
+              <div className="font-mono text-brand-text-primary text-base sm:text-lg mb-2">LIT WHEEL</div>
+              <div className="font-mono text-brand-text-muted text-xs mb-2">Spin a 24-segment wheel. LOW / MED / HIGH multiplier tables. Provably fair.</div>
+              <div className="font-mono text-[10px] text-brand-text-muted mb-6">{STAKE} PTS stake · {DAILY_LIMIT} games/day · up to 20x</div>
+              <button type="button" onClick={startGame} disabled={!isConnected || starting || (isConnected && (gamesLeft <= 0 || balance < STAKE))} className="w-full sm:w-auto min-h-12 px-8 py-3 rounded-lg bg-brand-text-primary text-brand-bg font-mono font-bold text-sm cursor-pointer touch-manipulation select-none active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                {!isConnected ? 'CONNECT WALLET' : starting ? 'STARTING…' : balance < STAKE ? `NEED ${STAKE} PTS` : gamesLeft <= 0 ? 'DAILY LIMIT REACHED' : `START · ${STAKE} PTS`}
+              </button>
+              {errMsg && <div className="mt-4 font-mono text-[11px]" style={{ color: '#c44' }}>{errMsg}</div>}
+            </div>
+          ) : (
+            <div className="relative w-screen h-screen" style={{ width: '100vw', height: '100dvh', overscrollBehavior: 'none' }}>
+              <button onClick={handleExitGame} aria-label="Exit game" className="font-mono text-[11px] uppercase bg-brand-surface-2 text-brand-text-primary border border-brand-border" style={{ position: 'fixed', bottom: 16, left: 16, zIndex: 999999, borderRadius: 8, padding: '8px 12px' }}>EXIT</button>
+              <iframe key={iframeKey} src={`/games/lit-wheel.html?wallet=${lowerAddr}`} title="Lit Wheel" style={{ border: 'none', position: 'absolute', inset: 0, width: '100%', height: '100%' }} allow="autoplay; fullscreen" />
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+const LitCoinFlipPage = ({ onBack }: { onBack: () => void }) => {
+  const { address, isConnected } = useAccount();
+  const SIMPLE_API = 'https://game.test-hub.xyz';
+  const STAKE = 5;
+  const DAILY_LIMIT = 20;
+  const [stats, setStats] = useState<any>(null);
+  const [playing, setPlaying] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
+  const [errMsg, setErrMsg] = useState('');
+  const lowerAddr = address ? address.toLowerCase() : '';
+  const fetchStats = async () => { if (!lowerAddr) return; try { const r = await fetch(`${SIMPLE_API}/litcoinflip/stats/${lowerAddr}`); if (r.ok) setStats(await r.json()); } catch {} };
+  useEffect(() => { if (!lowerAddr) return; fetchStats(); const t = setInterval(fetchStats, 20000); return () => clearInterval(t); }, [lowerAddr]);
+  useEffect(() => {
+    if (!lowerAddr) return;
+    const onMsg = (e: MessageEvent) => {
+      const d: any = e?.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'litdex:litcoinflip:exit') { setPlaying(false); try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {} try { (screen.orientation as any)?.unlock?.(); } catch {} fetchStats(); return; }
+      if (d.type === 'litdex:litcoinflip:end') {
+        try { addNotif(lowerAddr, { type: 'game', title: d.won ? `Lit Coin Flip · Streak ×${d.streak}` : 'Lit Coin Flip · Loss', message: `${Number(d.multiplier || 0).toFixed(2)}x · ${d.profit >= 0 ? '+' : ''}${d.profit} PTS`, link: d?.txInfo?.explorerUrl }); } catch {}
+        fetchStats();
+      }
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [lowerAddr]);
+  useEffect(() => { if (playing) document.body.classList.add('hide-nav'); else document.body.classList.remove('hide-nav'); return () => document.body.classList.remove('hide-nav'); }, [playing]);
+  const balance = Math.max(0, Number(stats?.pointsBalance ?? 0));
+  const gamesLeft = Math.max(0, Number(stats?.gamesLeft ?? Math.max(0, DAILY_LIMIT - Number(stats?.gamesPlayed ?? 0))));
+  const bestStreak = Number(stats?.bestStreak ?? 0);
+  const startGame = async () => {
+    if (!lowerAddr || starting) return;
+    if (balance < STAKE) { setErrMsg(`Need ${STAKE} PTS.`); return; }
+    if (gamesLeft <= 0) { setErrMsg('Daily limit reached.'); return; }
+    setErrMsg(''); setStarting(true); setPlaying(true);
+    try { const elx: any = document.documentElement; const req = elx.requestFullscreen || elx.webkitRequestFullscreen || elx.mozRequestFullScreen; if (req) req.call(elx).catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.lock?.('portrait').catch(() => {}); } catch {}
+    setStarting(false);
+  };
+  const handleExitGame = () => { setPlaying(false); try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {} try { (screen.orientation as any)?.unlock?.(); } catch {} fetchStats(); };
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-coin-flip-page py-8 max-w-7xl mx-auto px-4">
+      <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+        {!playing && (
+          <div className="order-2 lg:order-1 space-y-5">
+            <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-[11px] uppercase text-brand-text-muted">Your Stats</div>
+                <span className="text-[9px] uppercase px-2 py-0.5 rounded-full text-black bg-white font-bold">{STAKE} PTS Stake</span>
+              </div>
+              {!isConnected ? <div className="text-brand-text-muted text-xs">Connect wallet to track your stats</div> : (
+                <>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">Balance</div><div className="text-brand-text-primary text-sm font-bold">{balance.toLocaleString()} PTS</div></div>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">Per-flip</div><div className="text-brand-text-primary text-sm">1.96x · 98% RTP</div></div>
+                  <div className="mb-3"><div className="text-[10px] uppercase text-brand-text-muted">Max Streak</div><div className="text-brand-text-primary text-sm">×5 = 28.89x</div></div>
+                  <div className="mb-4"><div className="text-[10px] uppercase text-brand-text-muted">Games Today</div><div className="text-brand-text-primary text-sm">{Math.max(0, DAILY_LIMIT - gamesLeft)} / {DAILY_LIMIT}</div></div>
+                  <div className="pt-3 border-t border-brand-border">
+                    <div className="text-[10px] uppercase text-brand-text-muted mb-2">Personal Best</div>
+                    <div className="flex items-center justify-between text-[11px]"><span className="text-brand-text-muted">Best Streak</span><span className="text-brand-text-primary">×{bestStreak}</span></div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+        <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
+          {!playing ? (
+            <div className="p-6 sm:p-8 text-center">
+              <div className="font-mono text-brand-text-primary text-base sm:text-lg mb-2">LIT COIN FLIP</div>
+              <div className="font-mono text-brand-text-muted text-xs mb-2">Heads or tails. Pre-commit a streak (×1 to ×5) for compounding payouts. Provably fair.</div>
+              <div className="font-mono text-[10px] text-brand-text-muted mb-6">{STAKE} PTS stake · {DAILY_LIMIT} games/day · 98% RTP per flip</div>
+              <button type="button" onClick={startGame} disabled={!isConnected || starting || (isConnected && (gamesLeft <= 0 || balance < STAKE))} className="w-full sm:w-auto min-h-12 px-8 py-3 rounded-lg bg-brand-text-primary text-brand-bg font-mono font-bold text-sm cursor-pointer touch-manipulation select-none active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed" style={{ WebkitTapHighlightColor: 'transparent' }}>
+                {!isConnected ? 'CONNECT WALLET' : starting ? 'STARTING…' : balance < STAKE ? `NEED ${STAKE} PTS` : gamesLeft <= 0 ? 'DAILY LIMIT REACHED' : `START · ${STAKE} PTS`}
+              </button>
+              {errMsg && <div className="mt-4 font-mono text-[11px]" style={{ color: '#c44' }}>{errMsg}</div>}
+            </div>
+          ) : (
+            <div className="relative w-screen h-screen" style={{ width: '100vw', height: '100dvh', overscrollBehavior: 'none' }}>
+              <button onClick={handleExitGame} aria-label="Exit game" className="font-mono text-[11px] uppercase bg-brand-surface-2 text-brand-text-primary border border-brand-border" style={{ position: 'fixed', bottom: 16, left: 16, zIndex: 999999, borderRadius: 8, padding: '8px 12px' }}>EXIT</button>
+              <iframe key={iframeKey} src={`/games/lit-coinflip.html?wallet=${lowerAddr}`} title="Lit Coin Flip" style={{ border: 'none', position: 'absolute', inset: 0, width: '100%', height: '100%' }} allow="autoplay; fullscreen" />
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
 const GamesPage = () => {
-  const [sub, setSub] = useState<'lobby' | 'math-slash' | 'pump-dump' | 'lit-tower' | 'zk-miner' | 'lit-launch' | 'block-chain' | 'lit-dice' | 'lit-limbo' | 'lit-mines'>('lobby');
+  const [sub, setSub] = useState<'lobby' | 'math-slash' | 'pump-dump' | 'lit-tower' | 'zk-miner' | 'lit-launch' | 'block-chain' | 'lit-dice' | 'lit-limbo' | 'lit-mines' | 'lit-plinko' | 'lit-wheel' | 'lit-coinflip'>('lobby');
   const [tab, setTab] = useState<'fun' | 'casino'>('fun');
   if (sub === 'math-slash') return <MathSlashPage onBack={() => setSub('lobby')} />;
   if (sub === 'pump-dump')  return <PumpDumpPage  onBack={() => setSub('lobby')} />;
@@ -6212,6 +6485,9 @@ const GamesPage = () => {
   if (sub === 'lit-dice')   return <LitDicePage   onBack={() => setSub('lobby')} />;
   if (sub === 'lit-limbo')  return <LitLimboPage  onBack={() => setSub('lobby')} />;
   if (sub === 'lit-mines')  return <LitMinesPage  onBack={() => setSub('lobby')} />;
+  if (sub === 'lit-plinko') return <LitPlinkoPage onBack={() => setSub('lobby')} />;
+  if (sub === 'lit-wheel')  return <LitWheelPage  onBack={() => setSub('lobby')} />;
+  if (sub === 'lit-coinflip') return <LitCoinFlipPage onBack={() => setSub('lobby')} />;
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-12 max-w-6xl mx-auto px-4">
       <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
@@ -6304,6 +6580,75 @@ const GamesPage = () => {
                   <h3 className="font-bold text-xl text-white mb-2">LIT MINES</h3>
                   <p className="text-sm text-[#888] mb-6 leading-relaxed">5×5 grid. Reveal safe tiles, multiplier grows. Cash out before hitting a bomb.</p>
                   <button onClick={() => setSub('lit-mines')} className="mt-auto w-full py-3 rounded-lg bg-white text-black font-mono font-bold text-xs uppercase tracking-widest">Play Now</button>
+                </div>
+              </div>
+
+              {/* LIT PLINKO */}
+              <div className="games-card-dark rounded-2xl overflow-hidden flex flex-col" style={{ background: '#0a0a0a', border: '1px solid #1f1f1f' }}>
+                <div className="h-44 flex items-center justify-center relative" style={{ background: 'linear-gradient(180deg, #04070d 0%, #1a0a2c 100%)' }}>
+                  <svg width="160" height="120" viewBox="0 0 160 120" style={{ opacity: 0.95 }}>
+                    {[0,1,2,3,4].map((r) => Array.from({length: r+2}).map((_, p) => (
+                      <circle key={`p${r}_${p}`} cx={80 - (r+1)*8 + p*16} cy={20 + r*16} r="2.5" fill="#fff" />
+                    )))}
+                    <rect x="14" y="98" width="22" height="14" rx="3" fill="rgba(140,180,255,0.3)"/>
+                    <rect x="40" y="98" width="22" height="14" rx="3" fill="rgba(91,224,164,0.55)"/>
+                    <rect x="66" y="98" width="22" height="14" rx="3" fill="rgba(255,213,90,0.7)"/>
+                    <rect x="92" y="98" width="22" height="14" rx="3" fill="rgba(91,224,164,0.55)"/>
+                    <rect x="118" y="98" width="22" height="14" rx="3" fill="rgba(140,180,255,0.3)"/>
+                    <circle cx="98" cy="86" r="5" fill="#ffd76a" />
+                  </svg>
+                  <span className="absolute top-3 right-3 text-[9px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full" style={{ background: '#c466ff', color: '#fff' }}>5 PTS</span>
+                </div>
+                <div className="p-6 flex-1 flex flex-col">
+                  <h3 className="font-bold text-xl text-white mb-2">LIT PLINKO</h3>
+                  <p className="text-sm text-[#888] mb-6 leading-relaxed">Drop a ball through 12 rows. 13 slots. LOW / MED / HIGH risk. Up to 130x.</p>
+                  <button onClick={() => setSub('lit-plinko')} className="mt-auto w-full py-3 rounded-lg bg-white text-black font-mono font-bold text-xs uppercase tracking-widest">Play Now</button>
+                </div>
+              </div>
+
+              {/* LIT WHEEL */}
+              <div className="games-card-dark rounded-2xl overflow-hidden flex flex-col" style={{ background: '#0a0a0a', border: '1px solid #1f1f1f' }}>
+                <div className="h-44 flex items-center justify-center relative" style={{ background: 'linear-gradient(180deg, #04070d 0%, #0a2018 100%)' }}>
+                  <svg width="120" height="120" viewBox="0 0 120 120" style={{ opacity: 0.95 }}>
+                    {Array.from({length: 12}).map((_, i) => {
+                      const a0 = (i / 12) * Math.PI * 2 - Math.PI / 2;
+                      const a1 = ((i + 1) / 12) * Math.PI * 2 - Math.PI / 2;
+                      const x0 = 60 + Math.cos(a0) * 50, y0 = 60 + Math.sin(a0) * 50;
+                      const x1 = 60 + Math.cos(a1) * 50, y1 = 60 + Math.sin(a1) * 50;
+                      const colors = ['#5be0a4','#ffd166','#ff5a6e','#5be0a4','#ffd166','#23314b','#5be0a4','#ffd166','#ff5a6e','#5be0a4','#ffd166','#23314b'];
+                      return <path key={i} d={`M 60 60 L ${x0} ${y0} A 50 50 0 0 1 ${x1} ${y1} Z`} fill={colors[i]} stroke="rgba(0,0,0,0.4)" />;
+                    })}
+                    <circle cx="60" cy="60" r="8" fill="#0a0e1a" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
+                    <polygon points="60,2 54,16 66,16" fill="#ffe97a" />
+                  </svg>
+                  <span className="absolute top-3 right-3 text-[9px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full" style={{ background: '#5be0a4', color: '#04241a' }}>5 PTS</span>
+                </div>
+                <div className="p-6 flex-1 flex flex-col">
+                  <h3 className="font-bold text-xl text-white mb-2">LIT WHEEL</h3>
+                  <p className="text-sm text-[#888] mb-6 leading-relaxed">Spin the 24-segment wheel. LOW / MED / HIGH risk profiles. Up to 20x.</p>
+                  <button onClick={() => setSub('lit-wheel')} className="mt-auto w-full py-3 rounded-lg bg-white text-black font-mono font-bold text-xs uppercase tracking-widest">Play Now</button>
+                </div>
+              </div>
+
+              {/* LIT COIN FLIP */}
+              <div className="games-card-dark rounded-2xl overflow-hidden flex flex-col" style={{ background: '#0a0a0a', border: '1px solid #1f1f1f' }}>
+                <div className="h-44 flex items-center justify-center relative" style={{ background: 'linear-gradient(180deg, #04070d 0%, #2a1f08 100%)' }}>
+                  <svg width="160" height="120" viewBox="0 0 160 120" style={{ opacity: 0.95 }}>
+                    <defs>
+                      <radialGradient id="cfH" cx="35%" cy="35%" r="60%"><stop offset="0%" stopColor="#fff5d2"/><stop offset="35%" stopColor="#ffd76a"/><stop offset="100%" stopColor="#a16e10"/></radialGradient>
+                      <radialGradient id="cfT" cx="35%" cy="35%" r="60%"><stop offset="0%" stopColor="#cfdbf2"/><stop offset="40%" stopColor="#7c95b8"/><stop offset="100%" stopColor="#2a3450"/></radialGradient>
+                    </defs>
+                    <ellipse cx="50" cy="60" rx="34" ry="36" fill="url(#cfH)" stroke="#fff8d6" strokeWidth="3"/>
+                    <text x="50" y="72" fontFamily="Bangers, cursive" fontSize="36" fill="#5a3a0a" textAnchor="middle">L</text>
+                    <ellipse cx="110" cy="60" rx="34" ry="36" fill="url(#cfT)" stroke="#e6edf6" strokeWidth="3" transform="scale(-1 1) translate(-220 0)"/>
+                    <text x="110" y="72" fontFamily="Bangers, cursive" fontSize="36" fill="#0a0e1a" textAnchor="middle">D</text>
+                  </svg>
+                  <span className="absolute top-3 right-3 text-[9px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full" style={{ background: '#ffd166', color: '#5a3a0a' }}>5 PTS</span>
+                </div>
+                <div className="p-6 flex-1 flex flex-col">
+                  <h3 className="font-bold text-xl text-white mb-2">LIT COIN FLIP</h3>
+                  <p className="text-sm text-[#888] mb-6 leading-relaxed">Heads or tails. 1.96x per flip. Pre-commit a streak (×1 to ×5) for up to 28.89x.</p>
+                  <button onClick={() => setSub('lit-coinflip')} className="mt-auto w-full py-3 rounded-lg bg-white text-black font-mono font-bold text-xs uppercase tracking-widest">Play Now</button>
                 </div>
               </div>
             </>

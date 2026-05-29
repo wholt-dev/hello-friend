@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Lit Plinko — LitDeX</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka+One&family=JetBrains+Mono:wght@400;700&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#050912;color:#fff;touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;font-family:'Fredoka One',cursive}
+  #game{position:relative;width:100%;height:100%;overflow:hidden;background:radial-gradient(ellipse 100% 50% at 50% 0%,rgba(120,80,200,0.18) 0%,transparent 60%),linear-gradient(180deg,#04070d 0%,#0a1226 100%)}
+  #hud{position:absolute;top:0;left:0;right:0;z-index:6;padding:14px 12px 0;padding-top:max(14px,env(safe-area-inset-top));display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+  .pill{flex:1;background:linear-gradient(180deg,rgba(15,25,45,0.95),rgba(5,10,20,0.92));border:1px solid rgba(140,180,255,0.18);border-radius:12px;padding:7px 10px 8px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.16em;color:#aac6ee;text-transform:uppercase;text-align:center;backdrop-filter:blur(6px)}
+  .pill .v{display:block;color:#fff;font-weight:700;font-size:16px;margin-top:3px;letter-spacing:0.5px}
+  .pill.bal .v{color:#5be0a4}.pill.mult .v{color:#ffe97a;font-size:18px}.pill.games .v{color:#aac6ee}
+  #stage-canvas{position:absolute;left:0;top:80px;right:0;bottom:170px;z-index:3;width:100%;height:auto}
+  #risk-row{position:absolute;left:12px;right:12px;bottom:84px;z-index:5;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .risk-btn{min-height:42px;border-radius:10px;border:1px solid rgba(140,180,255,0.22);background:rgba(15,25,45,0.85);color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.1em;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .risk-btn.on{box-shadow:0 3px 0 rgba(0,0,0,0.3)}
+  .risk-btn.on[data-r="low"]{background:linear-gradient(180deg,#5be0a4,#1f9c66);border-color:#5be0a4;color:#04241a}
+  .risk-btn.on[data-r="medium"]{background:linear-gradient(180deg,#ffd166,#c98b16);border-color:#ffd166;color:#5a3a0a}
+  .risk-btn.on[data-r="high"]{background:linear-gradient(180deg,#ff5a6e,#8a1c30);border-color:#ff5a6e;color:#fff}
+  #drop-btn{position:absolute;left:12px;right:12px;bottom:16px;bottom:max(16px,env(safe-area-inset-bottom));z-index:6;min-height:56px;border-radius:12px;border:none;background:linear-gradient(180deg,#c466ff,#6a2d99);color:#fff;font-family:'Bangers',cursive;font-size:24px;letter-spacing:4px;text-shadow:0 2px 0 rgba(0,0,0,0.4);box-shadow:0 6px 0 #3a0e60,0 0 28px rgba(196,102,255,0.4);cursor:pointer;-webkit-tap-highlight-color:transparent}
+  #drop-btn:active{transform:translateY(3px);box-shadow:0 3px 0 #3a0e60}
+  #drop-btn:disabled{opacity:0.5;cursor:not-allowed;filter:grayscale(0.3)}
+  .verify-link{position:absolute;left:12px;bottom:80px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.15em;color:rgba(255,255,255,0.4);text-decoration:underline;cursor:pointer;z-index:6}
+  #panel,#fairness{position:absolute;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);backdrop-filter:blur(6px);transition:opacity 0.3s ease}
+  #fairness{z-index:35}
+  #panel.hidden,#fairness.hidden{opacity:0;pointer-events:none}
+  .panel-card{background:#0a0e1a;border:1px solid #1f2638;border-radius:18px;padding:26px 22px;text-align:center;width:88%;max-width:380px;color:#fff}
+  .panel-title{font-family:'Bangers',cursive;font-size:38px;letter-spacing:4px;margin-bottom:4px}
+  .panel-sub{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.18em;color:rgba(255,255,255,0.55);text-transform:uppercase;margin-bottom:16px}
+  .panel-row{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:12px;margin:6px 0}
+  .panel-row .lbl{color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:0.12em}.panel-row .val{color:#fff;font-weight:700}
+  .panel-big{font-family:'JetBrains Mono',monospace;font-size:44px;line-height:1;font-weight:700;margin:14px 0 4px}.panel-big.green{color:#5be0a4}.panel-big.red{color:#ff8a8a}
+  .panel-btns{display:flex;gap:10px;margin-top:14px}
+  .panel-btn{flex:1;min-height:48px;border-radius:10px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;border:1px solid #333;background:transparent;color:#fff;-webkit-tap-highlight-color:transparent}
+  .panel-btn.primary{background:#fff;color:#000;border:none}.panel-btn:disabled{opacity:0.4;cursor:not-allowed}
+  .fair-row{display:block;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10px;color:#aac6ee;letter-spacing:0.06em;margin:8px 0;word-break:break-all}
+  .fair-row .lbl{color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:0.16em;font-size:9px;display:block;margin-bottom:2px}
+  .fair-row .val{color:#fff;background:rgba(15,25,45,0.85);padding:6px 8px;border-radius:6px;font-size:10px;line-height:1.45;display:block}
+  #err-banner{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:rgba(239,73,86,0.92);color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.1em;padding:8px 14px;border-radius:8px;z-index:40;opacity:0;transition:opacity 0.25s ease;pointer-events:none}
+  #err-banner.visible{opacity:1}
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="hud">
+    <div class="pill bal">BALANCE<span class="v" id="hud-bal">0</span></div>
+    <div class="pill mult">MULT<span class="v" id="hud-mult">—</span></div>
+    <div class="pill games">GAMES<span class="v" id="hud-games">0/20</span></div>
+  </div>
+  <canvas id="stage-canvas"></canvas>
+  <div id="risk-row">
+    <button class="risk-btn on" data-r="low">LOW</button>
+    <button class="risk-btn"     data-r="medium">MEDIUM</button>
+    <button class="risk-btn"     data-r="high">HIGH</button>
+  </div>
+  <button id="drop-btn">DROP · 5</button>
+  <div class="verify-link" id="open-fairness">PROVABLY FAIR ⓘ</div>
+
+  <div id="panel">
+    <div class="panel-card">
+      <div class="panel-title" id="panel-title">LIT PLINKO</div>
+      <div class="panel-sub" id="panel-sub">Drop a ball · 13 slots · provably fair</div>
+      <div id="panel-body"></div>
+      <div class="panel-btns">
+        <button class="panel-btn primary" id="btn-primary">PLAY · 5 PTS</button>
+        <button class="panel-btn" id="btn-exit">EXIT</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="fairness" class="hidden">
+    <div class="panel-card">
+      <div class="panel-title">FAIRNESS</div>
+      <div class="panel-sub">Verify any past result</div>
+      <div id="fair-body" style="max-height: 60vh; overflow-y: auto;"></div>
+      <div class="panel-btns">
+        <button class="panel-btn primary" id="fair-close">CLOSE</button>
+      </div>
+    </div>
+  </div>
+  <div id="err-banner"><span id="err-msg"></span></div>
+</div>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const wallet = (params.get('wallet') || '').toLowerCase();
+  const API = (params.get('api') || 'https://game.test-hub.xyz').replace(/\/$/, '');
+  const postParent = (m) => { try { window.parent && window.parent.postMessage(m, '*'); } catch {} };
+  const STAKE = 5, DAILY = 20, ROWS = 12, SLOTS = 13;
+
+  const $ = (id) => document.getElementById(id);
+  const stageCanvas = $('stage-canvas'), ctx2d = stageCanvas.getContext('2d');
+  const panel = $('panel'), pTitle = $('panel-title'), pSub = $('panel-sub'), pBody = $('panel-body');
+  const btnP = $('btn-primary'), btnX = $('btn-exit');
+  const hudBal = $('hud-bal'), hudMult = $('hud-mult'), hudGames = $('hud-games');
+  const dropBtn = $('drop-btn'), riskBtns = document.querySelectorAll('.risk-btn');
+  const fairness = $('fairness'), fairBody = $('fair-body'), fairClose = $('fair-close'), openFair = $('open-fairness');
+  const errBanner = $('err-banner'), errMsg = $('err-msg');
+
+  let DPR = 1;
+  function resize() {
+    DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    const r = stageCanvas.getBoundingClientRect();
+    stageCanvas.width = Math.floor(r.width * DPR);
+    stageCanvas.height = Math.floor(r.height * DPR);
+    ctx2d.setTransform(1,0,0,1,0,0); ctx2d.scale(DPR, DPR);
+  }
+  window.addEventListener('resize', resize);
+  setTimeout(resize, 0);
+
+  let audioCtx = null;
+  function tone(f,d,t='sine',g=0.16){try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();const o=audioCtx.createOscillator(),gN=audioCtx.createGain();o.type=t;o.frequency.value=f;gN.gain.setValueAtTime(0.0001,audioCtx.currentTime);gN.gain.exponentialRampToValueAtTime(g,audioCtx.currentTime+0.008);gN.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+d/1000);o.connect(gN).connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+d/1000);}catch{}}
+  function sndPeg(){tone(700+Math.random()*400, 35, 'sine', 0.06);}
+  function sndWin(){tone(880,70,'square',0.16);setTimeout(()=>tone(1320,90,'square',0.15),60);setTimeout(()=>tone(1760,140,'square',0.13),130);}
+  function sndLoss(){tone(180,260,'sawtooth',0.14);}
+
+  const ST = { roundId:null, token:null, seedHash:null, clientSeed:null, serverSeed:null, stake:STAKE, busy:false, gamesLeft:0, risk:'low', tables:null, ball:null, lastResult:null };
+
+  function showErr(m){errMsg.textContent=m||'error';errBanner.classList.add('visible');setTimeout(()=>errBanner.classList.remove('visible'),2400);}
+
+  riskBtns.forEach((el) => { el.onclick = () => { if (ST.busy) return; ST.risk = el.dataset.r; riskBtns.forEach((b) => b.classList.toggle('on', b === el)); drawBoard(); }; });
+  btnX.onclick = () => postParent({ type: 'litdex:litplinko:exit' });
+  openFair.onclick = () => showFairness();
+  fairClose.onclick = () => fairness.classList.add('hidden');
+
+  async function fetchStats() { if (!wallet) return null; try { const r = await fetch(`${API}/litplinko/stats/${wallet}`); if (!r.ok) return null; return await r.json(); } catch { return null; } }
+
+  async function showLobby() {
+    const stats = await fetchStats();
+    const left = stats ? Math.max(0, Number(stats.gamesLeft||0)) : DAILY;
+    const bal = stats ? Number(stats.pointsBalance||0) : 0;
+    const bestM = stats ? Number(stats.bestMultiplier||0) : 0;
+    ST.gamesLeft = left;
+    if (stats) { ST.tables = { low: stats.tables.low.map(v => v*100|0), medium: stats.tables.medium.map(v => v*100|0), high: stats.tables.high.map(v => v*100|0) }; }
+    hudBal.textContent = String(bal);
+    hudGames.textContent = `${DAILY-left}/${DAILY}`;
+    drawBoard();
+    const noG = left <= 0, lowB = bal < STAKE;
+    pTitle.textContent = 'LIT PLINKO';
+    pSub.textContent = noG ? 'Daily limit reached' : (lowB ? `Need ${STAKE} PTS` : 'Drop a ball through 12 rows · 13 slots · provably fair');
+    pBody.innerHTML = `
+      <div class="panel-row"><span class="lbl">Stake</span><span class="val">${STAKE} PTS</span></div>
+      <div class="panel-row"><span class="lbl">Slots</span><span class="val">13</span></div>
+      <div class="panel-row"><span class="lbl">Risk</span><span class="val">LOW · MED · HIGH</span></div>
+      <div class="panel-row"><span class="lbl">Max Multiplier</span><span class="val">130x (HIGH)</span></div>
+      <div class="panel-row"><span class="lbl">Games Today</span><span class="val">${DAILY-left}/${DAILY}</span></div>
+      <div class="panel-row"><span class="lbl">Best Multiplier</span><span class="val">${bestM.toFixed(2)}x</span></div>
+    `;
+    btnP.disabled = noG || lowB;
+    btnP.textContent = noG ? 'NO GAMES LEFT' : (lowB ? 'NOT ENOUGH PTS' : `PLAY · ${STAKE} PTS`);
+    btnP.onclick = (noG || lowB) ? () => {} : startRound;
+    panel.classList.remove('hidden');
+  }
+
+  async function startRound() {
+    if (!wallet) { showErr('No wallet'); return; }
+    btnP.disabled = true; btnP.textContent = 'STAKING…';
+    const cs = (Math.random().toString(36).slice(2, 14));
+    try {
+      const r = await fetch(`${API}/litplinko/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wallet, clientSeed: cs }) });
+      const d = await r.json();
+      if (!r.ok || d.error) { showErr(d?.error || 'start_failed'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; return; }
+      ST.roundId = d.roundId; ST.token = d.token; ST.seedHash = d.seedHash; ST.clientSeed = d.clientSeed; ST.serverSeed = null;
+      ST.tables = d.tables; ST.gamesLeft = d.gamesLeft;
+      hudGames.textContent = `${DAILY-ST.gamesLeft}/${DAILY}`;
+      hudMult.textContent = '—';
+      panel.classList.add('hidden');
+      drawBoard();
+      fetchStats().then((s) => { if (s) hudBal.textContent = String(s.pointsBalance || 0); });
+    } catch { showErr('Network error'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; }
+  }
+
+  dropBtn.onclick = async () => {
+    if (!ST.roundId || ST.busy) return;
+    ST.busy = true; dropBtn.disabled = true; riskBtns.forEach((b) => b.disabled = true);
+    try {
+      const r = await fetch(`${API}/litplinko/drop`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roundId: ST.roundId, token: ST.token, risk: ST.risk }) });
+      const d = await r.json();
+      if (!r.ok || d.error) { showErr(d?.error || 'drop_failed'); ST.busy = false; dropBtn.disabled = false; riskBtns.forEach((b) => b.disabled = false); return; }
+      ST.serverSeed = d.serverSeed;
+      await animateBall(d.path, d.slot);
+      hudMult.textContent = `${d.multiplier.toFixed(2)}x`;
+      if (d.multiplier > 1) sndWin(); else if (d.multiplier > 0) sndPeg(); else sndLoss();
+      endPanel(d);
+    } catch { showErr('Network error'); ST.busy = false; dropBtn.disabled = false; riskBtns.forEach((b) => b.disabled = false); }
+  };
+
+  // ── Render board ──────────────────────────────────────────
+  function drawBoard() {
+    const W = stageCanvas.clientWidth, H = stageCanvas.clientHeight;
+    if (!W || !H) return;
+    ctx2d.clearRect(0,0,W,H);
+    const padX = 20, padTop = 20, padBot = 60;
+    const drawW = W - padX * 2, drawH = H - padTop - padBot;
+    const rowGap = drawH / (ROWS + 1);
+    const colGap = drawW / (SLOTS + 1);
+
+    // Pegs
+    ctx2d.fillStyle = 'rgba(255,255,255,0.85)';
+    for (let r = 0; r < ROWS; r++) {
+      const pegs = r + 2;
+      const startX = padX + (drawW - (pegs - 1) * colGap) / 2;
+      const y = padTop + (r + 1) * rowGap;
+      for (let p = 0; p < pegs; p++) {
+        ctx2d.beginPath();
+        ctx2d.arc(startX + p * colGap, y, 3, 0, Math.PI * 2);
+        ctx2d.fill();
+      }
+    }
+    // Slots
+    const slotW = drawW / SLOTS;
+    const slotY = padTop + drawH + 4;
+    const tbl = ST.tables ? ST.tables[ST.risk] : null;
+    for (let s = 0; s < SLOTS; s++) {
+      const x = padX + s * slotW;
+      const mult = tbl ? (tbl[s] / 100) : 1;
+      const intensity = Math.min(1, mult / 30);
+      const color = mult >= 5 ? `rgba(255,213,90,${0.4 + intensity * 0.6})`
+                  : mult >= 1.5 ? `rgba(91,224,164,${0.3 + intensity * 0.6})`
+                  : `rgba(140,180,255,0.18)`;
+      ctx2d.fillStyle = color;
+      roundRect(ctx2d, x + 2, slotY, slotW - 4, padBot - 12, 6);
+      ctx2d.fill();
+      ctx2d.fillStyle = '#fff';
+      ctx2d.font = `bold ${Math.min(13, slotW * 0.4)}px 'JetBrains Mono', monospace`;
+      ctx2d.textAlign = 'center';
+      ctx2d.textBaseline = 'middle';
+      ctx2d.fillText(`${mult.toFixed(mult < 1 ? 1 : (mult >= 100 ? 0 : 1))}x`, x + slotW / 2, slotY + (padBot - 12) / 2);
+    }
+    // Ball preview
+    if (ST.ball) {
+      ctx2d.fillStyle = '#ffd76a';
+      ctx2d.shadowColor = '#ffd76a'; ctx2d.shadowBlur = 14;
+      ctx2d.beginPath();
+      ctx2d.arc(ST.ball.x, ST.ball.y, 5, 0, Math.PI * 2);
+      ctx2d.fill();
+      ctx2d.shadowBlur = 0;
+    }
+  }
+  function roundRect(c,x,y,w,h,r){r=Math.max(0,Math.min(r,w/2,h/2));c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.quadraticCurveTo(x+w,y,x+w,y+r);c.lineTo(x+w,y+h-r);c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);c.lineTo(x,y+r);c.quadraticCurveTo(x,y,x+r,y);c.closePath();}
+
+  // Animate ball through path. path[i] = -1 (left) or +1 (right) for row i.
+  function animateBall(path, finalSlot) {
+    return new Promise((resolve) => {
+      const W = stageCanvas.clientWidth, H = stageCanvas.clientHeight;
+      const padX = 20, padTop = 20, padBot = 60;
+      const drawW = W - padX * 2, drawH = H - padTop - padBot;
+      const rowGap = drawH / (ROWS + 1);
+      const colGap = drawW / (SLOTS + 1);
+
+      // Path positions per row.
+      const positions = [];
+      // Row 0 has 2 pegs centered. Ball starts above row 0, goes between pegs.
+      let col = 0; // -1 = left of center, +1 = right
+      const startX = padX + drawW / 2;
+      positions.push({ x: startX, y: padTop });
+      for (let r = 0; r < ROWS; r++) {
+        col += path[r];
+        const y = padTop + (r + 1) * rowGap + rowGap * 0.5;
+        const x = padX + drawW / 2 + (col / 2) * colGap;
+        positions.push({ x, y });
+      }
+      // Final slot center.
+      const slotW = drawW / SLOTS;
+      const finalX = padX + finalSlot * slotW + slotW / 2;
+      const finalY = padTop + drawH + (padBot / 2);
+      positions.push({ x: finalX, y: finalY });
+
+      let i = 0;
+      const startTime = performance.now();
+      const stepDur = 80;     // ms per peg
+      function step() {
+        const total = positions.length - 1;
+        const elapsed = performance.now() - startTime;
+        const progress = elapsed / stepDur;
+        const idx = Math.min(total - 1, Math.floor(progress));
+        const t = progress - idx;
+        if (idx >= total) {
+          ST.ball = positions[total];
+          drawBoard();
+          resolve();
+          return;
+        }
+        const a = positions[idx], b = positions[idx + 1];
+        ST.ball = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+        if (i !== idx) { sndPeg(); i = idx; }
+        drawBoard();
+        requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  function endPanel(d) {
+    ST.lastResult = d;
+    pTitle.textContent = d.profit > 0 ? 'YOU WIN' : (d.profit === 0 ? 'PUSH' : 'LOSE');
+    pSub.textContent = `Slot ${d.slot} · ${d.multiplier.toFixed(2)}x`;
+    pBody.innerHTML = `
+      <div class="panel-big ${d.profit >= 0 ? 'green' : 'red'}">${d.profit >= 0 ? '+' : ''}${d.profit}</div>
+      <div class="panel-row"><span class="lbl">Stake</span><span class="val">${d.stake} PTS</span></div>
+      <div class="panel-row"><span class="lbl">Awarded</span><span class="val">+${d.awarded} PTS</span></div>
+      <div class="panel-row"><span class="lbl">Multiplier</span><span class="val">${d.multiplier.toFixed(2)}x</span></div>
+      <div class="panel-row"><span class="lbl">Slot</span><span class="val">${d.slot} / ${SLOTS - 1}</span></div>
+      ${d.explorerUrl ? `<div class="panel-row"><span class="lbl">Tx</span><a class="val" style="color:#5be0a4;text-decoration:underline" href="${d.explorerUrl}" target="_blank" rel="noreferrer">${(d.txHash||'').slice(0,10)}…</a></div>` : ''}
+    `;
+    postParent({ type: 'litdex:litplinko:end', won: d.profit > 0, multiplier: d.multiplier, awarded: d.awarded, profit: d.profit, stake: d.stake, txInfo: d.txHash ? { txHash: d.txHash, explorerUrl: d.explorerUrl } : null });
+    fetchStats().then((s) => {
+      const left = s ? Math.max(0, Number(s.gamesLeft||0)) : 0;
+      const bal = s ? Number(s.pointsBalance||0) : 0;
+      ST.gamesLeft = left;
+      hudBal.textContent = String(bal);
+      hudGames.textContent = `${DAILY-left}/${DAILY}`;
+      btnP.disabled = left <= 0 || bal < STAKE;
+      btnP.textContent = left <= 0 ? 'NO GAMES LEFT' : (bal < STAKE ? 'NOT ENOUGH PTS' : `PLAY AGAIN · ${STAKE} PTS`);
+      btnP.onclick = (left <= 0 || bal < STAKE) ? () => {} : startRound;
+    });
+    panel.classList.remove('hidden');
+    ST.busy = false; dropBtn.disabled = false; riskBtns.forEach((b) => b.disabled = false);
+  }
+
+  function showFairness() {
+    const r = ST.lastResult;
+    fairBody.innerHTML = r ? `
+      <div class="fair-row"><span class="lbl">Seed Hash (committed before round)</span><span class="val">${r.seedHash || ST.seedHash || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Server Seed (revealed)</span><span class="val">${r.serverSeed || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Client Seed</span><span class="val">${r.clientSeed || ST.clientSeed || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Result</span><span class="val">slot ${r.slot} · ${r.multiplier.toFixed(2)}x</span></div>
+      <div class="fair-row"><span class="lbl">Verify</span><span class="val">sha256(serverSeed) must match seedHash. Then HMAC-SHA256(serverSeed, clientSeed + ":" + risk) → first 32 bits → 12 LSB = path bits → count of 1s = slot.</span></div>
+    ` : `
+      <div class="fair-row"><span class="lbl">Seed Hash (committed before round)</span><span class="val">${ST.seedHash || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Server Seed</span><span class="val">Hidden — revealed at end of round</span></div>
+      <div class="fair-row"><span class="lbl">Client Seed</span><span class="val">${ST.clientSeed || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">How it works</span><span class="val">Before you drop, the server commits sha256(serverSeed). After the result, server reveals serverSeed. Anyone can verify by replaying the HMAC formula.</span></div>
+    `;
+    fairness.classList.remove('hidden');
+  }
+
+  (async () => {
+    if (!wallet) { pTitle.textContent='LIT PLINKO'; pSub.textContent='Wallet missing'; pBody.innerHTML='<div style="color:#ef4956;font-family:JetBrains Mono,monospace;font-size:11px">Open this game from the LitDeX games page.</div>'; btnP.textContent='CLOSE'; btnP.onclick=()=>postParent({type:'litdex:litplinko:exit'}); return; }
+    await showLobby();
+  })();
+})();
+</script>
+</body>
+</html>

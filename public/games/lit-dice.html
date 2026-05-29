@@ -99,6 +99,7 @@
     <input type="number" id="target-input" min="2" max="98" value="50">
     <button id="roll-btn">ROLL · 5</button>
   </div>
+  <div class="verify-link" id="open-fairness" style="position:absolute;left:12px;bottom:80px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.15em;color:rgba(255,255,255,0.4);text-decoration:underline;cursor:pointer;z-index:6">PROVABLY FAIR ⓘ</div>
 
   <div id="panel">
     <div class="panel-card">
@@ -111,6 +112,21 @@
       </div>
     </div>
   </div>
+
+  <div id="fairness" class="hidden" style="position:absolute;inset:0;z-index:35;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);backdrop-filter:blur(6px);transition:opacity 0.3s ease">
+    <div class="panel-card">
+      <div class="panel-title">FAIRNESS</div>
+      <div class="panel-sub">Verify any past result</div>
+      <div id="fair-body" style="max-height: 60vh; overflow-y: auto; text-align: left;"></div>
+      <div class="panel-btns"><button class="panel-btn primary" id="fair-close">CLOSE</button></div>
+    </div>
+  </div>
+  <style>
+    #fairness.hidden{opacity:0;pointer-events:none}
+    .fair-row{display:block;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10px;color:#aac6ee;letter-spacing:0.06em;margin:8px 0;word-break:break-all}
+    .fair-row .lbl{color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:0.16em;font-size:9px;display:block;margin-bottom:2px}
+    .fair-row .val{color:#fff;background:rgba(15,25,45,0.85);padding:6px 8px;border-radius:6px;font-size:10px;line-height:1.45;display:block}
+  </style>
   <div id="err-banner"><span id="err-msg"></span></div>
 </div>
 <script>
@@ -141,7 +157,24 @@
   function sndWin()  { tone(880,70,'square',0.16); setTimeout(()=>tone(1320,90,'square',0.15),60); setTimeout(()=>tone(1760,140,'square',0.13),130); }
   function sndLoss() { tone(180,300,'sawtooth',0.16); }
 
-  const ST = { roundId: null, token: null, stake: STAKE, busy: false, dir: 'under', target: 50, gamesLeft: 0 };
+  const ST = { roundId: null, token: null, stake: STAKE, busy: false, dir: 'under', target: 50, gamesLeft: 0, seedHash: null, lastResult: null };
+
+  const fairness = document.getElementById('fairness'), fairBody = document.getElementById('fair-body');
+  document.getElementById('fair-close').onclick = () => fairness.classList.add('hidden');
+  document.getElementById('open-fairness').onclick = () => {
+    const r = ST.lastResult;
+    fairBody.innerHTML = r ? `
+      <div class="fair-row"><span class="lbl">Seed Hash</span><span class="val">${r.seedHash || ST.seedHash || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Server Seed (revealed)</span><span class="val">${r.serverSeed || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Result</span><span class="val">roll ${Number(r.roll).toFixed(2)} · ${r.direction.toUpperCase()} ${r.target} · ${r.won ? 'WIN' : 'LOSS'}</span></div>
+      <div class="fair-row"><span class="lbl">Verify</span><span class="val">sha256(serverSeed) must match seedHash. Then HMAC-SHA256(serverSeed, roundId) → first 32 bits → mod 10000 / 100 = roll.</span></div>
+    ` : `
+      <div class="fair-row"><span class="lbl">Seed Hash</span><span class="val">${ST.seedHash || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Server Seed</span><span class="val">Hidden — revealed at end of round</span></div>
+      <div class="fair-row"><span class="lbl">How it works</span><span class="val">Server commits sha256(serverSeed) before you bet. After you roll, server reveals serverSeed so you can verify the outcome was pre-determined.</span></div>
+    `;
+    fairness.classList.remove('hidden');
+  };
 
   function showErr(m) { errMsg.textContent = m||'error'; errBanner.classList.add('visible'); setTimeout(()=>errBanner.classList.remove('visible'), 2400); }
 
@@ -220,7 +253,7 @@
       const r = await fetch(`${API}/litdice/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wallet }) });
       const d = await r.json();
       if (!r.ok || d.error) { showErr(d?.error || 'start_failed'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; return; }
-      ST.roundId = d.roundId; ST.token = d.token; ST.stake = d.stake; ST.gamesLeft = d.gamesLeft;
+      ST.roundId = d.roundId; ST.token = d.token; ST.stake = d.stake; ST.gamesLeft = d.gamesLeft; ST.seedHash = d.seedHash;
       panel.classList.add('hidden');
       rollDisp.textContent = '—';
       rollDisp.classList.remove('win','loss');
@@ -273,6 +306,7 @@
   };
 
   function endPanel(d) {
+    ST.lastResult = d;
     pTitle.textContent = d.won ? 'YOU WIN' : 'YOU LOSE';
     pSub.textContent = d.won ? `Banked +${d.awarded} PTS` : `Lost ${d.stake} PTS`;
     pBody.innerHTML = `

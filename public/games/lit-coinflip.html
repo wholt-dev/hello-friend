@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Lit Coin Flip — LitDeX</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka+One&family=JetBrains+Mono:wght@400;700&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#050912;color:#fff;touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;font-family:'Fredoka One',cursive}
+  #game{position:relative;width:100%;height:100%;overflow:hidden;background:radial-gradient(ellipse 100% 50% at 50% 0%,rgba(255,210,90,0.18) 0%,transparent 60%),linear-gradient(180deg,#04070d 0%,#0a1226 100%)}
+  #hud{position:absolute;top:0;left:0;right:0;z-index:6;padding:14px 12px 0;padding-top:max(14px,env(safe-area-inset-top));display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+  .pill{flex:1;background:linear-gradient(180deg,rgba(15,25,45,0.95),rgba(5,10,20,0.92));border:1px solid rgba(140,180,255,0.18);border-radius:12px;padding:7px 10px 8px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.16em;color:#aac6ee;text-transform:uppercase;text-align:center;backdrop-filter:blur(6px)}
+  .pill .v{display:block;color:#fff;font-weight:700;font-size:16px;margin-top:3px;letter-spacing:0.5px}
+  .pill.bal .v{color:#5be0a4}.pill.mult .v{color:#ffe97a;font-size:18px}.pill.games .v{color:#aac6ee}
+
+  #stage{position:absolute;left:0;right:0;top:80px;bottom:280px;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .coin-wrap{perspective:1200px}
+  .coin{width:170px;height:170px;position:relative;transform-style:preserve-3d;transition:transform 0.15s ease;will-change:transform}
+  .coin.heads{transform:rotateY(0deg)}.coin.tails{transform:rotateY(180deg)}
+  .face{position:absolute;inset:0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bangers',cursive;font-size:64px;letter-spacing:4px;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+  .face.h{background:radial-gradient(circle at 35% 35%,#fff5d2 0%,#ffd76a 35%,#a16e10 100%);color:#5a3a0a;text-shadow:0 2px 0 rgba(255,255,255,0.4);box-shadow:inset 0 0 0 6px #fff8d6,0 14px 30px rgba(0,0,0,0.45),0 0 36px rgba(255,213,90,0.45)}
+  .face.t{transform:rotateY(180deg);background:radial-gradient(circle at 35% 35%,#cfdbf2 0%,#7c95b8 40%,#2a3450 100%);color:#0a0e1a;text-shadow:0 2px 0 rgba(255,255,255,0.4);box-shadow:inset 0 0 0 6px #e6edf6,0 14px 30px rgba(0,0,0,0.45),0 0 36px rgba(140,200,255,0.4)}
+  .flip-anim{animation: coinSpin 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards}
+  @keyframes coinSpin {0%{transform:rotateY(0deg) rotateX(0deg);}50%{transform:rotateY(720deg) rotateX(180deg) translateY(-40px);}100%{transform:rotateY(var(--final, 0deg)) rotateX(0deg) translateY(0);}}
+  .flips-strip{display:flex;gap:6px;margin-top:24px}
+  .flip-pill{width:30px;height:30px;border-radius:50%;background:rgba(15,25,45,0.85);border:1px solid rgba(140,180,255,0.22);display:flex;align-items:center;justify-content:center;font-family:'Bangers',cursive;font-size:14px;color:rgba(255,255,255,0.5);transition:transform 0.2s ease,background 0.2s ease}
+  .flip-pill.win{background:linear-gradient(180deg,#5be0a4,#1f9c66);color:#04241a;border-color:#5be0a4;transform:scale(1.1)}
+  .flip-pill.loss{background:linear-gradient(180deg,#ff5a6e,#8a1c30);color:#fff;border-color:#ff5a6e;transform:scale(1.1)}
+
+  #side-row{position:absolute;left:12px;right:12px;bottom:200px;z-index:5;display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .side-btn{min-height:54px;border-radius:12px;border:1px solid rgba(140,180,255,0.22);background:rgba(15,25,45,0.85);color:#fff;font-family:'Bangers',cursive;font-size:22px;letter-spacing:4px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .side-btn.on[data-s="heads"]{background:linear-gradient(180deg,#ffd166,#c98b16);border-color:#ffd166;color:#5a3a0a;box-shadow:0 3px 0 rgba(0,0,0,0.3)}
+  .side-btn.on[data-s="tails"]{background:linear-gradient(180deg,#7c95b8,#2a3450);border-color:#7c95b8;color:#fff;box-shadow:0 3px 0 rgba(0,0,0,0.3)}
+
+  #streak-row{position:absolute;left:12px;right:12px;bottom:138px;z-index:5;display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+  .streak-btn{min-height:42px;border-radius:10px;border:1px solid rgba(140,180,255,0.22);background:rgba(15,25,45,0.85);color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .streak-btn .n{display:block;font-family:'Bangers',cursive;font-size:14px;letter-spacing:2px;color:#fff}
+  .streak-btn .m{display:block;font-size:9px;color:#ffe97a;margin-top:2px}
+  .streak-btn.on{background:linear-gradient(180deg,#c466ff,#6a2d99);border-color:#c466ff}
+
+  #stat-row{position:absolute;left:12px;right:12px;bottom:84px;z-index:5;display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .sbox{background:linear-gradient(180deg,rgba(15,25,45,0.95),rgba(5,10,20,0.92));border:1px solid rgba(140,180,255,0.18);border-radius:10px;padding:6px 6px 7px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.14em;color:#aac6ee;text-transform:uppercase}
+  .sbox .v{display:block;color:#fff;font-weight:700;font-size:14px;margin-top:2px}.sbox .v.gold{color:#ffe97a}.sbox .v.purple{color:#c466ff}
+
+  #flip-btn{position:absolute;left:12px;right:12px;bottom:16px;bottom:max(16px,env(safe-area-inset-bottom));z-index:6;min-height:56px;border-radius:12px;border:none;background:linear-gradient(180deg,#ffd166,#c98b16);color:#5a3a0a;font-family:'Bangers',cursive;font-size:24px;letter-spacing:4px;text-shadow:0 2px 0 rgba(255,255,255,0.2);box-shadow:0 6px 0 #6e4d04,0 0 28px rgba(255,213,90,0.4);cursor:pointer;-webkit-tap-highlight-color:transparent}
+  #flip-btn:active{transform:translateY(3px);box-shadow:0 3px 0 #6e4d04}
+  #flip-btn:disabled{opacity:0.5;cursor:not-allowed;filter:grayscale(0.3)}
+  .verify-link{position:absolute;left:12px;bottom:80px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.15em;color:rgba(255,255,255,0.4);text-decoration:underline;cursor:pointer;z-index:6}
+  #panel,#fairness{position:absolute;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);backdrop-filter:blur(6px);transition:opacity 0.3s ease}
+  #fairness{z-index:35}
+  #panel.hidden,#fairness.hidden{opacity:0;pointer-events:none}
+  .panel-card{background:#0a0e1a;border:1px solid #1f2638;border-radius:18px;padding:26px 22px;text-align:center;width:88%;max-width:380px;color:#fff}
+  .panel-title{font-family:'Bangers',cursive;font-size:38px;letter-spacing:4px;margin-bottom:4px}
+  .panel-sub{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.18em;color:rgba(255,255,255,0.55);text-transform:uppercase;margin-bottom:16px}
+  .panel-row{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:12px;margin:6px 0}
+  .panel-row .lbl{color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:0.12em}.panel-row .val{color:#fff;font-weight:700}
+  .panel-big{font-family:'JetBrains Mono',monospace;font-size:44px;line-height:1;font-weight:700;margin:14px 0 4px}.panel-big.green{color:#5be0a4}.panel-big.red{color:#ff8a8a}
+  .panel-btns{display:flex;gap:10px;margin-top:14px}
+  .panel-btn{flex:1;min-height:48px;border-radius:10px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;border:1px solid #333;background:transparent;color:#fff;-webkit-tap-highlight-color:transparent}
+  .panel-btn.primary{background:#fff;color:#000;border:none}.panel-btn:disabled{opacity:0.4;cursor:not-allowed}
+  .fair-row{display:block;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10px;color:#aac6ee;letter-spacing:0.06em;margin:8px 0;word-break:break-all}
+  .fair-row .lbl{color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:0.16em;font-size:9px;display:block;margin-bottom:2px}
+  .fair-row .val{color:#fff;background:rgba(15,25,45,0.85);padding:6px 8px;border-radius:6px;font-size:10px;line-height:1.45;display:block}
+  #err-banner{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:rgba(239,73,86,0.92);color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.1em;padding:8px 14px;border-radius:8px;z-index:40;opacity:0;transition:opacity 0.25s ease;pointer-events:none}
+  #err-banner.visible{opacity:1}
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="hud">
+    <div class="pill bal">BALANCE<span class="v" id="hud-bal">0</span></div>
+    <div class="pill mult">MULT<span class="v" id="hud-mult">1.96x</span></div>
+    <div class="pill games">GAMES<span class="v" id="hud-games">0/20</span></div>
+  </div>
+
+  <div id="stage">
+    <div class="coin-wrap"><div class="coin heads" id="coin"><div class="face h">L</div><div class="face t">D</div></div></div>
+    <div class="flips-strip" id="flips-strip"></div>
+  </div>
+
+  <div id="side-row">
+    <button class="side-btn on" data-s="heads">HEADS</button>
+    <button class="side-btn"     data-s="tails">TAILS</button>
+  </div>
+
+  <div id="streak-row">
+    <button class="streak-btn on" data-n="1"><span class="n">×1</span><span class="m">1.96x</span></button>
+    <button class="streak-btn"    data-n="2"><span class="n">×2</span><span class="m">3.84x</span></button>
+    <button class="streak-btn"    data-n="3"><span class="n">×3</span><span class="m">7.52x</span></button>
+    <button class="streak-btn"    data-n="4"><span class="n">×4</span><span class="m">14.7x</span></button>
+    <button class="streak-btn"    data-n="5"><span class="n">×5</span><span class="m">28.8x</span></button>
+  </div>
+
+  <div id="stat-row">
+    <div class="sbox">CHANCE<span class="v purple" id="stat-chance">98%</span></div>
+    <div class="sbox">PAYOUT<span class="v gold" id="stat-payout">9.8 PTS</span></div>
+  </div>
+
+  <button id="flip-btn">FLIP · 5</button>
+  <div class="verify-link" id="open-fairness">PROVABLY FAIR ⓘ</div>
+
+  <div id="panel">
+    <div class="panel-card">
+      <div class="panel-title" id="panel-title">LIT COIN FLIP</div>
+      <div class="panel-sub" id="panel-sub">Pick side · pick streak · 1.96x per flip</div>
+      <div id="panel-body"></div>
+      <div class="panel-btns">
+        <button class="panel-btn primary" id="btn-primary">PLAY · 5 PTS</button>
+        <button class="panel-btn" id="btn-exit">EXIT</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="fairness" class="hidden">
+    <div class="panel-card">
+      <div class="panel-title">FAIRNESS</div>
+      <div class="panel-sub">Verify any past result</div>
+      <div id="fair-body" style="max-height: 60vh; overflow-y: auto;"></div>
+      <div class="panel-btns"><button class="panel-btn primary" id="fair-close">CLOSE</button></div>
+    </div>
+  </div>
+  <div id="err-banner"><span id="err-msg"></span></div>
+</div>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const wallet = (params.get('wallet') || '').toLowerCase();
+  const API = (params.get('api') || 'https://game.test-hub.xyz').replace(/\/$/, '');
+  const postParent = (m) => { try { window.parent && window.parent.postMessage(m, '*'); } catch {} };
+  const STAKE = 5, DAILY = 20;
+  const STREAK_MULTS = { 1: 1.96, 2: 3.84, 3: 7.52, 4: 14.74, 5: 28.89 };
+
+  const $ = (id) => document.getElementById(id);
+  const panel = $('panel'), pTitle = $('panel-title'), pSub = $('panel-sub'), pBody = $('panel-body');
+  const btnP = $('btn-primary'), btnX = $('btn-exit');
+  const hudBal = $('hud-bal'), hudMult = $('hud-mult'), hudGames = $('hud-games');
+  const flipBtn = $('flip-btn'), coin = $('coin'), flipsStrip = $('flips-strip');
+  const stChance = $('stat-chance'), stPayout = $('stat-payout');
+  const sideBtns = document.querySelectorAll('.side-btn'), streakBtns = document.querySelectorAll('.streak-btn');
+  const fairness = $('fairness'), fairBody = $('fair-body'), fairClose = $('fair-close'), openFair = $('open-fairness');
+  const errBanner = $('err-banner'), errMsg = $('err-msg');
+
+  let audioCtx = null;
+  function tone(f,d,t='sine',g=0.16){try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();const o=audioCtx.createOscillator(),gN=audioCtx.createGain();o.type=t;o.frequency.value=f;gN.gain.setValueAtTime(0.0001,audioCtx.currentTime);gN.gain.exponentialRampToValueAtTime(g,audioCtx.currentTime+0.008);gN.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+d/1000);o.connect(gN).connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+d/1000);}catch{}}
+  function sndFlip(){tone(660,40,'square',0.10);setTimeout(()=>tone(880,40,'square',0.08),60);}
+  function sndWin(){tone(880,70,'square',0.16);setTimeout(()=>tone(1320,90,'square',0.15),60);setTimeout(()=>tone(1760,140,'square',0.13),130);}
+  function sndLoss(){tone(180,260,'sawtooth',0.14);}
+
+  const ST = { roundId:null, token:null, seedHash:null, clientSeed:null, serverSeed:null, busy:false, gamesLeft:0, side:'heads', streak:1, lastResult:null };
+
+  function showErr(m){errMsg.textContent=m||'error';errBanner.classList.add('visible');setTimeout(()=>errBanner.classList.remove('visible'),2400);}
+
+  function refreshSummary() {
+    const m = STREAK_MULTS[ST.streak];
+    const wcp = Math.pow(0.5, ST.streak) * 100;
+    stChance.textContent = `${wcp.toFixed(2)}%`;
+    stPayout.textContent = `${(STAKE * m).toFixed(2)} PTS`;
+    hudMult.textContent = `${m.toFixed(2)}x`;
+  }
+  sideBtns.forEach((el) => { el.onclick = () => { if (ST.busy) return; ST.side = el.dataset.s; sideBtns.forEach((b) => b.classList.toggle('on', b === el)); coin.className = 'coin ' + ST.side; }; });
+  streakBtns.forEach((el) => { el.onclick = () => { if (ST.busy) return; ST.streak = Number(el.dataset.n); streakBtns.forEach((b) => b.classList.toggle('on', b === el)); refreshSummary(); }; });
+  btnX.onclick = () => postParent({ type: 'litdex:litcoinflip:exit' });
+  openFair.onclick = () => showFairness();
+  fairClose.onclick = () => fairness.classList.add('hidden');
+
+  async function fetchStats() { if (!wallet) return null; try { const r = await fetch(`${API}/litcoinflip/stats/${wallet}`); if (!r.ok) return null; return await r.json(); } catch { return null; } }
+
+  async function showLobby() {
+    const stats = await fetchStats();
+    const left = stats ? Math.max(0, Number(stats.gamesLeft||0)) : DAILY;
+    const bal = stats ? Number(stats.pointsBalance||0) : 0;
+    const bestS = stats ? Number(stats.bestStreak||0) : 0;
+    ST.gamesLeft = left;
+    hudBal.textContent = String(bal);
+    hudGames.textContent = `${DAILY-left}/${DAILY}`;
+    flipsStrip.innerHTML = '';
+    refreshSummary();
+    const noG = left <= 0, lowB = bal < STAKE;
+    pTitle.textContent = 'LIT COIN FLIP';
+    pSub.textContent = noG ? 'Daily limit reached' : (lowB ? `Need ${STAKE} PTS` : 'Pick side · pick streak · flip');
+    pBody.innerHTML = `
+      <div class="panel-row"><span class="lbl">Stake</span><span class="val">${STAKE} PTS</span></div>
+      <div class="panel-row"><span class="lbl">Per-flip</span><span class="val">1.96x (98% RTP)</span></div>
+      <div class="panel-row"><span class="lbl">Streak</span><span class="val">×1 to ×5</span></div>
+      <div class="panel-row"><span class="lbl">Max Multiplier</span><span class="val">28.89x (×5)</span></div>
+      <div class="panel-row"><span class="lbl">Games Today</span><span class="val">${DAILY-left}/${DAILY}</span></div>
+      <div class="panel-row"><span class="lbl">Best Streak</span><span class="val">×${bestS}</span></div>
+    `;
+    btnP.disabled = noG || lowB;
+    btnP.textContent = noG ? 'NO GAMES LEFT' : (lowB ? 'NOT ENOUGH PTS' : `PLAY · ${STAKE} PTS`);
+    btnP.onclick = (noG || lowB) ? () => {} : startRound;
+    panel.classList.remove('hidden');
+  }
+
+  async function startRound() {
+    if (!wallet) { showErr('No wallet'); return; }
+    btnP.disabled = true; btnP.textContent = 'STAKING…';
+    const cs = (Math.random().toString(36).slice(2, 14));
+    try {
+      const r = await fetch(`${API}/litcoinflip/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wallet, clientSeed: cs }) });
+      const d = await r.json();
+      if (!r.ok || d.error) { showErr(d?.error || 'start_failed'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; return; }
+      ST.roundId = d.roundId; ST.token = d.token; ST.seedHash = d.seedHash; ST.clientSeed = d.clientSeed; ST.serverSeed = null;
+      ST.gamesLeft = d.gamesLeft;
+      hudGames.textContent = `${DAILY-ST.gamesLeft}/${DAILY}`;
+      flipsStrip.innerHTML = '';
+      panel.classList.add('hidden');
+      fetchStats().then((s) => { if (s) hudBal.textContent = String(s.pointsBalance || 0); });
+    } catch { showErr('Network error'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; }
+  }
+
+  flipBtn.onclick = async () => {
+    if (!ST.roundId || ST.busy) return;
+    ST.busy = true; flipBtn.disabled = true; sideBtns.forEach((b) => b.disabled = true); streakBtns.forEach((b) => b.disabled = true);
+    sndFlip();
+    try {
+      const r = await fetch(`${API}/litcoinflip/flip`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roundId: ST.roundId, token: ST.token, side: ST.side, streak: ST.streak }) });
+      const d = await r.json();
+      if (!r.ok || d.error) { showErr(d?.error || 'flip_failed'); ST.busy = false; flipBtn.disabled = false; sideBtns.forEach((b) => b.disabled = false); streakBtns.forEach((b) => b.disabled = false); return; }
+      ST.serverSeed = d.serverSeed;
+      // Animate sequentially.
+      flipsStrip.innerHTML = '';
+      for (let i = 0; i < d.flips.length; i++) {
+        await flipCoinTo(d.flips[i]);
+        const pill = document.createElement('div');
+        pill.className = 'flip-pill ' + (d.flips[i] === ST.side ? 'win' : 'loss');
+        pill.textContent = d.flips[i] === 'heads' ? 'L' : 'D';
+        flipsStrip.appendChild(pill);
+        if (d.flips[i] !== ST.side) break;
+        sndFlip();
+        await new Promise(r => setTimeout(r, 250));
+      }
+      if (d.won) sndWin(); else sndLoss();
+      endPanel(d);
+    } catch { showErr('Network error'); ST.busy = false; flipBtn.disabled = false; sideBtns.forEach((b) => b.disabled = false); streakBtns.forEach((b) => b.disabled = false); }
+  };
+
+  function flipCoinTo(toSide) {
+    return new Promise((resolve) => {
+      coin.style.setProperty('--final', toSide === 'heads' ? '0deg' : '180deg');
+      coin.classList.remove('flip-anim');
+      void coin.offsetWidth;
+      coin.classList.add('flip-anim');
+      setTimeout(() => { coin.classList.remove('flip-anim'); coin.className = 'coin ' + toSide; resolve(); }, 1200);
+    });
+  }
+
+  function endPanel(d) {
+    ST.lastResult = d;
+    pTitle.textContent = d.won ? 'STREAK WIN' : 'STREAK BROKE';
+    pSub.textContent = `${d.side.toUpperCase()} ×${d.streak}`;
+    pBody.innerHTML = `
+      <div class="panel-big ${d.won ? 'green' : 'red'}">${d.won ? `+${d.awarded - d.stake}` : `-${d.stake}`}</div>
+      <div class="panel-row"><span class="lbl">Stake</span><span class="val">${d.stake} PTS</span></div>
+      <div class="panel-row"><span class="lbl">Multiplier</span><span class="val">${d.multiplier.toFixed(2)}x</span></div>
+      <div class="panel-row"><span class="lbl">Awarded</span><span class="val">+${d.awarded} PTS</span></div>
+      <div class="panel-row"><span class="lbl">Flips</span><span class="val">${d.flips.map(f => f === 'heads' ? 'L' : 'D').join(' · ')}</span></div>
+      ${d.explorerUrl ? `<div class="panel-row"><span class="lbl">Tx</span><a class="val" style="color:#5be0a4;text-decoration:underline" href="${d.explorerUrl}" target="_blank" rel="noreferrer">${(d.txHash||'').slice(0,10)}…</a></div>` : ''}
+    `;
+    postParent({ type: 'litdex:litcoinflip:end', won: d.won, multiplier: d.multiplier, awarded: d.awarded, profit: d.profit, stake: d.stake, streak: d.streak, txInfo: d.txHash ? { txHash: d.txHash, explorerUrl: d.explorerUrl } : null });
+    fetchStats().then((s) => {
+      const left = s ? Math.max(0, Number(s.gamesLeft||0)) : 0;
+      const bal = s ? Number(s.pointsBalance||0) : 0;
+      ST.gamesLeft = left;
+      hudBal.textContent = String(bal);
+      hudGames.textContent = `${DAILY-left}/${DAILY}`;
+      btnP.disabled = left <= 0 || bal < STAKE;
+      btnP.textContent = left <= 0 ? 'NO GAMES LEFT' : (bal < STAKE ? 'NOT ENOUGH PTS' : `PLAY AGAIN · ${STAKE} PTS`);
+      btnP.onclick = (left <= 0 || bal < STAKE) ? () => {} : startRound;
+    });
+    panel.classList.remove('hidden');
+    ST.busy = false; flipBtn.disabled = false; sideBtns.forEach((b) => b.disabled = false); streakBtns.forEach((b) => b.disabled = false);
+  }
+
+  function showFairness() {
+    const r = ST.lastResult;
+    fairBody.innerHTML = r ? `
+      <div class="fair-row"><span class="lbl">Seed Hash (committed before round)</span><span class="val">${r.seedHash || ST.seedHash || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Server Seed (revealed)</span><span class="val">${r.serverSeed || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Client Seed</span><span class="val">${r.clientSeed || ST.clientSeed || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Result</span><span class="val">${r.flips.map(f => f === 'heads' ? 'H' : 'T').join(' / ')}  ·  multiplier ${r.multiplier.toFixed(2)}x</span></div>
+      <div class="fair-row"><span class="lbl">Verify</span><span class="val">sha256(serverSeed) must match seedHash. Then for i in 0..streak-1: HMAC-SHA256(serverSeed, clientSeed + ":" + side + ":" + streak + ":" + i) → first byte LSB → 0=heads / 1=tails.</span></div>
+    ` : `
+      <div class="fair-row"><span class="lbl">Seed Hash (committed before round)</span><span class="val">${ST.seedHash || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Server Seed</span><span class="val">Hidden — revealed at end of round</span></div>
+      <div class="fair-row"><span class="lbl">Client Seed</span><span class="val">${ST.clientSeed || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">How it works</span><span class="val">Before you flip, the server commits sha256(serverSeed). All flips for the streak are pre-derived. Server reveals serverSeed at the end so you can replay each HMAC and check.</span></div>
+    `;
+    fairness.classList.remove('hidden');
+  }
+
+  (async () => {
+    if (!wallet) { pTitle.textContent='LIT COIN FLIP'; pSub.textContent='Wallet missing'; pBody.innerHTML='<div style="color:#ef4956;font-family:JetBrains Mono,monospace;font-size:11px">Open this game from the LitDeX games page.</div>'; btnP.textContent='CLOSE'; btnP.onclick=()=>postParent({type:'litdex:litcoinflip:exit'}); return; }
+    refreshSummary();
+    await showLobby();
+  })();
+})();
+</script>
+</body>
+</html>
