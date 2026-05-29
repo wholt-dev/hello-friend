@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Lit Tower — LitDeX</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka+One&family=JetBrains+Mono:wght@400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #0a0a0a;
+    color: #fff;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    font-family: 'Fredoka One', cursive;
+  }
+
+  #game-container {
+    position: relative;
+    width: 100%; height: 100%;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(62,207,142,0.08) 0%, transparent 55%),
+      radial-gradient(ellipse at 50% 100%, rgba(122, 90, 255, 0.08) 0%, transparent 55%),
+      #0a0a0a;
+  }
+
+  canvas {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: block;
+  }
+  #stage-canvas { z-index: 1; cursor: pointer; }
+  #fx-canvas    { z-index: 2; pointer-events: none; }
+
+  /* HUD */
+  #hud-top {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 5;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    padding: 12px 12px 0;
+    pointer-events: none;
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+  .hud-chip {
+    background: linear-gradient(180deg, rgba(20,20,20,0.92), rgba(10,10,10,0.85));
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 8px 6px 7px;
+    text-align: center;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .hud-label {
+    font-family: 'Fredoka One', cursive;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: rgba(255,255,255,0.55);
+    text-transform: uppercase;
+    line-height: 1;
+  }
+  .hud-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 18px;
+    color: #fff;
+    letter-spacing: 0.5px;
+    margin-top: 3px;
+    line-height: 1;
+  }
+  .hud-val.height { color: #fff; text-shadow: 0 0 12px rgba(255,255,255,0.4); }
+  .hud-val.points { color: #3ecf8e; }
+
+  /* Big tap hint that fades out after first stack */
+  #tap-hint {
+    position: absolute;
+    bottom: 28%;
+    left: 0; right: 0;
+    text-align: center;
+    z-index: 5;
+    pointer-events: none;
+    font-family: 'Bangers', cursive;
+    font-size: clamp(36px, 9vw, 72px);
+    letter-spacing: 6px;
+    color: #fff;
+    text-shadow: 0 0 28px rgba(255,255,255,0.55);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  #tap-hint.visible { opacity: 1; animation: tapHintPulse 1.4s ease-in-out infinite; }
+  @keyframes tapHintPulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.06); }
+  }
+
+  /* Center start/restart panel */
+  #panel {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.78);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: opacity 0.3s ease;
+  }
+  #panel.hidden { opacity: 0; pointer-events: none; }
+  .panel-card {
+    background: #0a0a0a;
+    border: 1px solid #1f1f1f;
+    border-radius: 18px;
+    padding: 26px 22px;
+    text-align: center;
+    width: 88%; max-width: 360px;
+    color: #fff;
+    font-family: 'Fredoka One', cursive;
+  }
+  .panel-title {
+    font-family: 'Bangers', cursive;
+    font-size: 36px;
+    letter-spacing: 4px;
+    margin-bottom: 4px;
+    text-shadow: 0 0 18px rgba(62,207,142,0.45);
+  }
+  .panel-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: rgba(255,255,255,0.55);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .panel-stat-row {
+    display: flex; justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    margin: 6px 0;
+  }
+  .panel-stat-row .lbl { color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.12em; }
+  .panel-stat-row .val { color: #fff; font-weight: 700; }
+  .panel-big {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 44px; line-height: 1;
+    font-weight: 700;
+    margin: 14px 0 4px;
+  }
+  .panel-big.green { color: #3ecf8e; }
+  .panel-divider { height: 1px; background: #1f1f1f; margin: 14px 0; }
+  .panel-btns { display: flex; gap: 10px; margin-top: 14px; }
+  .panel-btn {
+    flex: 1;
+    min-height: 48px;
+    border-radius: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border: 1px solid #333;
+    background: transparent;
+    color: #fff;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .panel-btn.primary {
+    background: #fff; color: #000; border: none;
+  }
+  .panel-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Score popups */
+  .score-pop {
+    position: absolute;
+    z-index: 6;
+    font-family: 'Bangers', cursive;
+    font-size: 38px;
+    letter-spacing: 2px;
+    color: #3ecf8e;
+    text-shadow: 0 0 18px rgba(62,207,142,0.7);
+    pointer-events: none;
+    animation: popUp 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  .score-pop.miss { color: #ef4956; text-shadow: 0 0 18px rgba(239,73,86,0.6); }
+  @keyframes popUp {
+    0%   { transform: translate(-50%, 0) scale(0.7); opacity: 0; }
+    25%  { transform: translate(-50%, -18px) scale(1.15); opacity: 1; }
+    100% { transform: translate(-50%, -90px) scale(0.95); opacity: 0; }
+  }
+
+  .shake { animation: shake 0.35s ease; }
+  @keyframes shake {
+    0%, 100% { transform: translate(0, 0); }
+    25% { transform: translate(-4px, 1px); }
+    75% { transform: translate(4px, -1px); }
+  }
+
+  #err-banner {
+    position: absolute; top: 12px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(239,73,86,0.92);
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.1em;
+    padding: 8px 14px; border-radius: 8px;
+    z-index: 40;
+    opacity: 0; transition: opacity 0.25s ease;
+  }
+  #err-banner.visible { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="game-container">
+  <canvas id="stage-canvas"></canvas>
+  <canvas id="fx-canvas"></canvas>
+
+  <div id="hud-top">
+    <div class="hud-chip">
+      <div class="hud-label">Height</div>
+      <div class="hud-val height" id="hud-height">0</div>
+    </div>
+    <div class="hud-chip">
+      <div class="hud-label">+ Pts</div>
+      <div class="hud-val points" id="hud-points">0</div>
+    </div>
+    <div class="hud-chip">
+      <div class="hud-label">Cap</div>
+      <div class="hud-val" id="hud-cap">20</div>
+    </div>
+  </div>
+
+  <div id="tap-hint">TAP TO STACK</div>
+
+  <div id="panel">
+    <div class="panel-card" id="panel-card">
+      <div class="panel-title" id="panel-title">LIT TOWER</div>
+      <div class="panel-sub" id="panel-sub">Free · 5 games / day · +1 PT each correct stack</div>
+      <div id="panel-body"></div>
+      <div class="panel-btns">
+        <button class="panel-btn primary" id="btn-primary">PLAY</button>
+        <button class="panel-btn" id="btn-exit">EXIT</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="err-banner"><span id="err-msg"></span></div>
+</div>
+
+<script>
+(() => {
+  // ── Wiring ─────────────────────────────────────────────────
+  const params  = new URLSearchParams(location.search);
+  const wallet  = (params.get('wallet') || '').toLowerCase();
+  const auto    = params.get('autostart') === '1';
+  const API     = (params.get('api') || 'https://game.test-hub.xyz').replace(/\/$/, '');
+  const PARENT_ORIGIN = '*';
+
+  function postParent(msg) {
+    try { window.parent && window.parent.postMessage(msg, PARENT_ORIGIN); } catch {}
+  }
+
+  // ── DOM / canvas ──────────────────────────────────────────
+  const stageCanvas = document.getElementById('stage-canvas');
+  const fxCanvas    = document.getElementById('fx-canvas');
+  const stage       = stageCanvas.getContext('2d');
+  const fx          = fxCanvas.getContext('2d');
+  const panel       = document.getElementById('panel');
+  const panelTitle  = document.getElementById('panel-title');
+  const panelSub    = document.getElementById('panel-sub');
+  const panelBody   = document.getElementById('panel-body');
+  const btnPrimary  = document.getElementById('btn-primary');
+  const btnExit     = document.getElementById('btn-exit');
+  const tapHint     = document.getElementById('tap-hint');
+  const errBanner   = document.getElementById('err-banner');
+  const errMsg      = document.getElementById('err-msg');
+  const hudHeight   = document.getElementById('hud-height');
+  const hudPoints   = document.getElementById('hud-points');
+  const hudCap      = document.getElementById('hud-cap');
+
+  function resize() {
+    const dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    [stageCanvas, fxCanvas].forEach((c) => {
+      const r = c.getBoundingClientRect();
+      c.width  = Math.floor(r.width * dpr);
+      c.height = Math.floor(r.height * dpr);
+    });
+    stage.setTransform(1, 0, 0, 1, 0, 0); stage.scale(dpr, dpr);
+    fx.setTransform(1, 0, 0, 1, 0, 0);    fx.scale(dpr, dpr);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ── Audio ─────────────────────────────────────────────────
+  let audioCtx = null;
+  function tone(freq, durMs, type = 'sine', gain = 0.16) {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = type;
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(gain, audioCtx.currentTime + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + durMs / 1000);
+      o.connect(g).connect(audioCtx.destination);
+      o.start();
+      o.stop(audioCtx.currentTime + durMs / 1000);
+    } catch {}
+  }
+  function sndPlace(level) { tone(440 + level * 30, 90, 'square', 0.13); }
+  function sndPerfect()    { tone(880, 70, 'square', 0.16); setTimeout(() => tone(1100, 120, 'square', 0.14), 60); }
+  function sndMiss()       { tone(160, 260, 'sawtooth', 0.18); }
+  function sndCash()       { tone(523, 70, 'square', 0.14); setTimeout(() => tone(659, 70, 'square', 0.14), 80); setTimeout(() => tone(784, 140, 'square', 0.16), 160); }
+
+  // ── Game state ────────────────────────────────────────────
+  const STATE = {
+    sessionId: null,
+    token:     null,
+    maxStacks: 20,
+    perPt:     1,
+    gamesLeft: 0,
+    blocks: [],          // settled blocks below the slider
+    slider: null,        // moving block on top
+    height: 0,
+    correct: 0,
+    awarded: 0,
+    running: false,
+    starting: false,
+    taps: [],            // anti-cheat tape — t (ms since startedAt)
+    startedAt: 0,
+    lastTapAt: 0,
+    cameraY: 0,          // upward camera shift as tower grows
+    targetCameraY: 0,
+  };
+
+  // Layout constants (in CSS pixels)
+  const BLOCK_HEIGHT = 26;
+  const BASE_W       = 0.66;      // base block width as fraction of canvas
+  const SLIDER_SPEED_BASE = 130;  // px/sec (level 1)
+  const SLIDER_SPEED_GROW = 8;    // +px/sec per level
+
+  function viewW() { return stageCanvas.clientWidth; }
+  function viewH() { return stageCanvas.clientHeight; }
+
+  function showErr(m) {
+    errMsg.textContent = m || 'error';
+    errBanner.classList.add('visible');
+    setTimeout(() => errBanner.classList.remove('visible'), 2400);
+  }
+
+  function showPanel(title, sub, bodyHTML, primaryLabel, primaryAction) {
+    panelTitle.textContent = title;
+    panelSub.textContent   = sub;
+    panelBody.innerHTML    = bodyHTML || '';
+    btnPrimary.textContent = primaryLabel;
+    btnPrimary.onclick     = primaryAction;
+    panel.classList.remove('hidden');
+  }
+  function hidePanel() { panel.classList.add('hidden'); }
+
+  btnExit.onclick = () => postParent({ type: 'litdex:littower:exit' });
+
+  // ── Lobby panel ───────────────────────────────────────────
+  async function fetchStats() {
+    if (!wallet) return null;
+    try {
+      const r = await fetch(`${API}/littower/stats/${wallet}`);
+      if (!r.ok) return null;
+      return await r.json();
+    } catch { return null; }
+  }
+
+  async function showLobby() {
+    STATE.running = false;
+    drawStage();
+    const stats = await fetchStats();
+    const left = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 5;
+    STATE.gamesLeft = left;
+    const best = stats ? Number(stats.bestHeight || 0) : 0;
+    const cap  = stats ? Number(stats.maxPerGame || 20) : 20;
+    hudCap.textContent = cap;
+
+    const noGames = left <= 0;
+    const body = `
+      <div class="panel-stat-row"><span class="lbl">Reward</span><span class="val">+1 PT / stack</span></div>
+      <div class="panel-stat-row"><span class="lbl">Cap / Game</span><span class="val">${cap}</span></div>
+      <div class="panel-stat-row"><span class="lbl">Games Today</span><span class="val">${5 - left} / 5</span></div>
+      <div class="panel-stat-row"><span class="lbl">Best Height</span><span class="val">${best}</span></div>
+    `;
+    showPanel(
+      'LIT TOWER',
+      noGames ? 'Daily limit reached · resets 00:00 IST' : 'Free · tap to stack · +1 PT each correct',
+      body,
+      noGames ? 'NO GAMES LEFT' : 'PLAY',
+      noGames ? () => {} : startGame
+    );
+    btnPrimary.disabled = noGames;
+  }
+
+  // ── Start a session ───────────────────────────────────────
+  async function startGame() {
+    if (!wallet) { showErr('No wallet'); return; }
+    if (STATE.starting) return;
+    STATE.starting = true;
+    btnPrimary.disabled = true;
+    btnPrimary.textContent = 'STARTING…';
+
+    try {
+      const r = await fetch(`${API}/littower/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet }),
+      });
+      const data = await r.json();
+      if (!r.ok || data.error) {
+        showErr(data?.error === 'daily_limit_reached' ? 'Daily limit reached' : (data?.error || 'start_failed'));
+        STATE.starting = false;
+        btnPrimary.disabled = false;
+        btnPrimary.textContent = 'PLAY';
+        return;
+      }
+      STATE.sessionId = data.sessionId;
+      STATE.token     = data.token;
+      STATE.maxStacks = Number(data.maxStacks || 20);
+      STATE.perPt     = Number(data.perCorrectPts || 1);
+      STATE.gamesLeft = Number(data.gamesLeft || 0);
+      hudCap.textContent = STATE.maxStacks;
+      initRun();
+    } catch (e) {
+      showErr('Network error');
+      STATE.starting = false;
+      btnPrimary.disabled = false;
+      btnPrimary.textContent = 'PLAY';
+    }
+  }
+
+  function initRun() {
+    STATE.starting = false;
+    STATE.running  = true;
+    STATE.blocks   = [];
+    STATE.slider   = null;
+    STATE.height   = 0;
+    STATE.correct  = 0;
+    STATE.awarded  = 0;
+    STATE.taps     = [];
+    STATE.startedAt = performance.now();
+    STATE.lastTapAt = -1e9;
+    STATE.cameraY = 0;
+    STATE.targetCameraY = 0;
+
+    // Place a wide foundation block at the bottom.
+    const w0 = viewW() * BASE_W;
+    STATE.blocks.push({
+      x: (viewW() - w0) / 2,
+      y: viewH() - BLOCK_HEIGHT - 24,
+      w: w0,
+      hue: 0,
+    });
+    spawnSlider();
+    hidePanel();
+    tapHint.classList.add('visible');
+    setTimeout(() => tapHint.classList.remove('visible'), 1800);
+    requestAnimationFrame(loop);
+  }
+
+  function spawnSlider() {
+    const last = STATE.blocks[STATE.blocks.length - 1];
+    const w = last.w;
+    const fromLeft = STATE.height % 2 === 0;
+    STATE.slider = {
+      x: fromLeft ? -w : viewW(),
+      y: last.y - BLOCK_HEIGHT,
+      w,
+      vx: SLIDER_SPEED_BASE + STATE.height * SLIDER_SPEED_GROW,
+      dir: fromLeft ? 1 : -1,
+      hue: (STATE.height + 1) * 18,
+    };
+  }
+
+  // ── Game loop ─────────────────────────────────────────────
+  let lastT = 0;
+  function loop(t) {
+    if (!STATE.running) return;
+    const dt = Math.min(0.05, lastT ? (t - lastT) / 1000 : 0.016);
+    lastT = t;
+
+    const s = STATE.slider;
+    if (s) {
+      s.x += s.vx * s.dir * dt;
+      // Bounce off walls (slightly past edges so block can leave fully).
+      if (s.dir === 1 && s.x > viewW()) s.dir = -1, s.x = viewW();
+      if (s.dir === -1 && s.x + s.w < 0) s.dir = 1, s.x = -s.w;
+    }
+
+    // Smooth camera as tower grows.
+    const idealTopY = viewH() * 0.32;
+    const towerTop = STATE.blocks.length
+      ? STATE.blocks[STATE.blocks.length - 1].y
+      : viewH();
+    STATE.targetCameraY = Math.max(0, idealTopY - towerTop);
+    STATE.cameraY += (STATE.targetCameraY - STATE.cameraY) * Math.min(1, dt * 6);
+
+    drawStage();
+    requestAnimationFrame(loop);
+  }
+
+  function drawStage() {
+    const W = viewW(), H = viewH();
+    stage.clearRect(0, 0, W, H);
+
+    // Background grid lines (subtle).
+    stage.save();
+    stage.translate(0, STATE.cameraY);
+    stage.strokeStyle = 'rgba(255,255,255,0.04)';
+    stage.lineWidth = 1;
+    for (let y = -200; y < H + 200; y += 28) {
+      stage.beginPath(); stage.moveTo(0, y); stage.lineTo(W, y); stage.stroke();
+    }
+
+    // Floor glow under foundation.
+    if (STATE.blocks.length) {
+      const b0 = STATE.blocks[0];
+      const grd = stage.createRadialGradient(b0.x + b0.w/2, b0.y + BLOCK_HEIGHT, 8, b0.x + b0.w/2, b0.y + BLOCK_HEIGHT, 220);
+      grd.addColorStop(0, 'rgba(62,207,142,0.18)');
+      grd.addColorStop(1, 'rgba(62,207,142,0)');
+      stage.fillStyle = grd;
+      stage.fillRect(0, b0.y, W, 240);
+    }
+
+    // Settled blocks
+    for (const b of STATE.blocks) drawBlock(b, false);
+
+    // Slider on top
+    if (STATE.slider) drawBlock(STATE.slider, true);
+
+    stage.restore();
+  }
+
+  function drawBlock(b, isSlider) {
+    const hue = b.hue || 0;
+    const baseFill = isSlider
+      ? `linear-gradient`
+      : 'block';
+
+    // Soft outer glow on slider.
+    if (isSlider) {
+      stage.shadowColor = `hsla(${(150 + hue) % 360}, 80%, 60%, 0.55)`;
+      stage.shadowBlur  = 22;
+    }
+
+    const grd = stage.createLinearGradient(b.x, b.y, b.x, b.y + BLOCK_HEIGHT);
+    if (isSlider) {
+      grd.addColorStop(0, `hsl(${(150 + hue) % 360}, 80%, 62%)`);
+      grd.addColorStop(1, `hsl(${(150 + hue) % 360}, 80%, 38%)`);
+    } else {
+      grd.addColorStop(0, `hsl(${(150 + hue) % 360}, 50%, 32%)`);
+      grd.addColorStop(1, `hsl(${(150 + hue) % 360}, 50%, 18%)`);
+    }
+    stage.fillStyle = grd;
+    roundRect(stage, b.x, b.y, b.w, BLOCK_HEIGHT, 6);
+    stage.fill();
+    stage.shadowBlur = 0;
+
+    // Top highlight stripe
+    stage.fillStyle = isSlider ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.08)';
+    stage.fillRect(b.x + 2, b.y + 2, Math.max(0, b.w - 4), 1.5);
+
+    // Inner border
+    stage.strokeStyle = isSlider ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.12)';
+    stage.lineWidth = 1;
+    roundRect(stage, b.x + 0.5, b.y + 0.5, b.w - 1, BLOCK_HEIGHT - 1, 6);
+    stage.stroke();
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y); c.quadraticCurveTo(x + w, y, x + w, y + r);
+    c.lineTo(x + w, y + h - r); c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    c.lineTo(x + r, y + h); c.quadraticCurveTo(x, y + h, x, y + h - r);
+    c.lineTo(x, y + r); c.quadraticCurveTo(x, y, x + r, y);
+    c.closePath();
+  }
+
+  // ── Tap to drop ───────────────────────────────────────────
+  function handleTap(ev) {
+    if (!STATE.running) return;
+    const now = performance.now();
+    // Hard floor that matches backend MIN_TAP_GAP_MS to avoid being
+    // marked "tap_too_fast" by a doubled click.
+    if (now - STATE.lastTapAt < 200) return;
+    STATE.lastTapAt = now;
+
+    tapHint.classList.remove('visible');
+
+    const s = STATE.slider; if (!s) return;
+    const last = STATE.blocks[STATE.blocks.length - 1];
+    if (!last) return;
+
+    // Compute overlap with the previous top block.
+    const ax = Math.max(s.x, last.x);
+    const bx = Math.min(s.x + s.w, last.x + last.w);
+    const overlap = bx - ax;
+
+    STATE.taps.push({ t: Math.round(now - STATE.startedAt) });
+
+    if (overlap <= 0) {
+      // Total miss — game over.
+      onMiss(s, last);
+      return;
+    }
+
+    // Trim slider to the overlap width and lock it as a settled block.
+    const newBlock = { x: ax, y: s.y, w: overlap, hue: s.hue };
+    STATE.blocks.push(newBlock);
+    STATE.slider = null;
+    STATE.height++;
+    STATE.correct++;
+    STATE.awarded = Math.min(STATE.maxStacks, STATE.height);
+
+    const perfect = Math.abs(overlap - last.w) < 2 && Math.abs(s.x - last.x) < 2;
+    if (perfect) {
+      // Perfect alignment keeps full width — bonus pop and snappy sound.
+      newBlock.w = last.w;
+      newBlock.x = last.x;
+      sndPerfect();
+      flashPop(newBlock, '+1 PERFECT');
+    } else {
+      sndPlace(STATE.height);
+      flashPop(newBlock, `+${STATE.perPt}`);
+    }
+
+    hudHeight.textContent = STATE.height;
+    hudPoints.textContent = STATE.awarded;
+
+    // Cap reached → auto end the game with a celebratory cashout.
+    if (STATE.height >= STATE.maxStacks) {
+      setTimeout(() => endGame('cap'), 600);
+      return;
+    }
+
+    spawnSlider();
+  }
+
+  function onMiss(s, last) {
+    sndMiss();
+    flashPop({ x: s.x, y: s.y, w: s.w }, 'MISS', true);
+    STATE.slider = null;
+    STATE.running = false;
+    document.getElementById('game-container').classList.add('shake');
+    setTimeout(() => document.getElementById('game-container').classList.remove('shake'), 360);
+    setTimeout(() => endGame('miss'), 700);
+  }
+
+  function flashPop(b, text, miss) {
+    const el = document.createElement('div');
+    el.className = 'score-pop' + (miss ? ' miss' : '');
+    el.textContent = text;
+    el.style.left = (b.x + b.w / 2) + 'px';
+    el.style.top  = (b.y - 18 + STATE.cameraY) + 'px';
+    document.getElementById('game-container').appendChild(el);
+    setTimeout(() => el.remove(), 950);
+  }
+
+  // ── End game ──────────────────────────────────────────────
+  async function endGame(reason) {
+    STATE.running = false;
+    let resp = null;
+    try {
+      const r = await fetch(`${API}/littower/end`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: STATE.sessionId,
+          token:     STATE.token,
+          taps:      STATE.taps,
+        }),
+      });
+      resp = await r.json();
+      if (!r.ok || resp.error) {
+        showErr(resp?.reason || resp?.error || 'end_failed');
+      }
+    } catch {
+      showErr('Network error');
+    }
+
+    const awarded = Number(resp?.awarded ?? STATE.awarded ?? 0);
+    const height  = Number(resp?.height  ?? STATE.height  ?? 0);
+    const best    = Number(resp?.bestHeight ?? 0);
+
+    if (awarded > 0) sndCash();
+
+    postParent({
+      type: 'litdex:littower:end',
+      reason: reason === 'cap' ? 'cap' : 'miss',
+      height,
+      awarded,
+      best,
+    });
+
+    // Show end card.
+    const body = `
+      <div class="panel-big green">+${awarded} PTS</div>
+      <div class="panel-stat-row"><span class="lbl">Height</span><span class="val">${height}</span></div>
+      <div class="panel-stat-row"><span class="lbl">Best</span><span class="val">${best}</span></div>
+      <div class="panel-stat-row"><span class="lbl">Cap</span><span class="val">${STATE.maxStacks}</span></div>
+    `;
+    // Refresh games-left from server.
+    const stats = await fetchStats();
+    const left  = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 0;
+    STATE.gamesLeft = left;
+
+    panelTitle.textContent = reason === 'cap' ? 'TOWER MAXED' : 'TOWER FELL';
+    panelSub.textContent   = reason === 'cap' ? 'You hit the daily cap on this game.' : 'Better luck next stack.';
+    panelBody.innerHTML    = body;
+    btnPrimary.disabled    = left <= 0;
+    btnPrimary.textContent = left <= 0 ? 'NO GAMES LEFT' : 'PLAY AGAIN';
+    btnPrimary.onclick     = left <= 0 ? () => {} : startGame;
+    panel.classList.remove('hidden');
+  }
+
+  // ── Input wiring ──────────────────────────────────────────
+  function onPointer(e) {
+    if (panel.classList.contains('hidden')) {
+      e.preventDefault?.();
+      handleTap(e);
+    }
+  }
+  stageCanvas.addEventListener('pointerdown', onPointer);
+  stageCanvas.addEventListener('touchstart', onPointer, { passive: false });
+  // Allow space / enter as accessibility tap.
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.code === 'Enter') {
+      if (!panel.classList.contains('hidden')) return;
+      e.preventDefault();
+      handleTap();
+    }
+  });
+
+  // ── Boot ──────────────────────────────────────────────────
+  (async () => {
+    if (!wallet) {
+      showPanel('LIT TOWER', 'Wallet missing', '<div style="color:#ef4956;font-family:JetBrains Mono,monospace;font-size:11px">Open this game from the LitDeX games page.</div>', 'CLOSE', () => postParent({ type: 'litdex:littower:exit' }));
+      return;
+    }
+    await showLobby();
+    if (auto) startGame();
+  })();
+})();
+</script>
+</body>
+</html>
