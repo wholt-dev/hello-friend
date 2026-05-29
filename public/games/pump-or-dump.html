@@ -584,7 +584,7 @@
   <div class="screen" id="wallet-screen">
     <div class="game-title">PUMP<br>OR DUMP</div>
     <div class="game-subtitle">PREDICT THE NEXT CANDLE</div>
-    <div class="game-desc">Connect your wallet to play.<br>Each game costs <strong style="color:#fff">100 PTS</strong>.</div>
+    <div class="game-desc">Connect your wallet to play.<br>Each game costs <strong style="color:#fff">10 PTS</strong>.</div>
     <button class="connect-btn" id="connect-btn">CONNECT WALLET</button>
     <div class="err-msg" id="wallet-error"></div>
   </div>
@@ -620,11 +620,11 @@
     </div>
 
     <div class="game-desc">
-      Entry <strong style="color:#fff">100 PTS</strong>. Each correct = pot grows.<br>
+      Entry <strong style="color:#fff">10 PTS</strong>. Each correct = pot grows.<br>
       Cash out anytime. Wrong guess = lose pot.
     </div>
 
-    <button class="start-btn" id="start-btn">PLAY · 100 PTS</button>
+    <button class="start-btn" id="start-btn">PLAY · 10 PTS</button>
     <div class="err-msg" id="start-error"></div>
     <div id="nft-hint" style="display:none;font-family:'Fredoka One',cursive;color:rgba(255,255,255,0.4);margin-top:14px;font-size:12px;text-align:center;max-width:340px;letter-spacing:1px;">Hold an NFT for bigger increments &amp; more time per round</div>
   </div>
@@ -696,7 +696,7 @@
   // ── CONFIG ────────────────────────────────────────────────────
   const API           = 'https://game.test-hub.xyz';
   const CHAIN         = '0x115D'; // 4441
-  const ENTRY_COST    = 100;
+  const ENTRY_COST    = 10;
   const ROUND_TIME_MS = 8000;
   const VISIBLE_CANDLES = 8;
 
@@ -1537,13 +1537,13 @@
 
     const startBtn = el('start-btn');
     if (bal < ENTRY_COST) {
-      startBtn.textContent = 'NEED 100 PTS';
+      startBtn.textContent = 'NEED 10 PTS';
       startBtn.disabled = true;
     } else if (gamesLeft <= 0 && data.gamesLeft != null) {
       startBtn.textContent = 'LIMIT REACHED';
       startBtn.disabled = true;
     } else {
-      startBtn.textContent = 'PLAY · 100 PTS';
+      startBtn.textContent = 'PLAY · 10 PTS';
       startBtn.disabled = false;
     }
 

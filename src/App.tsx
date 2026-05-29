@@ -4351,7 +4351,7 @@ const PumpDumpPage = ({ onBack }: { onBack: () => void }) => {
   const { address, isConnected } = useAccount();
   const SIMPLE_API = 'https://game.test-hub.xyz';
   const DAILY_LIMIT = 15;
-  const ENTRY_COST = 100;
+  const ENTRY_COST = 10;
 
   const [stats, setStats] = useState<any>(null);
   const [playing, setPlaying] = useState(false);
