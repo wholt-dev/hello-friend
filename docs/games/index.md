@@ -10,6 +10,7 @@ LitDEX hosts skill-based mini-games that mint points and zkLTC. Today there's on
 | Lit Tower | Live | +1 PT per correct stack (free, 5 games/day, cap 100) |
 | ZK Miner | Live | Match-3 — 3-match=+0.3 PT, 4-match=+0.4 PT, 5+stacks (free, 5 games/day, 30 moves) |
 | Lit Launch | Live | Dodge asteroids · catch coins · +1 PT per coin (free, 5 games/day, 3 lives, cap 50) |
+| Block Chain | Live | 2048 — milestone tiles 64=+5, 128=+10, 256=+20, 512=+40, 1024=+80, 2048=+160 (free, 5 games/day) |
 | Pump or Dump | Live | Pot streak game · 10 PTS entry · cash out anytime |
 
 ## Coming soon
@@ -36,6 +37,7 @@ Idempotency is guaranteed by the questId encoding the date + wallet suffix.
 | Lit Tower | 5 games / day (cap 100 stacks/game) |
 | ZK Miner | 5 games / day (30 moves, cap 50 PTS/game) |
 | Lit Launch | 5 games / day (3 lives, cap 50 coins/game) |
+| Block Chain | 5 games / day (cap 315 PTS = all 6 milestones) |
 | Pump or Dump | 15 games / day |
 | Coin Catch | TBD |
 

@@ -1,0 +1,1326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Block Chain — LitDeX</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka+One&family=JetBrains+Mono:wght@400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #050912;
+    color: #fff;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    font-family: 'Fredoka One', cursive;
+  }
+
+  #game-container {
+    position: relative;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse 100% 50% at 50% 0%, rgba(70,120,200,0.18) 0%, transparent 60%),
+      radial-gradient(ellipse 80% 50% at 50% 100%, rgba(255,150,80,0.10) 0%, transparent 55%),
+      linear-gradient(180deg, #04070d 0%, #0a1226 50%, #1a2c44 100%);
+  }
+  #game-container::after {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(120,200,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120,200,255,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+
+  /* HUD */
+  #hud-top {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 6;
+    padding: 14px 12px 0;
+    padding-top: max(14px, env(safe-area-inset-top));
+    pointer-events: none;
+    display: flex; justify-content: space-between; gap: 8px;
+  }
+  .hud-pill {
+    flex: 1;
+    background: linear-gradient(180deg, rgba(15,25,45,0.95), rgba(5,10,20,0.92));
+    border: 1px solid rgba(140,180,255,0.18);
+    border-radius: 12px;
+    padding: 7px 10px 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; letter-spacing: 0.16em;
+    color: #aac6ee;
+    text-transform: uppercase;
+    backdrop-filter: blur(6px);
+    text-align: center;
+  }
+  .hud-pill .v {
+    display: block;
+    color: #fff;
+    font-weight: 700;
+    font-size: 16px;
+    margin-top: 3px;
+    letter-spacing: 0.5px;
+  }
+  .hud-pill.score .v { color: #5be0a4; font-size: 22px; text-shadow: 0 0 12px rgba(91,224,164,0.55); }
+  .hud-pill.best  .v { color: #ffe97a; }
+  .hud-pill.next  .v { color: #ffae3b; font-size: 14px; }
+
+  /* Milestone strip */
+  #milestone-strip {
+    position: absolute;
+    top: max(86px, calc(86px + env(safe-area-inset-top)));
+    left: 12px; right: 12px;
+    z-index: 5;
+    display: flex; justify-content: space-between; gap: 4px;
+    pointer-events: none;
+  }
+  .ms {
+    flex: 1;
+    background: rgba(15,25,45,0.7);
+    border: 1px solid rgba(140,180,255,0.15);
+    border-radius: 8px;
+    padding: 4px 2px 5px;
+    text-align: center;
+    transition: background 0.3s ease, border 0.3s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .ms .tile {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 700;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.04em;
+  }
+  .ms .pts {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: rgba(255,213,90,0.6);
+    margin-top: 2px;
+    letter-spacing: 0.1em;
+  }
+  .ms.hit {
+    background: linear-gradient(180deg, rgba(91,224,164,0.35), rgba(20,80,50,0.45));
+    border-color: rgba(91,224,164,0.6);
+  }
+  .ms.hit .tile { color: #d2ffe2; }
+  .ms.hit .pts  { color: #ffe97a; }
+  .ms.flash {
+    transform: scale(1.18);
+    box-shadow: 0 0 24px rgba(255,213,90,0.7);
+  }
+
+  /* Board area */
+  #board-host {
+    position: absolute;
+    left: 12px; right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 3;
+    aspect-ratio: 1 / 1;
+    margin: 0 auto;
+    max-width: min(94vw, 70vh);
+    max-height: min(94vw, 70vh);
+    display: flex; align-items: center; justify-content: center;
+  }
+  /* Center horizontally */
+  @media (min-aspect-ratio: 1/1) {
+    #board-host { left: 0; right: 0; }
+  }
+
+  #board-frame {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(180deg, rgba(15,25,45,0.85), rgba(5,10,20,0.88));
+    border: 1.5px solid rgba(140,180,255,0.22);
+    border-radius: 18px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.45), inset 0 0 36px rgba(70,120,200,0.08);
+    overflow: hidden;
+  }
+
+  #board-canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+  }
+
+  /* Combo banner */
+  #combo {
+    position: absolute;
+    left: 50%; top: 12%;
+    transform: translate(-50%, 0) scale(0.6);
+    z-index: 7;
+    font-family: 'Bangers', cursive;
+    font-size: clamp(34px, 8vw, 64px);
+    letter-spacing: 4px;
+    color: #ffe97a;
+    text-shadow: 0 4px 0 rgba(0,0,0,0.45), 0 0 28px rgba(255,213,90,0.7);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease;
+  }
+  #combo.visible { opacity: 1; transform: translate(-50%, 0) scale(1); }
+
+  /* Score popups */
+  .score-pop {
+    position: absolute;
+    z-index: 7;
+    font-family: 'Bangers', cursive;
+    font-size: 32px;
+    letter-spacing: 2px;
+    color: #ffe97a;
+    text-shadow: 0 3px 0 rgba(60,30,0,0.55), 0 0 22px rgba(255,213,90,0.6);
+    pointer-events: none;
+    transform: translate(-50%, 0);
+    animation: popUp 0.95s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  .score-pop.green { color: #5be0a4; text-shadow: 0 3px 0 rgba(0,40,20,0.55), 0 0 22px rgba(91,224,164,0.6); }
+  @keyframes popUp {
+    0%   { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+    25%  { transform: translate(-50%, -22px) scale(1.18); opacity: 1; }
+    100% { transform: translate(-50%, -110px) scale(0.95); opacity: 0; }
+  }
+
+  /* Bottom hint */
+  #move-hint {
+    position: absolute;
+    bottom: 36px; left: 0; right: 0;
+    z-index: 5;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.18em;
+    color: rgba(255,255,255,0.55);
+    text-transform: uppercase;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  #move-hint.visible { opacity: 1; }
+
+  /* Panel */
+  #panel {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.78);
+    backdrop-filter: blur(6px);
+    transition: opacity 0.3s ease;
+  }
+  #panel.hidden { opacity: 0; pointer-events: none; }
+  .panel-card {
+    background: #0a0e1a;
+    border: 1px solid #1f2638;
+    border-radius: 18px;
+    padding: 26px 22px;
+    text-align: center;
+    width: 88%; max-width: 380px;
+    color: #fff;
+    font-family: 'Fredoka One', cursive;
+  }
+  .panel-title {
+    font-family: 'Bangers', cursive;
+    font-size: 38px;
+    letter-spacing: 4px;
+    margin-bottom: 4px;
+    text-shadow: 0 0 18px rgba(140,200,255,0.4);
+  }
+  .panel-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: rgba(255,255,255,0.55);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .panel-stat-row {
+    display: flex; justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    margin: 6px 0;
+  }
+  .panel-stat-row .lbl { color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.12em; }
+  .panel-stat-row .val { color: #fff; font-weight: 700; }
+  .panel-big {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 44px; line-height: 1;
+    font-weight: 700;
+    margin: 14px 0 4px;
+    color: #5be0a4;
+  }
+  .panel-btns { display: flex; gap: 10px; margin-top: 14px; }
+  .panel-btn {
+    flex: 1; min-height: 48px; border-radius: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border: 1px solid #333;
+    background: transparent;
+    color: #fff;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .panel-btn.primary { background: #fff; color: #000; border: none; }
+  .panel-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Camera shake target */
+  #shake-host { position: absolute; inset: 0; z-index: 2; will-change: transform; }
+
+  #err-banner {
+    position: absolute; top: 12px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(239,73,86,0.92);
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.1em;
+    padding: 8px 14px; border-radius: 8px;
+    z-index: 40;
+    opacity: 0; transition: opacity 0.25s ease;
+    pointer-events: none;
+  }
+  #err-banner.visible { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="game-container">
+  <div id="shake-host">
+    <div id="board-host">
+      <div id="board-frame">
+        <canvas id="board-canvas"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div id="hud-top">
+    <div class="hud-pill score">SCORE<span class="v" id="hud-score">0</span></div>
+    <div class="hud-pill next">NEXT<span class="v" id="hud-next">64 = +5</span></div>
+    <div class="hud-pill best">BEST<span class="v" id="hud-best">0</span></div>
+  </div>
+
+  <div id="milestone-strip"></div>
+
+  <div id="combo">+5 PTS</div>
+  <div id="move-hint">SWIPE / ARROWS TO MERGE</div>
+
+  <div id="panel">
+    <div class="panel-card" id="panel-card">
+      <div class="panel-title" id="panel-title">BLOCK CHAIN</div>
+      <div class="panel-sub" id="panel-sub">Merge tiles · hit milestones · earn PTS</div>
+      <div id="panel-body"></div>
+      <div class="panel-btns">
+        <button class="panel-btn primary" id="btn-primary">PLAY</button>
+        <button class="panel-btn" id="btn-exit">EXIT</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="err-banner"><span id="err-msg"></span></div>
+</div>
+<script>
+(() => {
+  // ── URL params ─────────────────────────────────────────────
+  const params  = new URLSearchParams(location.search);
+  const wallet  = (params.get('wallet') || '').toLowerCase();
+  const API     = (params.get('api') || 'https://game.test-hub.xyz').replace(/\/$/, '');
+  const PARENT_ORIGIN = '*';
+  const postParent = (m) => { try { window.parent && window.parent.postMessage(m, PARENT_ORIGIN); } catch {} };
+
+  // ── DOM ────────────────────────────────────────────────────
+  const boardCanvas = document.getElementById('board-canvas');
+  const ctx2d       = boardCanvas.getContext('2d', { alpha: true });
+  const panel       = document.getElementById('panel');
+  const panelTitle  = document.getElementById('panel-title');
+  const panelSub    = document.getElementById('panel-sub');
+  const panelBody   = document.getElementById('panel-body');
+  const btnPrimary  = document.getElementById('btn-primary');
+  const btnExit     = document.getElementById('btn-exit');
+  const errBanner   = document.getElementById('err-banner');
+  const errMsg      = document.getElementById('err-msg');
+  const hudScore    = document.getElementById('hud-score');
+  const hudNext     = document.getElementById('hud-next');
+  const hudBest     = document.getElementById('hud-best');
+  const comboEl     = document.getElementById('combo');
+  const moveHint    = document.getElementById('move-hint');
+  const milestoneStrip = document.getElementById('milestone-strip');
+  const shakeHost   = document.getElementById('shake-host');
+  const container   = document.getElementById('game-container');
+  const boardFrame  = document.getElementById('board-frame');
+
+  // ── Constants (mirror backend) ────────────────────────────
+  const SIZE = 4;
+  const MILESTONES = [
+    { tile:   64, reward:   5 },
+    { tile:  128, reward:  10 },
+    { tile:  256, reward:  20 },
+    { tile:  512, reward:  40 },
+    { tile: 1024, reward:  80 },
+    { tile: 2048, reward: 160 },
+  ];
+  const MIN_MOVE_GAP_MS = 110;          // matches >90 ms server floor
+  const ANIM_MS         = 130;          // tile slide animation
+
+  // Tile color palette (token theme)
+  const TILE_COLORS = {
+    2:    { bg: '#1c2438', fg: '#cfdbf2' },
+    4:    { bg: '#26345a', fg: '#dde7ff' },
+    8:    { bg: '#3a5fa0', fg: '#ffffff' },
+    16:   { bg: '#2c8a64', fg: '#ffffff' },
+    32:   { bg: '#3ecf8e', fg: '#04241a' },
+    64:   { bg: '#5be0a4', fg: '#04241a' },
+    128:  { bg: '#ffd166', fg: '#5a3a0a' },
+    256:  { bg: '#ffae3b', fg: '#5a2a0a' },
+    512:  { bg: '#ff7a45', fg: '#5a1a0a' },
+    1024: { bg: '#c466ff', fg: '#ffffff' },
+    2048: { bg: '#ff5a8a', fg: '#ffffff' },
+  };
+
+  // ── Canvas sizing ─────────────────────────────────────────
+  let DPR = 1;
+  let CELL = 70, GAP = 8, BOARD_SIZE = 0;
+  function resize() {
+    DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    const r = boardFrame.getBoundingClientRect();
+    boardCanvas.width  = Math.floor(r.width * DPR);
+    boardCanvas.height = Math.floor(r.height * DPR);
+    boardCanvas.style.width  = r.width + 'px';
+    boardCanvas.style.height = r.height + 'px';
+    ctx2d.setTransform(1, 0, 0, 1, 0, 0); ctx2d.scale(DPR, DPR);
+    BOARD_SIZE = Math.min(r.width, r.height);
+    GAP = Math.max(6, Math.floor(BOARD_SIZE * 0.025));
+    CELL = Math.floor((BOARD_SIZE - GAP * (SIZE + 1)) / SIZE);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function vw() { return container.clientWidth; }
+  function vh() { return container.clientHeight; }
+
+  // ── Audio ─────────────────────────────────────────────────
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function tone(freq, durMs, type = 'sine', gain = 0.16) {
+    try {
+      ensureAudio();
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = type;
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(gain, audioCtx.currentTime + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + durMs / 1000);
+      o.connect(g).connect(audioCtx.destination);
+      o.start();
+      o.stop(audioCtx.currentTime + durMs / 1000);
+    } catch {}
+  }
+  function sndSlide()      { tone(360, 50, 'sine', 0.08); }
+  function sndMerge(value) {
+    const f = 320 + Math.min(Math.log2(value) * 80, 800);
+    tone(f, 90, 'square', 0.13);
+    setTimeout(() => tone(f * 1.5, 60, 'square', 0.08), 50);
+  }
+  function sndMilestone() {
+    tone(660, 70, 'square', 0.16);
+    setTimeout(() => tone(880, 80, 'square', 0.15), 60);
+    setTimeout(() => tone(1320, 110, 'square', 0.13), 130);
+    setTimeout(() => tone(1760, 140, 'square', 0.12), 220);
+  }
+  function sndJackpot() {
+    [0, 80, 160, 240, 360].forEach((dly, i) => setTimeout(() => tone(523 + i * 80, 130, 'square', 0.15), dly));
+  }
+  function sndGameOver() { tone(180, 380, 'sawtooth', 0.18); setTimeout(() => tone(110, 480, 'sawtooth', 0.16), 220); }
+
+  // ── HMAC-SHA256 (synchronous, mirrors server) ─────────────
+  const HMAC = (() => {
+    function rotr(n, x) { return (x >>> n) | (x << (32 - n)); }
+    const K = [
+      0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+      0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+      0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+      0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+      0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+      0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+      0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+      0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+    ];
+    function sha256(bytes) {
+      const lenBits = bytes.length * 8;
+      const padded = new Uint8Array(((bytes.length + 9 + 63) >> 6) << 6);
+      padded.set(bytes);
+      padded[bytes.length] = 0x80;
+      const lo = lenBits >>> 0;
+      const hi = Math.floor(lenBits / 0x100000000);
+      const dv = new DataView(padded.buffer);
+      dv.setUint32(padded.length - 8, hi);
+      dv.setUint32(padded.length - 4, lo);
+      let h0=0x6a09e667,h1=0xbb67ae85,h2=0x3c6ef372,h3=0xa54ff53a,
+          h4=0x510e527f,h5=0x9b05688c,h6=0x1f83d9ab,h7=0x5be0cd19;
+      const w = new Uint32Array(64);
+      for (let i = 0; i < padded.length; i += 64) {
+        for (let t = 0; t < 16; t++) w[t] = dv.getUint32(i + t * 4);
+        for (let t = 16; t < 64; t++) {
+          const s0 = rotr(7, w[t-15]) ^ rotr(18, w[t-15]) ^ (w[t-15] >>> 3);
+          const s1 = rotr(17, w[t-2]) ^ rotr(19, w[t-2]) ^ (w[t-2] >>> 10);
+          w[t] = (w[t-16] + s0 + w[t-7] + s1) >>> 0;
+        }
+        let a=h0,b=h1,c=h2,d=h3,e=h4,f=h5,g=h6,hh=h7;
+        for (let t = 0; t < 64; t++) {
+          const S1 = rotr(6,e) ^ rotr(11,e) ^ rotr(25,e);
+          const ch = (e & f) ^ (~e & g);
+          const T1 = (hh + S1 + ch + K[t] + w[t]) >>> 0;
+          const S0 = rotr(2,a) ^ rotr(13,a) ^ rotr(22,a);
+          const mj = (a & b) ^ (a & c) ^ (b & c);
+          const T2 = (S0 + mj) >>> 0;
+          hh = g; g = f; f = e; e = (d + T1) >>> 0;
+          d = c; c = b; b = a; a = (T1 + T2) >>> 0;
+        }
+        h0=(h0+a)>>>0; h1=(h1+b)>>>0; h2=(h2+c)>>>0; h3=(h3+d)>>>0;
+        h4=(h4+e)>>>0; h5=(h5+f)>>>0; h6=(h6+g)>>>0; h7=(h7+hh)>>>0;
+      }
+      const out = new Uint8Array(32);
+      const oDv = new DataView(out.buffer);
+      oDv.setUint32(0,h0); oDv.setUint32(4,h1); oDv.setUint32(8,h2); oDv.setUint32(12,h3);
+      oDv.setUint32(16,h4); oDv.setUint32(20,h5); oDv.setUint32(24,h6); oDv.setUint32(28,h7);
+      return out;
+    }
+    function hmacSha256(keyStr, msgStr) {
+      const enc = new TextEncoder();
+      let key = enc.encode(keyStr);
+      const block = 64;
+      if (key.length > block) key = sha256(key);
+      const padded = new Uint8Array(block); padded.set(key);
+      const oKey = new Uint8Array(block); const iKey = new Uint8Array(block);
+      for (let i = 0; i < block; i++) { oKey[i] = padded[i] ^ 0x5c; iKey[i] = padded[i] ^ 0x36; }
+      const msg = enc.encode(msgStr);
+      const inner = new Uint8Array(iKey.length + msg.length);
+      inner.set(iKey, 0); inner.set(msg, iKey.length);
+      const innerHash = sha256(inner);
+      const outer = new Uint8Array(oKey.length + innerHash.length);
+      outer.set(oKey, 0); outer.set(innerHash, oKey.length);
+      return sha256(outer);
+    }
+    return { hmacSha256 };
+  })();
+
+  function rngU32(seed, sessionId, idx) {
+    const out = HMAC.hmacSha256(seed, `${sessionId}:${idx}`);
+    // Take first 4 bytes as big-endian uint32.
+    return ((out[0] << 24) | (out[1] << 16) | (out[2] << 8) | out[3]) >>> 0;
+  }
+
+  // ── Game state ────────────────────────────────────────────
+  const PHASE_LOBBY = 'lobby', PHASE_PLAY = 'play', PHASE_END = 'end';
+  const ST = {
+    sessionId: null, token: null, serverSeed: null,
+    phase: PHASE_LOBBY,
+    starting: false,
+    gamesLeft: 0,
+
+    board: [],
+    dropIdx: 0,
+    moves: [],
+    startedAt: 0,
+    lastMoveAt: -1e9,
+    busy: false,
+
+    // Visual tile registry (animations).
+    tiles: [],   // {id, r, c, value, x, y, anim:{from, to}, scale, alpha, mergedFromId, isNew}
+    nextId: 1,
+
+    score: 0,
+    highest: 0,
+    milestoneHit: new Set(),
+    bestEver: 0,
+    bestReward: 0,
+    shakeAmp: 0, shakeDecay: 0,
+  };
+
+  // ── Helpers ───────────────────────────────────────────────
+  function showErr(m) {
+    errMsg.textContent = m || 'error';
+    errBanner.classList.add('visible');
+    setTimeout(() => errBanner.classList.remove('visible'), 2400);
+  }
+  function popup(text, x, y, kind) {
+    const el = document.createElement('div');
+    el.className = 'score-pop ' + (kind || '');
+    el.textContent = text;
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 950);
+  }
+  function showCombo(text) {
+    comboEl.textContent = text;
+    comboEl.classList.remove('visible'); void comboEl.offsetWidth;
+    comboEl.classList.add('visible');
+    clearTimeout(showCombo._t);
+    showCombo._t = setTimeout(() => comboEl.classList.remove('visible'), 1100);
+  }
+  function showPanel(title, sub, bodyHTML, primaryLabel, primaryAction) {
+    panelTitle.textContent = title;
+    panelSub.textContent   = sub;
+    panelBody.innerHTML    = bodyHTML || '';
+    btnPrimary.textContent = primaryLabel;
+    btnPrimary.onclick     = primaryAction;
+    panel.classList.remove('hidden');
+  }
+  function hidePanel() { panel.classList.add('hidden'); }
+  btnExit.onclick = () => postParent({ type: 'litdex:blockchain:exit' });
+
+  function addShake(amp, durMs) {
+    ST.shakeAmp = Math.max(ST.shakeAmp, amp);
+    ST.shakeDecay = ST.shakeAmp / (durMs / 1000);
+  }
+
+  function applyShake() {
+    if (ST.shakeAmp > 0) {
+      ST.shakeAmp = Math.max(0, ST.shakeAmp - ST.shakeDecay * 0.016);
+      const a = ST.shakeAmp;
+      const dx = (Math.random() - 0.5) * 2 * a;
+      const dy = (Math.random() - 0.5) * 2 * a;
+      shakeHost.style.transform = `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px)`;
+    } else {
+      shakeHost.style.transform = '';
+    }
+  }
+
+  function rebuildMilestoneStrip() {
+    milestoneStrip.innerHTML = '';
+    for (const m of MILESTONES) {
+      const el = document.createElement('div');
+      el.className = 'ms';
+      el.dataset.tile = String(m.tile);
+      el.innerHTML = `<div class="tile">${m.tile}</div><div class="pts">+${m.reward}</div>`;
+      milestoneStrip.appendChild(el);
+    }
+  }
+  function refreshMilestoneStripFromState() {
+    const els = milestoneStrip.querySelectorAll('.ms');
+    els.forEach((el) => {
+      const tile = Number(el.dataset.tile);
+      if (ST.milestoneHit.has(tile)) el.classList.add('hit');
+      else                            el.classList.remove('hit');
+    });
+  }
+
+  function nextMilestoneText() {
+    for (const m of MILESTONES) {
+      if (!ST.milestoneHit.has(m.tile)) return `${m.tile} = +${m.reward}`;
+    }
+    return 'MAXED';
+  }
+
+  function updateHud() {
+    hudScore.textContent = String(ST.score);
+    hudBest.textContent  = String(ST.bestEver || 0);
+    hudNext.textContent  = nextMilestoneText();
+  }
+
+  // ── Backend wiring ────────────────────────────────────────
+  async function fetchStats() {
+    if (!wallet) return null;
+    try {
+      const r = await fetch(`${API}/blockchain/stats/${wallet}`);
+      if (!r.ok) return null;
+      return await r.json();
+    } catch { return null; }
+  }
+
+  async function showLobby() {
+    ST.phase = PHASE_LOBBY;
+    ST.score = 0;
+    ST.highest = 0;
+    ST.milestoneHit = new Set();
+    ST.tiles = [];
+    ST.moves = [];
+    ST.shakeAmp = 0;
+    rebuildMilestoneStrip();
+    refreshMilestoneStripFromState();
+    updateHud();
+    drawStage();
+
+    const stats = await fetchStats();
+    const left = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 5;
+    ST.gamesLeft = left;
+    ST.bestEver = Number(stats?.bestTile || 0);
+    ST.bestReward = Number(stats?.bestAwarded || 0);
+    hudBest.textContent = String(ST.bestEver || 0);
+
+    const noGames = left <= 0;
+    let body = `
+      <div class="panel-stat-row"><span class="lbl">Reward</span><span class="val">milestone tiles</span></div>
+      <div class="panel-stat-row"><span class="lbl">Cap / Game</span><span class="val">315 PTS</span></div>
+      <div class="panel-stat-row"><span class="lbl">Games Today</span><span class="val">${5 - left} / 5</span></div>
+      <div class="panel-stat-row"><span class="lbl">Best Tile</span><span class="val">${ST.bestEver || 0}</span></div>
+    `;
+    body += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:14px">';
+    for (const m of MILESTONES) {
+      body += `<div style="background:rgba(15,25,45,0.8);border:1px solid rgba(140,180,255,0.18);border-radius:8px;padding:6px 4px;text-align:center;font-family:'JetBrains Mono',monospace;">
+        <div style="font-size:11px;font-weight:700;color:#fff">${m.tile}</div>
+        <div style="font-size:9px;color:#ffe97a;margin-top:2px">+${m.reward}</div>
+      </div>`;
+    }
+    body += '</div>';
+
+    showPanel(
+      'BLOCK CHAIN',
+      noGames ? 'Daily limit reached · resets 00:00 IST' : 'Swipe to merge · hit milestone tiles · earn PTS',
+      body,
+      noGames ? 'NO GAMES LEFT' : 'PLAY',
+      noGames ? () => {} : startGame
+    );
+    btnPrimary.disabled = noGames;
+  }
+
+  async function startGame() {
+    if (!wallet) { showErr('No wallet'); return; }
+    if (ST.starting) return;
+    ST.starting = true;
+    btnPrimary.disabled = true;
+    btnPrimary.textContent = 'STARTING…';
+
+    try {
+      const r = await fetch(`${API}/blockchain/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet }),
+      });
+      const data = await r.json();
+      if (!r.ok || data.error) {
+        showErr(data?.error === 'daily_limit_reached' ? 'Daily limit reached' : (data?.error || 'start_failed'));
+        ST.starting = false;
+        btnPrimary.disabled = false;
+        btnPrimary.textContent = 'PLAY';
+        return;
+      }
+      ST.sessionId  = data.sessionId;
+      ST.token      = data.token;
+      ST.serverSeed = data.serverSeed;
+      ST.gamesLeft  = Number(data.gamesLeft || 0);
+      initRun();
+      hidePanel();
+    } catch (e) {
+      showErr('Network error');
+      ST.starting = false;
+      btnPrimary.disabled = false;
+      btnPrimary.textContent = 'PLAY';
+    }
+  }
+
+  // ── 2048 engine (mirror server) ───────────────────────────
+  function emptyBoard() { return Array.from({ length: SIZE }, () => [0, 0, 0, 0]); }
+  function listEmptyCells(b) {
+    const out = [];
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (b[r][c] === 0) out.push([r, c]);
+    return out;
+  }
+  function spawnTile(b, ctx, isInitial) {
+    const empties = listEmptyCells(b);
+    if (empties.length === 0) return null;
+    const u1 = rngU32(ctx.seed, ctx.sessionId, ctx.dropIdx++);
+    const u2 = rngU32(ctx.seed, ctx.sessionId, ctx.dropIdx++);
+    const idx = u1 % empties.length;
+    const [r, c] = empties[idx];
+    const isFour = (u2 / 0x100000000) < 0.1;
+    const value = isFour ? 4 : 2;
+    b[r][c] = value;
+    // Visual tile object.
+    return { r, c, value, isInitial: !!isInitial };
+  }
+  function buildInitial() {
+    const b = emptyBoard();
+    const ctx = { seed: ST.serverSeed, sessionId: ST.sessionId, dropIdx: 0 };
+    const t1 = spawnTile(b, ctx, true);
+    const t2 = spawnTile(b, ctx, true);
+    return { board: b, ctx, spawns: [t1, t2] };
+  }
+  function cloneBoard(b) { return b.map((row) => row.slice()); }
+  function boardEquals(a, b) {
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (a[r][c] !== b[r][c]) return false;
+    return true;
+  }
+  function highestTile(b) {
+    let m = 0;
+    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (b[r][c] > m) m = b[r][c];
+    return m;
+  }
+  function isGameOver(board) {
+    for (const d of ['L','R','U','D']) {
+      const next = applyMove(board, d).board;
+      if (!boardEquals(board, next)) return false;
+    }
+    return true;
+  }
+
+  // Slide a row left, also produce displacement info per column so
+  // we can animate. Returns { line, moves: [{from,to,merged}] }
+  // where moves describes what each non-zero source cell did.
+  function slideLineWithMoves(line) {
+    // Build list of source values with original positions.
+    const src = [];
+    for (let i = 0; i < line.length; i++) if (line[i] !== 0) src.push({ value: line[i], from: i });
+    const out = new Array(SIZE).fill(0);
+    const moves = []; // {fromIdx, toIdx, merged:bool, mergedWithFromIdx?}
+    let writeIdx = 0;
+    for (let i = 0; i < src.length; i++) {
+      if (i + 1 < src.length && src[i].value === src[i + 1].value) {
+        out[writeIdx] = src[i].value * 2;
+        moves.push({ fromIdx: src[i].from,     toIdx: writeIdx, merged: true,  mergedWith: src[i + 1].from });
+        moves.push({ fromIdx: src[i + 1].from, toIdx: writeIdx, merged: true,  mergedWith: src[i].from });
+        i++;
+        writeIdx++;
+      } else {
+        out[writeIdx] = src[i].value;
+        moves.push({ fromIdx: src[i].from, toIdx: writeIdx, merged: false });
+        writeIdx++;
+      }
+    }
+    return { line: out, moves };
+  }
+
+  function applyMove(board, dir) {
+    // Returns { board, moves: [{r,c, fromR, fromC, merged, mergedWithR?, mergedWithC?, value}] }
+    const newBoard = emptyBoard();
+    const moves = [];
+    if (dir === 'L') {
+      for (let r = 0; r < SIZE; r++) {
+        const { line, moves: lm } = slideLineWithMoves(board[r]);
+        for (let c = 0; c < SIZE; c++) newBoard[r][c] = line[c];
+        for (const m of lm) {
+          moves.push({ r, c: m.toIdx, fromR: r, fromC: m.fromIdx, merged: m.merged,
+                       mergedWithR: m.merged ? r : undefined,
+                       mergedWithC: m.merged ? m.mergedWith : undefined,
+                       value: newBoard[r][m.toIdx] });
+        }
+      }
+    } else if (dir === 'R') {
+      for (let r = 0; r < SIZE; r++) {
+        const reversed = board[r].slice().reverse();
+        const { line, moves: lm } = slideLineWithMoves(reversed);
+        const final = line.slice().reverse();
+        for (let c = 0; c < SIZE; c++) newBoard[r][c] = final[c];
+        for (const m of lm) {
+          // Reverse-mapping: idx -> SIZE-1-idx
+          const fromC = SIZE - 1 - m.fromIdx;
+          const toC   = SIZE - 1 - m.toIdx;
+          moves.push({ r, c: toC, fromR: r, fromC, merged: m.merged,
+                       mergedWithR: m.merged ? r : undefined,
+                       mergedWithC: m.merged ? (SIZE - 1 - m.mergedWith) : undefined,
+                       value: newBoard[r][toC] });
+        }
+      }
+    } else if (dir === 'U') {
+      for (let c = 0; c < SIZE; c++) {
+        const col = [board[0][c], board[1][c], board[2][c], board[3][c]];
+        const { line, moves: lm } = slideLineWithMoves(col);
+        for (let r = 0; r < SIZE; r++) newBoard[r][c] = line[r];
+        for (const m of lm) {
+          moves.push({ r: m.toIdx, c, fromR: m.fromIdx, fromC: c, merged: m.merged,
+                       mergedWithR: m.merged ? m.mergedWith : undefined,
+                       mergedWithC: m.merged ? c : undefined,
+                       value: newBoard[m.toIdx][c] });
+        }
+      }
+    } else if (dir === 'D') {
+      for (let c = 0; c < SIZE; c++) {
+        const col = [board[3][c], board[2][c], board[1][c], board[0][c]];
+        const { line, moves: lm } = slideLineWithMoves(col);
+        for (let r = 0; r < SIZE; r++) newBoard[3 - r][c] = line[r];
+        for (const m of lm) {
+          const fromR = 3 - m.fromIdx;
+          const toR   = 3 - m.toIdx;
+          moves.push({ r: toR, c, fromR, fromC: c, merged: m.merged,
+                       mergedWithR: m.merged ? (3 - m.mergedWith) : undefined,
+                       mergedWithC: m.merged ? c : undefined,
+                       value: newBoard[toR][c] });
+        }
+      }
+    }
+    return { board: newBoard, moves };
+  }
+
+  // ── Run init ──────────────────────────────────────────────
+  function initRun() {
+    ST.starting = false;
+    ST.phase = PHASE_PLAY;
+    const init = buildInitial();
+    ST.board = init.board;
+    ST.dropIdx = init.ctx.dropIdx;
+    ST.moves = [];
+    ST.score = 0;
+    ST.highest = highestTile(ST.board);
+    ST.milestoneHit = new Set();
+    ST.startedAt = performance.now();
+    ST.lastMoveAt = -1e9;
+    ST.tiles = [];
+    ST.nextId = 1;
+    ST.shakeAmp = 0;
+
+    for (const sp of init.spawns) {
+      if (!sp) continue;
+      ST.tiles.push({
+        id: ST.nextId++,
+        r: sp.r, c: sp.c, value: sp.value,
+        x: cellX(sp.c), y: cellY(sp.r),
+        scale: 0, alpha: 1, anim: null, isNew: true,
+      });
+    }
+    refreshMilestoneStripFromState();
+    updateHud();
+    moveHint.classList.add('visible');
+    setTimeout(() => moveHint.classList.remove('visible'), 1800);
+    lastT = 0;
+    requestAnimationFrame(loop);
+  }
+
+  function cellX(c) { return GAP + c * (CELL + GAP); }
+  function cellY(r) { return GAP + r * (CELL + GAP); }
+
+  // ── Input ─────────────────────────────────────────────────
+  let dragStart = null;
+  function inputCoords(e) {
+    return {
+      x: e.clientX ?? e.touches?.[0]?.clientX ?? e.changedTouches?.[0]?.clientX,
+      y: e.clientY ?? e.touches?.[0]?.clientY ?? e.changedTouches?.[0]?.clientY,
+    };
+  }
+  function onDown(e) {
+    if (ST.phase !== PHASE_PLAY || ST.busy) return;
+    e.preventDefault?.();
+    const c = inputCoords(e);
+    if (c.x == null) return;
+    dragStart = { x: c.x, y: c.y, t: performance.now() };
+  }
+  function onUp(e) {
+    if (!dragStart || ST.phase !== PHASE_PLAY) return;
+    const c = inputCoords(e);
+    if (c.x == null) { dragStart = null; return; }
+    const dx = c.x - dragStart.x;
+    const dy = c.y - dragStart.y;
+    dragStart = null;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 24) return; // tap, ignore
+    let dir;
+    if (Math.abs(dx) > Math.abs(dy)) dir = dx > 0 ? 'R' : 'L';
+    else                              dir = dy > 0 ? 'D' : 'U';
+    handleMove(dir);
+  }
+  container.addEventListener('pointerdown', onDown);
+  container.addEventListener('pointerup',   onUp);
+  container.addEventListener('pointercancel', () => { dragStart = null; });
+  container.addEventListener('touchstart', onDown, { passive: false });
+  container.addEventListener('touchend',   onUp,   { passive: false });
+  // Block panel buttons from leaking taps.
+  ['btn-primary','btn-exit'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    el.addEventListener('touchstart',  (e) => e.stopPropagation());
+  });
+  // Keyboard.
+  window.addEventListener('keydown', (e) => {
+    if (ST.phase !== PHASE_PLAY) return;
+    let dir;
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') dir = 'L';
+    else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') dir = 'R';
+    else if (e.key === 'ArrowUp'   || e.key === 'w' || e.key === 'W') dir = 'U';
+    else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') dir = 'D';
+    if (dir) { e.preventDefault(); handleMove(dir); }
+  });
+
+  // ── Move resolution ───────────────────────────────────────
+  async function handleMove(dir) {
+    if (ST.phase !== PHASE_PLAY || ST.busy) return;
+    const now = performance.now();
+    if (now - ST.lastMoveAt < MIN_MOVE_GAP_MS) return;
+
+    const result = applyMove(ST.board, dir);
+    if (boardEquals(ST.board, result.board)) {
+      // No-op move; do not record. Tiny shake to indicate.
+      addShake(2, 120);
+      return;
+    }
+
+    ST.busy = true;
+    ST.lastMoveAt = now;
+    ST.moves.push({ d: dir, t: Math.round(now - ST.startedAt) });
+
+    // Animate tiles to their new positions.
+    await animateTiles(result.moves, dir);
+    ST.board = result.board;
+
+    // Spawn the next tile post-move (after slide/merge anims settle).
+    const ctx = { seed: ST.serverSeed, sessionId: ST.sessionId, dropIdx: ST.dropIdx };
+    const sp = spawnTile(ST.board, ctx, false);
+    ST.dropIdx = ctx.dropIdx;
+    if (sp) {
+      ST.tiles.push({
+        id: ST.nextId++,
+        r: sp.r, c: sp.c, value: sp.value,
+        x: cellX(sp.c), y: cellY(sp.r),
+        scale: 0, alpha: 1, anim: null, isNew: true,
+      });
+      // Pop-in animation handled in render based on isNew flag.
+    }
+    sndSlide();
+    redrawTilesFromBoard();
+
+    // Update score/milestones.
+    const newHi = highestTile(ST.board);
+    if (newHi > ST.highest) ST.highest = newHi;
+    for (const m of MILESTONES) {
+      if (ST.highest >= m.tile && !ST.milestoneHit.has(m.tile)) {
+        ST.milestoneHit.add(m.tile);
+        ST.score += m.reward;
+        celebrateMilestone(m);
+      }
+    }
+    updateHud();
+    refreshMilestoneStripFromState();
+
+    ST.busy = false;
+
+    // Game-over check.
+    if (isGameOver(ST.board)) {
+      setTimeout(() => endGame('gameover'), 400);
+    }
+  }
+
+  function celebrateMilestone(m) {
+    showCombo(`${m.tile} · +${m.reward} PTS`);
+    sndMilestone();
+    addShake(8, 360);
+    if (m.tile === 2048) {
+      sndJackpot();
+      addShake(14, 700);
+      showCombo(`2048 · +${m.reward} PTS · JACKPOT`);
+    }
+    const r = boardFrame.getBoundingClientRect();
+    const fr = container.getBoundingClientRect();
+    popup(`+${m.reward} PTS`, r.left - fr.left + r.width / 2, r.top - fr.top + r.height / 2 - 30, 'green');
+    // Flash the milestone strip cell.
+    const el = milestoneStrip.querySelector(`.ms[data-tile="${m.tile}"]`);
+    if (el) {
+      el.classList.add('flash');
+      setTimeout(() => el.classList.remove('flash'), 600);
+    }
+  }
+
+  // Animate visual tiles toward their new positions based on the
+  // moves list returned by applyMove.
+  function animateTiles(movesList, dir) {
+    return new Promise((resolve) => {
+      // Build map: fromKey -> tile
+      const tileByCell = {};
+      for (const t of ST.tiles) {
+        tileByCell[`${t.r},${t.c}`] = t;
+      }
+      // For each move, find the source tile, set its anim target.
+      const newTiles = [];
+      const consumed = new Set();
+      // Group moves by destination so we can pair merges.
+      const movesByDest = {};
+      for (const m of movesList) {
+        const k = `${m.r},${m.c}`;
+        (movesByDest[k] = movesByDest[k] || []).push(m);
+      }
+      for (const k in movesByDest) {
+        const group = movesByDest[k];
+        if (group.length === 0) continue;
+        const dst = group[0];
+        // Source tiles
+        const sources = group.map((m) => tileByCell[`${m.fromR},${m.fromC}`]).filter(Boolean);
+        if (sources.length === 0) continue;
+        const merged = group[0].merged && group.length === 2;
+        if (merged) {
+          // Both sources animate to dst, then merge into one new tile.
+          const tA = sources[0], tB = sources[1];
+          tA.anim = { fromX: tA.x, fromY: tA.y, toX: cellX(dst.c), toY: cellY(dst.r), t: 0, dur: ANIM_MS, willDie: true };
+          tB.anim = { fromX: tB.x, fromY: tB.y, toX: cellX(dst.c), toY: cellY(dst.r), t: 0, dur: ANIM_MS, willDie: true };
+          consumed.add(tA.id); consumed.add(tB.id);
+          // Spawn merged tile after animation completes.
+          newTiles.push({
+            id: ST.nextId++,
+            r: dst.r, c: dst.c, value: dst.value,
+            x: cellX(dst.c), y: cellY(dst.r),
+            scale: 0, alpha: 1, anim: null, isMerged: true,
+            spawnAfter: ANIM_MS,
+          });
+          // Score popup.
+          const x = cellX(dst.c) + CELL / 2;
+          const y = cellY(dst.r) + CELL / 2;
+          const fr = container.getBoundingClientRect();
+          const br = boardFrame.getBoundingClientRect();
+          popup(`+${dst.value}`, br.left - fr.left + x, br.top - fr.top + y - 12, 'green');
+          sndMerge(dst.value);
+        } else {
+          // Single tile slide.
+          const src = sources[0];
+          src.anim = { fromX: src.x, fromY: src.y, toX: cellX(dst.c), toY: cellY(dst.r), t: 0, dur: ANIM_MS, willDie: false };
+          src.r = dst.r; src.c = dst.c;
+          consumed.add(src.id);
+        }
+      }
+      // Drive animation manually so we can resolve when done.
+      const startT = performance.now();
+      function step() {
+        const now = performance.now();
+        const elapsed = now - startT;
+        for (const t of ST.tiles) {
+          if (!t.anim) continue;
+          const k = Math.min(1, (now - startT) / t.anim.dur);
+          const e = 1 - Math.pow(1 - k, 3);
+          t.x = t.anim.fromX + (t.anim.toX - t.anim.fromX) * e;
+          t.y = t.anim.fromY + (t.anim.toY - t.anim.fromY) * e;
+          if (k >= 1) {
+            if (t.anim.willDie) t.alpha = 0;
+            t.anim = null;
+          }
+        }
+        drawStage();
+        if (elapsed >= ANIM_MS) {
+          // Cull dead tiles.
+          ST.tiles = ST.tiles.filter((t) => t.alpha > 0.05);
+          // Reveal newly merged tiles.
+          for (const t of newTiles) ST.tiles.push(t);
+          resolve();
+        } else {
+          requestAnimationFrame(step);
+        }
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  // After moves + spawns settle, ensure ST.tiles matches ST.board
+  // exactly (clean up any stragglers — defensive).
+  function redrawTilesFromBoard() {
+    // Build a lookup for current tiles by cell.
+    const seen = new Set();
+    for (const t of ST.tiles) {
+      const k = `${t.r},${t.c}`;
+      if (seen.has(k)) {
+        // Duplicate — drop it (shouldn't happen, but safety).
+        t.alpha = 0;
+      } else {
+        seen.add(k);
+      }
+    }
+    ST.tiles = ST.tiles.filter((t) => t.alpha > 0.05);
+  }
+
+  // ── Loop ──────────────────────────────────────────────────
+  let lastT = 0;
+  function loop(t) {
+    if (!t) t = performance.now();
+    if (!lastT) lastT = t;
+    const dt = Math.min(0.05, (t - lastT) / 1000);
+    lastT = t;
+    update(dt);
+    drawStage();
+    applyShake();
+    if (ST.phase === PHASE_PLAY) requestAnimationFrame(loop);
+  }
+  function update(dt) {
+    // Pop-in scale for new and merged tiles.
+    for (const t of ST.tiles) {
+      if (t.scale < 1) {
+        t.scale = Math.min(1, t.scale + dt * 8);
+      }
+      if (t.isMerged && t.spawnAfter > 0) {
+        t.spawnAfter -= dt * 1000;
+      }
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────
+  function drawStage() {
+    if (!boardCanvas.width) return;
+    const W = boardCanvas.clientWidth, H = boardCanvas.clientHeight;
+    ctx2d.clearRect(0, 0, W, H);
+
+    // Background grid (empty cells).
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        const x = cellX(c), y = cellY(r);
+        ctx2d.fillStyle = 'rgba(140,180,255,0.05)';
+        roundRect(ctx2d, x, y, CELL, CELL, 8);
+        ctx2d.fill();
+        ctx2d.strokeStyle = 'rgba(140,180,255,0.1)';
+        ctx2d.lineWidth = 1;
+        ctx2d.stroke();
+      }
+    }
+
+    // Tiles.
+    for (const t of ST.tiles) {
+      if (t.spawnAfter > 0) continue; // not yet visible
+      drawTile(t);
+    }
+  }
+
+  function drawTile(t) {
+    const pal = TILE_COLORS[t.value] || { bg: '#444', fg: '#fff' };
+    const cx = t.x + CELL / 2;
+    const cy = t.y + CELL / 2;
+    const s = t.scale;
+    if (s <= 0.01) return;
+    ctx2d.save();
+    ctx2d.globalAlpha = t.alpha;
+    ctx2d.translate(cx, cy);
+    ctx2d.scale(s, s);
+    // Body.
+    const grd = ctx2d.createLinearGradient(0, -CELL/2, 0, CELL/2);
+    grd.addColorStop(0, lighten(pal.bg, 0.18));
+    grd.addColorStop(0.5, pal.bg);
+    grd.addColorStop(1, shade(pal.bg, -22));
+    ctx2d.fillStyle = grd;
+    roundRect(ctx2d, -CELL/2, -CELL/2, CELL, CELL, 8);
+    ctx2d.fill();
+    // Subtle inner ring.
+    ctx2d.strokeStyle = 'rgba(255,255,255,0.14)';
+    ctx2d.lineWidth = 1;
+    roundRect(ctx2d, -CELL/2 + 1.5, -CELL/2 + 1.5, CELL - 3, CELL - 3, 7);
+    ctx2d.stroke();
+    // Glow ring for milestone tiles 64+.
+    if (t.value >= 64) {
+      ctx2d.shadowColor = pal.bg;
+      ctx2d.shadowBlur = 12;
+    }
+    // Number.
+    const text = String(t.value);
+    let fontSize;
+    if (text.length <= 2)      fontSize = CELL * 0.55;
+    else if (text.length === 3) fontSize = CELL * 0.45;
+    else if (text.length === 4) fontSize = CELL * 0.36;
+    else                        fontSize = CELL * 0.28;
+    ctx2d.font = `bold ${Math.floor(fontSize)}px 'Bangers', cursive`;
+    ctx2d.textAlign = 'center';
+    ctx2d.textBaseline = 'middle';
+    ctx2d.fillStyle = pal.fg;
+    ctx2d.shadowBlur = 0;
+    ctx2d.fillText(text, 0, fontSize * 0.05);
+    ctx2d.restore();
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y); c.quadraticCurveTo(x + w, y, x + w, y + r);
+    c.lineTo(x + w, y + h - r); c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    c.lineTo(x + r, y + h); c.quadraticCurveTo(x, y + h, x, y + h - r);
+    c.lineTo(x, y + r); c.quadraticCurveTo(x, y, x + r, y);
+    c.closePath();
+  }
+
+  function shade(hex, amt) {
+    const c = hex.replace('#', '');
+    const r = parseInt(c.substr(0,2), 16);
+    const g = parseInt(c.substr(2,2), 16);
+    const b = parseInt(c.substr(4,2), 16);
+    const adj = (v) => Math.max(0, Math.min(255, v + amt));
+    const to = (v) => v.toString(16).padStart(2, '0');
+    return '#' + to(adj(r)) + to(adj(g)) + to(adj(b));
+  }
+  function lighten(hex, t) {
+    const c = hex.replace('#', '');
+    const r = parseInt(c.substr(0,2), 16);
+    const g = parseInt(c.substr(2,2), 16);
+    const b = parseInt(c.substr(4,2), 16);
+    const lr = Math.round(r + (255 - r) * t);
+    const lg = Math.round(g + (255 - g) * t);
+    const lb = Math.round(b + (255 - b) * t);
+    const to = (v) => v.toString(16).padStart(2, '0');
+    return '#' + to(lr) + to(lg) + to(lb);
+  }
+
+  // ── End game ──────────────────────────────────────────────
+  let _ending = false;
+  async function endGame(reason) {
+    if (_ending) return; _ending = true;
+    ST.phase = PHASE_END;
+    sndGameOver();
+    addShake(8, 600);
+
+    let resp = null;
+    try {
+      const r = await fetch(`${API}/blockchain/end`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId:  ST.sessionId,
+          token:      ST.token,
+          moves:      ST.moves,
+          durationMs: Math.round(performance.now() - ST.startedAt),
+        }),
+      });
+      resp = await r.json();
+      if (!r.ok || resp.error) showErr(resp?.reason || resp?.error || 'end_failed');
+    } catch {
+      showErr('Network error');
+    }
+    _ending = false;
+
+    const awarded   = Number(resp?.awarded ?? ST.score);
+    const highest   = Number(resp?.highestTile ?? ST.highest);
+    const bestTile  = Number(resp?.bestTile ?? 0);
+    const txUrl     = resp?.explorerUrl || null;
+
+    postParent({
+      type: 'litdex:blockchain:end',
+      reason,
+      awarded, highestTile: highest, bestTile,
+      txInfo: txUrl ? { txHash: resp.txHash, explorerUrl: txUrl } : null,
+    });
+
+    fetchStats().then((stats) => {
+      const left = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 0;
+      ST.gamesLeft = left;
+      const body = `
+        <div class="panel-big">+${awarded} PTS</div>
+        <div class="panel-stat-row"><span class="lbl">Highest Tile</span><span class="val">${highest}</span></div>
+        <div class="panel-stat-row"><span class="lbl">Best Tile Ever</span><span class="val">${bestTile}</span></div>
+        <div class="panel-stat-row"><span class="lbl">Moves</span><span class="val">${ST.moves.length}</span></div>
+        ${txUrl ? `<div class="panel-stat-row"><span class="lbl">Tx</span><a class="val" style="color:#5be0a4;text-decoration:underline" href="${txUrl}" target="_blank" rel="noreferrer">${(resp.txHash || '').slice(0,10)}…</a></div>` : ''}
+      `;
+      panelTitle.textContent = 'GAME OVER';
+      panelSub.textContent   = highest >= 2048 ? 'JACKPOT — 2048 reached!' : 'No moves left.';
+      panelBody.innerHTML    = body;
+      btnPrimary.disabled    = left <= 0;
+      btnPrimary.textContent = left <= 0 ? 'NO GAMES LEFT' : 'PLAY AGAIN';
+      btnPrimary.onclick     = left <= 0 ? () => {} : startGame;
+      panel.classList.remove('hidden');
+    });
+  }
+
+  // ── Boot ──────────────────────────────────────────────────
+  (async () => {
+    if (!wallet) {
+      showPanel(
+        'BLOCK CHAIN',
+        'Wallet missing',
+        '<div style="color:#ef4956;font-family:JetBrains Mono,monospace;font-size:11px">Open this game from the LitDeX games page.</div>',
+        'CLOSE',
+        () => postParent({ type: 'litdex:blockchain:exit' })
+      );
+      return;
+    }
+    rebuildMilestoneStrip();
+    drawStage();
+    await showLobby();
+  })();
+})();
+</script>
+</body>
+</html>
