@@ -38,7 +38,7 @@
     top: 0; left: 0; right: 0;
     z-index: 5;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 6px;
     padding: 12px 12px 0;
     pointer-events: none;
@@ -508,13 +508,15 @@
       0 0 80px rgba(255,255,255,0.25),
       0 8px 0 rgba(0,0,0,0.4);
     letter-spacing: 4px;
-    line-height: 1;
+    line-height: 1.2;
+    padding: 0 20px;
     transform: scale(0.4);
     opacity: 0;
     animation: cdPop 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   }
   #countdown-num.go {
-    font-size: clamp(80px, 18vw, 200px);
+    font-size: clamp(70px, 14vw, 160px);
+    letter-spacing: 8px;
     background: linear-gradient(180deg, #3ecf8e, #20a866);
     -webkit-background-clip: text;
     background-clip: text;
@@ -523,9 +525,9 @@
   }
   @keyframes cdPop {
     0%   { transform: scale(0.3); opacity: 0; }
-    35%  { transform: scale(1.15); opacity: 1; }
+    35%  { transform: scale(1.05); opacity: 1; }
     70%  { transform: scale(1); opacity: 1; }
-    100% { transform: scale(1.4); opacity: 0; }
+    100% { transform: scale(1.1); opacity: 0; }
   }
 
   /* ── COIN ANIMATION (zkLTC jump on correct, fall on wrong) ── */
@@ -655,6 +657,10 @@
     <div class="hud-chip">
       <div class="hud-label">+NEXT</div>
       <div class="hud-val next" id="hud-next-gain">10</div>
+    </div>
+    <div class="hud-chip">
+      <div class="hud-label">LIVES</div>
+      <div class="hud-val" id="hud-lives" style="color:#ef4956;letter-spacing:2px;">❤️❤️❤️</div>
     </div>
     <div class="hud-chip">
       <div class="hud-label">TIMER</div>
@@ -819,6 +825,8 @@
   let streak       = 0;
   let totalCorrect = 0;
   let totalWrong   = 0;
+  let lives        = 3;        // 3 wrong calls before game over
+  const MAX_LIVES  = 3;
   let gameRunning  = false;
   let waiting      = false;     // waiting for user guess
   let roundStart   = 0;
@@ -1239,15 +1247,30 @@
       startRound();
     } else {
       totalWrong++;
+      lives--;
       sndWrong();
-      popup(`-${pot}`, 'down');
+      const livesLeft = Math.max(0, lives);
+      popup(livesLeft > 0 ? `WRONG · ${livesLeft} ❤️ LEFT` : `-${pot} · GAME OVER`, 'down');
       const root = el('game-container');
       root.classList.add('shake');
       setTimeout(() => root.classList.remove('shake'), 460);
       // Coin falls off the candle into the void.
       animateCoinFall();
-      await sleep(1100);
-      endGame('wrong', null);
+      updateHud();
+      if (lives <= 0) {
+        await sleep(1100);
+        endGame('wrong', null);
+        return;
+      }
+      // Pot resets but the round continues. Backend already returned
+      // pot: 0; we just keep playing through the next candles.
+      pot = 0;
+      streak = 0;
+      updateHud();
+      await sleep(900);
+      placeCoinOnLastCandle();
+      lockButtons(false);
+      startRound();
     }
   }
 
@@ -1349,6 +1372,7 @@
     el('hud-pot').textContent       = pot;
     el('hud-streak').textContent    = streak;
     el('hud-next-gain').textContent = increment;
+    el('hud-lives').textContent     = '❤️'.repeat(Math.max(0, lives));
     el('cashout-amt').textContent   = pot;
   }
 
@@ -1559,6 +1583,7 @@
   // ════════════════════════════════════════════════════════════════
   async function doStartGame() {
     pot = 0; streak = 0; totalCorrect = 0; totalWrong = 0;
+    lives = MAX_LIVES;
     gameRunning = true; waiting = false;
     lockButtons(false);
     showCashoutBtn(false);
@@ -1785,10 +1810,8 @@
       el('start-screen').classList.remove('hidden');
       el('wallet-addr').textContent = walletAddr.slice(0, 6) + '…' + walletAddr.slice(-4);
       await loadStats();
-      if (autoStart && !demoMode) {
-        el('start-screen').classList.add('hidden');
-        doStartGame();
-      }
+      // Auto-start removed — user must always tap PLAY on the in-iframe
+      // start screen so the 3-2-1-GO countdown sequence runs cleanly.
     } else if (window.ethereum) {
       try {
         const accounts = await window.ethereum.request({ method: 'eth_accounts' });
