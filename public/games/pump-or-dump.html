@@ -1125,10 +1125,18 @@
   // ════════════════════════════════════════════════════════════════
   function startRound() {
     if (!gameRunning) return;
-    waiting = true;
-    roundStart = performance.now();
+    // Brief input lock so a click that was already in flight
+    // (e.g. user mashing the button right after the 3-2-1-GO
+    // countdown) doesn't register with reactionMs < ~150ms and
+    // trip the backend anti-bot guard. We start the reaction
+    // timer only after the lock releases so the recorded rt is
+    // honest.
+    waiting = false;
+    lockButtons(true);
+    const INPUT_LOCK_MS = 280;
 
-    // Timer bar animation
+    // Timer bar animation (visible during the lock so the player
+    // sees the round resetting).
     const fill = el('timer-fill');
     fill.classList.remove('danger');
     fill.style.transition = 'none';
@@ -1136,6 +1144,13 @@
     void fill.offsetWidth; // reflow
     fill.style.transition = `width ${roundTimeMs}ms linear`;
     fill.style.width = '0%';
+
+    setTimeout(() => {
+      if (!gameRunning) return;
+      waiting = true;
+      roundStart = performance.now();
+      lockButtons(false);
+    }, INPUT_LOCK_MS);
 
     // Numeric timer
     clearInterval(timerTickIv);
