@@ -1251,7 +1251,9 @@
       startRound();
     } else {
       totalWrong++;
-      lives--;
+      // Note: lives is already updated from data.livesLeft above.
+      // Demo mode is the only path that needs a manual decrement.
+      if (demoMode) lives--;
       sndWrong();
       const livesLeft = Math.max(0, lives);
       popup(livesLeft > 0 ? `WRONG · ${livesLeft} ❤️ LEFT` : `-${pot} · GAME OVER`, 'down');
