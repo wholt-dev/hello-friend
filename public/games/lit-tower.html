@@ -10,7 +10,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
     width: 100%; height: 100%; overflow: hidden;
-    background: #0a0a0a;
+    background: #04101e;
     color: #fff;
     touch-action: manipulation;
     user-select: none;
@@ -22,10 +22,7 @@
   #game-container {
     position: relative;
     width: 100%; height: 100%;
-    background:
-      radial-gradient(ellipse at 50% 0%, rgba(62,207,142,0.08) 0%, transparent 55%),
-      radial-gradient(ellipse at 50% 100%, rgba(122, 90, 255, 0.08) 0%, transparent 55%),
-      #0a0a0a;
+    overflow: hidden;
   }
 
   canvas {
@@ -33,70 +30,169 @@
     width: 100%; height: 100%;
     display: block;
   }
-  #stage-canvas { z-index: 1; cursor: pointer; }
-  #fx-canvas    { z-index: 2; pointer-events: none; }
+  #stage-canvas { z-index: 2; cursor: pointer; }
 
-  /* HUD */
+  /* ── Sky background (CSS, never repaints — ultra cheap) ── */
+  #sky {
+    position: absolute; inset: 0; z-index: 1;
+    background:
+      radial-gradient(ellipse 120% 60% at 50% 105%, rgba(255,180,120,0.18) 0%, transparent 60%),
+      linear-gradient(180deg,
+        #04101e 0%,
+        #0a1d35 25%,
+        #133a5e 60%,
+        #2a6792 90%,
+        #4a8db8 100%);
+  }
+  /* Diagonal rain streaks like the reference */
+  #sky::after {
+    content: '';
+    position: absolute; inset: -20%;
+    background-image: repeating-linear-gradient(
+      115deg,
+      transparent 0,
+      transparent 22px,
+      rgba(255,255,255,0.045) 22px,
+      rgba(255,255,255,0.045) 23px,
+      transparent 23px,
+      transparent 60px
+    );
+    pointer-events: none;
+    animation: rainShift 14s linear infinite;
+  }
+  @keyframes rainShift {
+    from { transform: translate(0, 0); }
+    to   { transform: translate(-60px, 60px); }
+  }
+
+  /* ── HUD ── */
   #hud-top {
     position: absolute;
     top: 0; left: 0; right: 0;
-    z-index: 5;
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 6px;
-    padding: 12px 12px 0;
+    z-index: 6;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 14px 14px 0;
     pointer-events: none;
-    padding-top: max(12px, env(safe-area-inset-top));
+    padding-top: max(14px, env(safe-area-inset-top));
   }
-  .hud-chip {
-    background: linear-gradient(180deg, rgba(20,20,20,0.92), rgba(10,10,10,0.85));
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 12px;
-    padding: 8px 6px 7px;
-    text-align: center;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+  #pause-pill {
+    width: 40px; height: 40px;
+    background: linear-gradient(180deg, #59c47b, #3aa462);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.25), 0 0 0 2px rgba(255,255,255,0.18) inset;
   }
-  .hud-label {
+  #pause-pill::before, #pause-pill::after {
+    content: ''; display: block;
+    width: 5px; height: 16px;
+    background: #fff; border-radius: 2px;
+    margin: 0 2px;
+  }
+  #coin-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: linear-gradient(180deg, #f8e1a3, #efb748);
+    color: #5a3a0a;
+    border-radius: 999px;
+    padding: 4px 12px 4px 6px;
     font-family: 'Fredoka One', cursive;
-    font-size: 9px;
-    letter-spacing: 2px;
-    color: rgba(255,255,255,0.55);
-    text-transform: uppercase;
-    line-height: 1;
+    font-size: 16px; letter-spacing: 0.5px;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.22), 0 0 0 2px rgba(255,255,255,0.5) inset;
   }
-  .hud-val {
-    font-family: 'JetBrains Mono', monospace;
-    font-weight: 700;
-    font-size: 18px;
-    color: #fff;
-    letter-spacing: 0.5px;
-    margin-top: 3px;
-    line-height: 1;
+  .coin-icon {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 30% 30%, #fff5d2 0%, #ffd76a 35%, #c98b16 80%, #7a4d04 100%);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #6a3d04;
+    font-family: 'Bangers', cursive; font-size: 16px;
+    box-shadow: inset 0 0 0 2px #fff8d6, 0 2px 0 rgba(0,0,0,0.2);
   }
-  .hud-val.height { color: #fff; text-shadow: 0 0 12px rgba(255,255,255,0.4); }
-  .hud-val.points { color: #3ecf8e; }
+  .coin-icon.add {
+    background: radial-gradient(circle at 30% 30%, #f5fff0 0%, #c1f0a3 35%, #4f9a2c 80%, #1f4310 100%);
+    color: #1f4310;
+    box-shadow: inset 0 0 0 2px #e1ffd0, 0 2px 0 rgba(0,0,0,0.25);
+  }
 
-  /* Big tap hint that fades out after first stack */
+  #score-num {
+    position: absolute;
+    top: max(64px, calc(64px + env(safe-area-inset-top)));
+    right: 18px;
+    z-index: 5;
+    font-family: 'Bangers', cursive;
+    font-size: 64px;
+    line-height: 1;
+    color: #fff;
+    letter-spacing: 4px;
+    text-shadow: 2px 4px 0 rgba(0,0,0,0.45), 0 0 18px rgba(255,255,255,0.2);
+    pointer-events: none;
+    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  #score-num.bump { transform: scale(1.18); }
+  #score-num.miss { color: #ff8a8a; text-shadow: 2px 4px 0 rgba(80,0,0,0.5); }
+
+  /* Tap hint */
   #tap-hint {
     position: absolute;
-    bottom: 28%;
+    bottom: 20%;
     left: 0; right: 0;
     text-align: center;
-    z-index: 5;
+    z-index: 4;
     pointer-events: none;
     font-family: 'Bangers', cursive;
-    font-size: clamp(36px, 9vw, 72px);
-    letter-spacing: 6px;
+    font-size: clamp(40px, 11vw, 84px);
+    letter-spacing: 8px;
     color: #fff;
-    text-shadow: 0 0 28px rgba(255,255,255,0.55);
+    text-shadow: 0 2px 0 rgba(0,0,0,0.4), 0 0 28px rgba(255,255,255,0.55);
     opacity: 0;
     transition: opacity 0.3s ease;
   }
-  #tap-hint.visible { opacity: 1; animation: tapHintPulse 1.4s ease-in-out infinite; }
+  #tap-hint.visible { opacity: 1; animation: tapHintPulse 1.1s ease-in-out infinite; }
   @keyframes tapHintPulse {
     0%, 100% { transform: scale(1); }
-    50%      { transform: scale(1.06); }
+    50%      { transform: scale(1.08); }
+  }
+
+  /* Combo banner */
+  #combo {
+    position: absolute;
+    left: 50%; top: 26%;
+    transform: translate(-50%, 0) scale(0.6);
+    z-index: 5;
+    font-family: 'Bangers', cursive;
+    font-size: clamp(34px, 9vw, 68px);
+    letter-spacing: 3px;
+    color: #ffe97a;
+    text-shadow: 0 3px 0 rgba(0,0,0,0.45), 0 0 24px rgba(255,213,90,0.7);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease;
+  }
+  #combo.visible {
+    transform: translate(-50%, 0) scale(1);
+    opacity: 1;
+  }
+
+  /* Score popups */
+  .score-pop {
+    position: absolute;
+    z-index: 6;
+    font-family: 'Bangers', cursive;
+    font-size: 44px;
+    letter-spacing: 2px;
+    color: #fff;
+    text-shadow: 0 3px 0 rgba(0,0,0,0.45);
+    pointer-events: none;
+    transform: translate(-50%, 0);
+    animation: popUp 0.95s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  .score-pop.green { color: #b9ff86; text-shadow: 0 3px 0 rgba(0,80,20,0.55), 0 0 18px rgba(150,255,90,0.45); }
+  .score-pop.gold  { color: #ffe97a; text-shadow: 0 3px 0 rgba(80,40,0,0.55), 0 0 22px rgba(255,210,90,0.6); }
+  .score-pop.red   { color: #ff8a8a; text-shadow: 0 3px 0 rgba(80,0,0,0.55); }
+  @keyframes popUp {
+    0%   { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+    25%  { transform: translate(-50%, -20px) scale(1.2); opacity: 1; }
+    100% { transform: translate(-50%, -110px) scale(0.95); opacity: 0; }
   }
 
   /* Center start/restart panel */
@@ -123,7 +219,7 @@
   }
   .panel-title {
     font-family: 'Bangers', cursive;
-    font-size: 36px;
+    font-size: 38px;
     letter-spacing: 4px;
     margin-bottom: 4px;
     text-shadow: 0 0 18px rgba(62,207,142,0.45);
@@ -151,7 +247,6 @@
     margin: 14px 0 4px;
   }
   .panel-big.green { color: #3ecf8e; }
-  .panel-divider { height: 1px; background: #1f1f1f; margin: 14px 0; }
   .panel-btns { display: flex; gap: 10px; margin-top: 14px; }
   .panel-btn {
     flex: 1;
@@ -172,31 +267,8 @@
   }
   .panel-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* Score popups */
-  .score-pop {
-    position: absolute;
-    z-index: 6;
-    font-family: 'Bangers', cursive;
-    font-size: 38px;
-    letter-spacing: 2px;
-    color: #3ecf8e;
-    text-shadow: 0 0 18px rgba(62,207,142,0.7);
-    pointer-events: none;
-    animation: popUp 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-  }
-  .score-pop.miss { color: #ef4956; text-shadow: 0 0 18px rgba(239,73,86,0.6); }
-  @keyframes popUp {
-    0%   { transform: translate(-50%, 0) scale(0.7); opacity: 0; }
-    25%  { transform: translate(-50%, -18px) scale(1.15); opacity: 1; }
-    100% { transform: translate(-50%, -90px) scale(0.95); opacity: 0; }
-  }
-
-  .shake { animation: shake 0.35s ease; }
-  @keyframes shake {
-    0%, 100% { transform: translate(0, 0); }
-    25% { transform: translate(-4px, 1px); }
-    75% { transform: translate(4px, -1px); }
-  }
+  /* Camera shake target */
+  #shake-host { position: absolute; inset: 0; z-index: 2; will-change: transform; }
 
   #err-banner {
     position: absolute; top: 12px; left: 50%;
@@ -208,31 +280,31 @@
     padding: 8px 14px; border-radius: 8px;
     z-index: 40;
     opacity: 0; transition: opacity 0.25s ease;
+    pointer-events: none;
   }
   #err-banner.visible { opacity: 1; }
 </style>
 </head>
 <body>
 <div id="game-container">
-  <canvas id="stage-canvas"></canvas>
-  <canvas id="fx-canvas"></canvas>
+  <div id="sky"></div>
 
-  <div id="hud-top">
-    <div class="hud-chip">
-      <div class="hud-label">Height</div>
-      <div class="hud-val height" id="hud-height">0</div>
-    </div>
-    <div class="hud-chip">
-      <div class="hud-label">+ Pts</div>
-      <div class="hud-val points" id="hud-points">0</div>
-    </div>
-    <div class="hud-chip">
-      <div class="hud-label">Cap</div>
-      <div class="hud-val" id="hud-cap">20</div>
-    </div>
+  <div id="shake-host">
+    <canvas id="stage-canvas"></canvas>
   </div>
 
+  <div id="hud-top">
+    <div id="pause-pill" aria-hidden="true"></div>
+    <div id="coin-pill">
+      <span class="coin-icon add">+</span>
+      <span id="coin-num">0</span>
+      <span class="coin-icon" style="margin-left:2px">$</span>
+    </div>
+  </div>
+  <div id="score-num">0</div>
+
   <div id="tap-hint">TAP TO STACK</div>
+  <div id="combo">PERFECT</div>
 
   <div id="panel">
     <div class="panel-card" id="panel-card">
@@ -251,22 +323,17 @@
 
 <script>
 (() => {
-  // ── Wiring ─────────────────────────────────────────────────
+  // ── URL params ─────────────────────────────────────────────
   const params  = new URLSearchParams(location.search);
   const wallet  = (params.get('wallet') || '').toLowerCase();
   const auto    = params.get('autostart') === '1';
   const API     = (params.get('api') || 'https://game.test-hub.xyz').replace(/\/$/, '');
   const PARENT_ORIGIN = '*';
+  const postParent = (m) => { try { window.parent && window.parent.postMessage(m, PARENT_ORIGIN); } catch {} };
 
-  function postParent(msg) {
-    try { window.parent && window.parent.postMessage(msg, PARENT_ORIGIN); } catch {}
-  }
-
-  // ── DOM / canvas ──────────────────────────────────────────
+  // ── DOM refs ───────────────────────────────────────────────
   const stageCanvas = document.getElementById('stage-canvas');
-  const fxCanvas    = document.getElementById('fx-canvas');
-  const stage       = stageCanvas.getContext('2d');
-  const fx          = fxCanvas.getContext('2d');
+  const stage       = stageCanvas.getContext('2d', { alpha: true });
   const panel       = document.getElementById('panel');
   const panelTitle  = document.getElementById('panel-title');
   const panelSub    = document.getElementById('panel-sub');
@@ -276,26 +343,30 @@
   const tapHint     = document.getElementById('tap-hint');
   const errBanner   = document.getElementById('err-banner');
   const errMsg      = document.getElementById('err-msg');
-  const hudHeight   = document.getElementById('hud-height');
-  const hudPoints   = document.getElementById('hud-points');
-  const hudCap      = document.getElementById('hud-cap');
+  const scoreNum    = document.getElementById('score-num');
+  const coinNum     = document.getElementById('coin-num');
+  const comboEl     = document.getElementById('combo');
+  const shakeHost   = document.getElementById('shake-host');
+  const container   = document.getElementById('game-container');
 
+  // ── Canvas sizing ─────────────────────────────────────────
+  let DPR = 1;
   function resize() {
-    const dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
-    [stageCanvas, fxCanvas].forEach((c) => {
-      const r = c.getBoundingClientRect();
-      c.width  = Math.floor(r.width * dpr);
-      c.height = Math.floor(r.height * dpr);
-    });
-    stage.setTransform(1, 0, 0, 1, 0, 0); stage.scale(dpr, dpr);
-    fx.setTransform(1, 0, 0, 1, 0, 0);    fx.scale(dpr, dpr);
+    DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    const r = stageCanvas.getBoundingClientRect();
+    stageCanvas.width  = Math.floor(r.width * DPR);
+    stageCanvas.height = Math.floor(r.height * DPR);
+    stage.setTransform(1, 0, 0, 1, 0, 0); stage.scale(DPR, DPR);
   }
   window.addEventListener('resize', resize);
   resize();
 
+  function vw() { return stageCanvas.clientWidth; }
+  function vh() { return stageCanvas.clientHeight; }
+
   // ── Audio ─────────────────────────────────────────────────
   let audioCtx = null;
-  function tone(freq, durMs, type = 'sine', gain = 0.16) {
+  function tone(freq, durMs, type = 'sine', gain = 0.18) {
     try {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -304,47 +375,94 @@
       o.type = type;
       o.frequency.value = freq;
       g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-      g.gain.exponentialRampToValueAtTime(gain, audioCtx.currentTime + 0.01);
+      g.gain.exponentialRampToValueAtTime(gain, audioCtx.currentTime + 0.008);
       g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + durMs / 1000);
       o.connect(g).connect(audioCtx.destination);
       o.start();
       o.stop(audioCtx.currentTime + durMs / 1000);
     } catch {}
   }
-  function sndPlace(level) { tone(440 + level * 30, 90, 'square', 0.13); }
-  function sndPerfect()    { tone(880, 70, 'square', 0.16); setTimeout(() => tone(1100, 120, 'square', 0.14), 60); }
-  function sndMiss()       { tone(160, 260, 'sawtooth', 0.18); }
-  function sndCash()       { tone(523, 70, 'square', 0.14); setTimeout(() => tone(659, 70, 'square', 0.14), 80); setTimeout(() => tone(784, 140, 'square', 0.16), 160); }
+  function sndPlace(level) {
+    const f = 320 + Math.min(level, 30) * 18;
+    tone(f, 70, 'square', 0.13);
+    setTimeout(() => tone(f * 1.5, 50, 'square', 0.07), 35);
+  }
+  function sndPerfect() {
+    tone(880, 70, 'square', 0.15);
+    setTimeout(() => tone(1320, 90, 'square', 0.13), 60);
+    setTimeout(() => tone(1760, 110, 'square', 0.10), 130);
+  }
+  function sndMiss() {
+    tone(180, 320, 'sawtooth', 0.18);
+    setTimeout(() => tone(120, 360, 'sawtooth', 0.16), 140);
+  }
+  function sndCash() {
+    tone(523, 70, 'square', 0.14);
+    setTimeout(() => tone(659, 70, 'square', 0.14), 80);
+    setTimeout(() => tone(784, 140, 'square', 0.16), 160);
+  }
+
+  // ── Game constants (premium feel) ─────────────────────────
+  const BLOCK_HEIGHT      = 50;
+  const BASE_W_FRAC       = 0.62;     // foundation width as fraction of viewport
+  const SLIDER_SPEED_BASE = 380;      // px/sec, level 1 (was 130 — much faster now)
+  const SLIDER_SPEED_GROW = 16;       // +px/sec per level
+  const SLIDER_SPEED_MAX  = 760;      // hard cap so it stays playable
+  const PERFECT_TOLERANCE = 6;        // px window for "perfect"
+  const MIN_TAP_GAP_MS    = 230;      // matches server >220 floor
+  const PALETTE = [
+    // [base, accent, window, trim]
+    ['#d23a4b', '#ff5c6e', '#7ddff7', '#ffd166'],   // crimson red (matches reference)
+    ['#1f7a8c', '#3da7be', '#fff8a8', '#f7c948'],   // teal-blue
+    ['#7a2d8f', '#a14cb8', '#a8e6ff', '#ffd166'],   // royal purple
+    ['#0f7a4a', '#1ba968', '#ffeb99', '#ff9d3b'],   // emerald
+    ['#c2562a', '#e07a45', '#ffe680', '#7ddff7'],   // amber-rust
+    ['#264a99', '#3c69c7', '#fff5b3', '#ff9d3b'],   // ocean blue
+  ];
 
   // ── Game state ────────────────────────────────────────────
-  const STATE = {
-    sessionId: null,
-    token:     null,
-    maxStacks: 20,
-    perPt:     1,
-    gamesLeft: 0,
-    blocks: [],          // settled blocks below the slider
-    slider: null,        // moving block on top
-    height: 0,
-    correct: 0,
+  const ST = {
+    sessionId: null, token: null,
+    maxStacks: 20, perPt: 1, gamesLeft: 0,
+
+    blocks: [],          // settled tower (bottom -> top)
+    slider: null,        // moving block above the tower top
+    debris: [],          // chopped slivers, falling with gravity
+    sparks: [],          // perfect-snap sparkle particles
+
+    height: 0,           // count of stacked blocks above the foundation
     awarded: 0,
+    combo: 0,            // consecutive perfects
     running: false,
     starting: false,
-    taps: [],            // anti-cheat tape — t (ms since startedAt)
+
+    taps: [],            // [{t}]
     startedAt: 0,
-    lastTapAt: 0,
-    cameraY: 0,          // upward camera shift as tower grows
+    lastTapAt: -1e9,
+
+    cameraY: 0,          // current upward shift in CSS pixels
     targetCameraY: 0,
+    shakeAmp: 0,
+    shakeDecay: 0,
   };
 
-  // Layout constants (in CSS pixels)
-  const BLOCK_HEIGHT = 26;
-  const BASE_W       = 0.66;      // base block width as fraction of canvas
-  const SLIDER_SPEED_BASE = 130;  // px/sec (level 1)
-  const SLIDER_SPEED_GROW = 8;    // +px/sec per level
+  // ── HUD helpers ───────────────────────────────────────────
+  function setScore(n) {
+    scoreNum.textContent = String(n);
+    scoreNum.classList.remove('bump');
+    void scoreNum.offsetWidth;
+    scoreNum.classList.add('bump');
+  }
+  function setCoin(n) { coinNum.textContent = String(n); }
 
-  function viewW() { return stageCanvas.clientWidth; }
-  function viewH() { return stageCanvas.clientHeight; }
+  function showCombo(text) {
+    comboEl.textContent = text;
+    comboEl.classList.remove('visible');
+    void comboEl.offsetWidth;
+    comboEl.classList.add('visible');
+    clearTimeout(showCombo._t);
+    showCombo._t = setTimeout(() => comboEl.classList.remove('visible'), 700);
+  }
 
   function showErr(m) {
     errMsg.textContent = m || 'error';
@@ -352,6 +470,17 @@
     setTimeout(() => errBanner.classList.remove('visible'), 2400);
   }
 
+  function popup(text, x, y, kind) {
+    const el = document.createElement('div');
+    el.className = 'score-pop ' + (kind || 'green');
+    el.textContent = text;
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 950);
+  }
+
+  // ── Panel helpers ─────────────────────────────────────────
   function showPanel(title, sub, bodyHTML, primaryLabel, primaryAction) {
     panelTitle.textContent = title;
     panelSub.textContent   = sub;
@@ -361,10 +490,9 @@
     panel.classList.remove('hidden');
   }
   function hidePanel() { panel.classList.add('hidden'); }
-
   btnExit.onclick = () => postParent({ type: 'litdex:littower:exit' });
 
-  // ── Lobby panel ───────────────────────────────────────────
+  // ── Backend wiring ────────────────────────────────────────
   async function fetchStats() {
     if (!wallet) return null;
     try {
@@ -375,14 +503,16 @@
   }
 
   async function showLobby() {
-    STATE.running = false;
+    ST.running = false;
+    ST.blocks = []; ST.slider = null; ST.debris = []; ST.sparks = [];
+    setScore(0); setCoin(0);
     drawStage();
+
     const stats = await fetchStats();
     const left = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 5;
-    STATE.gamesLeft = left;
+    ST.gamesLeft = left;
     const best = stats ? Number(stats.bestHeight || 0) : 0;
     const cap  = stats ? Number(stats.maxPerGame || 20) : 20;
-    hudCap.textContent = cap;
 
     const noGames = left <= 0;
     const body = `
@@ -393,7 +523,7 @@
     `;
     showPanel(
       'LIT TOWER',
-      noGames ? 'Daily limit reached · resets 00:00 IST' : 'Free · tap to stack · +1 PT each correct',
+      noGames ? 'Daily limit reached · resets 00:00 IST' : 'Tap the screen to drop the block',
       body,
       noGames ? 'NO GAMES LEFT' : 'PLAY',
       noGames ? () => {} : startGame
@@ -401,11 +531,10 @@
     btnPrimary.disabled = noGames;
   }
 
-  // ── Start a session ───────────────────────────────────────
   async function startGame() {
     if (!wallet) { showErr('No wallet'); return; }
-    if (STATE.starting) return;
-    STATE.starting = true;
+    if (ST.starting) return;
+    ST.starting = true;
     btnPrimary.disabled = true;
     btnPrimary.textContent = 'STARTING…';
 
@@ -418,166 +547,480 @@
       const data = await r.json();
       if (!r.ok || data.error) {
         showErr(data?.error === 'daily_limit_reached' ? 'Daily limit reached' : (data?.error || 'start_failed'));
-        STATE.starting = false;
+        ST.starting = false;
         btnPrimary.disabled = false;
         btnPrimary.textContent = 'PLAY';
         return;
       }
-      STATE.sessionId = data.sessionId;
-      STATE.token     = data.token;
-      STATE.maxStacks = Number(data.maxStacks || 20);
-      STATE.perPt     = Number(data.perCorrectPts || 1);
-      STATE.gamesLeft = Number(data.gamesLeft || 0);
-      hudCap.textContent = STATE.maxStacks;
+      ST.sessionId = data.sessionId;
+      ST.token     = data.token;
+      ST.maxStacks = Number(data.maxStacks || 20);
+      ST.perPt     = Number(data.perCorrectPts || 1);
+      ST.gamesLeft = Number(data.gamesLeft || 0);
       initRun();
     } catch (e) {
       showErr('Network error');
-      STATE.starting = false;
+      ST.starting = false;
       btnPrimary.disabled = false;
       btnPrimary.textContent = 'PLAY';
     }
   }
 
   function initRun() {
-    STATE.starting = false;
-    STATE.running  = true;
-    STATE.blocks   = [];
-    STATE.slider   = null;
-    STATE.height   = 0;
-    STATE.correct  = 0;
-    STATE.awarded  = 0;
-    STATE.taps     = [];
-    STATE.startedAt = performance.now();
-    STATE.lastTapAt = -1e9;
-    STATE.cameraY = 0;
-    STATE.targetCameraY = 0;
+    ST.starting = false;
+    ST.running  = true;
+    ST.blocks   = [];
+    ST.slider   = null;
+    ST.debris   = [];
+    ST.sparks   = [];
+    ST.height   = 0;
+    ST.awarded  = 0;
+    ST.combo    = 0;
+    ST.taps     = [];
+    ST.startedAt = performance.now();
+    ST.lastTapAt = -1e9;
+    ST.cameraY = 0;
+    ST.targetCameraY = 0;
+    ST.shakeAmp = 0;
 
-    // Place a wide foundation block at the bottom.
-    const w0 = viewW() * BASE_W;
-    STATE.blocks.push({
-      x: (viewW() - w0) / 2,
-      y: viewH() - BLOCK_HEIGHT - 24,
+    setScore(0);
+    setCoin(0);
+    scoreNum.classList.remove('miss');
+
+    // Foundation block — wider, sits on a "ground line"
+    const w0 = vw() * BASE_W_FRAC;
+    const groundY = vh() - BLOCK_HEIGHT - 24;
+    ST.blocks.push({
+      x: (vw() - w0) / 2,
+      y: groundY,
       w: w0,
-      hue: 0,
+      paletteIdx: 0,
+      // Per-block landing squash animation state.
+      land: 0,
+      // Optional rooftop trim ornament every 4th floor.
+      trim: false,
     });
+
     spawnSlider();
     hidePanel();
     tapHint.classList.add('visible');
-    setTimeout(() => tapHint.classList.remove('visible'), 1800);
+    setTimeout(() => tapHint.classList.remove('visible'), 1500);
+    lastT = 0;
     requestAnimationFrame(loop);
   }
 
   function spawnSlider() {
-    const last = STATE.blocks[STATE.blocks.length - 1];
+    const last = ST.blocks[ST.blocks.length - 1];
     const w = last.w;
-    const fromLeft = STATE.height % 2 === 0;
-    STATE.slider = {
-      x: fromLeft ? -w : viewW(),
+    const fromLeft = ST.height % 2 === 0;
+    const speed = Math.min(SLIDER_SPEED_MAX, SLIDER_SPEED_BASE + ST.height * SLIDER_SPEED_GROW);
+    ST.slider = {
+      x: fromLeft ? -w - 10 : vw() + 10,
       y: last.y - BLOCK_HEIGHT,
       w,
-      vx: SLIDER_SPEED_BASE + STATE.height * SLIDER_SPEED_GROW,
+      vx: speed,
       dir: fromLeft ? 1 : -1,
-      hue: (STATE.height + 1) * 18,
+      paletteIdx: (last.paletteIdx + 1) % PALETTE.length,
+      land: 0,
     };
   }
 
-  // ── Game loop ─────────────────────────────────────────────
-  let lastT = 0;
-  function loop(t) {
-    if (!STATE.running) return;
-    const dt = Math.min(0.05, lastT ? (t - lastT) / 1000 : 0.016);
-    lastT = t;
+  // ── Input ─────────────────────────────────────────────────
+  function onTap(ev) {
+    if (!ST.running) return;
+    if (panel.classList && !panel.classList.contains('hidden')) return;
 
-    const s = STATE.slider;
-    if (s) {
-      s.x += s.vx * s.dir * dt;
-      // Bounce off walls (slightly past edges so block can leave fully).
-      if (s.dir === 1 && s.x > viewW()) s.dir = -1, s.x = viewW();
-      if (s.dir === -1 && s.x + s.w < 0) s.dir = 1, s.x = -s.w;
+    const now = performance.now();
+    if (now - ST.lastTapAt < MIN_TAP_GAP_MS) return;
+    ST.lastTapAt = now;
+
+    if (ev) ev.preventDefault?.();
+    tapHint.classList.remove('visible');
+
+    const s = ST.slider; if (!s) return;
+    const last = ST.blocks[ST.blocks.length - 1];
+    if (!last) return;
+
+    ST.taps.push({ t: Math.round(now - ST.startedAt) });
+
+    const ax = Math.max(s.x, last.x);
+    const bx = Math.min(s.x + s.w, last.x + last.w);
+    const overlap = bx - ax;
+
+    if (overlap <= 0) { onMiss(s); return; }
+
+    const isPerfect =
+      Math.abs(s.x - last.x) < PERFECT_TOLERANCE &&
+      Math.abs(overlap - last.w) < PERFECT_TOLERANCE;
+
+    let lockedX, lockedW;
+    if (isPerfect) {
+      lockedX = last.x;
+      lockedW = last.w;
+    } else {
+      lockedX = ax;
+      lockedW = overlap;
+      // Spawn the chopped piece(s) as falling debris.
+      // Left chop: the part of slider that's left of last block.
+      if (s.x < last.x) {
+        const dw = last.x - s.x;
+        if (dw > 0.5) ST.debris.push(makeDebris(s.x, s.y, dw, s.paletteIdx, -1));
+      }
+      // Right chop: the part of slider right of last block's right edge.
+      const lastRight = last.x + last.w;
+      const sRight = s.x + s.w;
+      if (sRight > lastRight) {
+        const dw = sRight - lastRight;
+        if (dw > 0.5) ST.debris.push(makeDebris(lastRight, s.y, dw, s.paletteIdx, 1));
+      }
     }
 
-    // Smooth camera as tower grows.
-    const idealTopY = viewH() * 0.32;
-    const towerTop = STATE.blocks.length
-      ? STATE.blocks[STATE.blocks.length - 1].y
-      : viewH();
-    STATE.targetCameraY = Math.max(0, idealTopY - towerTop);
-    STATE.cameraY += (STATE.targetCameraY - STATE.cameraY) * Math.min(1, dt * 6);
+    const newBlock = {
+      x: lockedX,
+      y: s.y,
+      w: lockedW,
+      paletteIdx: s.paletteIdx,
+      land: 1,            // 1 → 0 over ~220ms (squash-spring animation)
+      trim: ((ST.height + 1) % 4 === 0),
+    };
+    ST.blocks.push(newBlock);
+    ST.slider = null;
+    ST.height++;
+    ST.awarded = Math.min(ST.maxStacks, ST.height);
 
-    drawStage();
-    requestAnimationFrame(loop);
+    setScore(ST.height);
+    setCoin(ST.awarded);
+
+    if (isPerfect) {
+      ST.combo++;
+      sndPerfect();
+      addShake(4 + Math.min(ST.combo, 5) * 0.6, 320);
+      spawnPerfectSparks(newBlock);
+      if (ST.combo >= 2) {
+        showCombo(`PERFECT x${ST.combo}`);
+        const popX = newBlock.x + newBlock.w / 2;
+        const popY = newBlock.y + ST.cameraY - 30;
+        popup(`COMBO x${ST.combo}`, popX, popY, 'gold');
+      } else {
+        showCombo('PERFECT');
+        const popX = newBlock.x + newBlock.w / 2;
+        const popY = newBlock.y + ST.cameraY - 30;
+        popup('+1 PERFECT', popX, popY, 'gold');
+      }
+    } else {
+      ST.combo = 0;
+      sndPlace(ST.height);
+      const popX = newBlock.x + newBlock.w / 2;
+      const popY = newBlock.y + ST.cameraY - 24;
+      popup(`+${ST.perPt}`, popX, popY, 'green');
+    }
+
+    if (ST.height >= ST.maxStacks) {
+      setTimeout(() => endGame('cap'), 700);
+      return;
+    }
+
+    spawnSlider();
   }
 
+  function onMiss(s) {
+    sndMiss();
+    addShake(8, 420);
+    scoreNum.classList.add('miss');
+    // Push the entire slider as a falling debris.
+    ST.debris.push(makeDebris(s.x, s.y, s.w, s.paletteIdx, s.dir));
+    ST.slider = null;
+    ST.running = false;
+    setTimeout(() => endGame('miss'), 850);
+  }
+
+  function makeDebris(x, y, w, paletteIdx, dir) {
+    return {
+      x, y, w,
+      h: BLOCK_HEIGHT,
+      paletteIdx,
+      vx: (dir || 1) * (60 + Math.random() * 80),
+      vy: -120 + Math.random() * 40,
+      av: ((Math.random() - 0.5) * 6),
+      angle: 0,
+      alpha: 1,
+    };
+  }
+
+  function spawnPerfectSparks(b) {
+    const cx = b.x + b.w / 2;
+    const cy = b.y + 4;
+    for (let i = 0; i < 14; i++) {
+      const ang = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
+      const sp  = 180 + Math.random() * 220;
+      ST.sparks.push({
+        x: cx, y: cy,
+        vx: Math.cos(ang) * sp,
+        vy: Math.sin(ang) * sp,
+        life: 0.7 + Math.random() * 0.3,
+        maxLife: 1.0,
+        size: 2 + Math.random() * 3,
+        hue: 50 + Math.random() * 30,
+      });
+    }
+  }
+
+  function addShake(amp, durMs) {
+    ST.shakeAmp = Math.max(ST.shakeAmp, amp);
+    ST.shakeDecay = ST.shakeAmp / (durMs / 1000);
+  }
+
+  // ── Loop ──────────────────────────────────────────────────
+  let lastT = 0;
+  function loop(t) {
+    if (!t) t = performance.now();
+    if (!lastT) lastT = t;
+    const dt = Math.min(0.05, (t - lastT) / 1000);
+    lastT = t;
+
+    update(dt);
+    drawStage();
+    applyShake(dt);
+
+    if (ST.running || ST.debris.length || ST.sparks.length) {
+      requestAnimationFrame(loop);
+    } else {
+      // One last frame to clear debris.
+      drawStage();
+    }
+  }
+
+  function update(dt) {
+    // Slider motion.
+    const s = ST.slider;
+    if (s) {
+      s.x += s.vx * s.dir * dt;
+      const margin = 4;
+      if (s.dir === 1 && s.x + s.w > vw() - margin) {
+        s.dir = -1; s.x = vw() - margin - s.w;
+      } else if (s.dir === -1 && s.x < margin) {
+        s.dir = 1; s.x = margin;
+      }
+    }
+
+    // Landing squash anim (decay each block's land toward 0).
+    for (const b of ST.blocks) {
+      if (b.land > 0) b.land = Math.max(0, b.land - dt * 5.5);
+    }
+
+    // Camera target: keep top of tower at ~42% of viewport.
+    const towerTopY = ST.blocks.length
+      ? ST.blocks[ST.blocks.length - 1].y
+      : vh();
+    const desiredScreenY = vh() * 0.42;
+    ST.targetCameraY = Math.max(0, desiredScreenY - towerTopY);
+    ST.cameraY += (ST.targetCameraY - ST.cameraY) * Math.min(1, dt * 5.5);
+
+    // Debris physics.
+    const G = 1400;
+    const aliveDebris = [];
+    for (const d of ST.debris) {
+      d.vy += G * dt;
+      d.x  += d.vx * dt;
+      d.y  += d.vy * dt;
+      d.angle += d.av * dt;
+      d.alpha = Math.max(0, d.alpha - dt * 0.7);
+      // Keep alive while inside extended viewport.
+      if (d.y - ST.cameraY < vh() + 200 && d.alpha > 0.02) aliveDebris.push(d);
+    }
+    ST.debris = aliveDebris;
+
+    // Sparks.
+    const aliveSparks = [];
+    for (const p of ST.sparks) {
+      p.vy += 320 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life > 0) aliveSparks.push(p);
+    }
+    ST.sparks = aliveSparks;
+  }
+
+  function applyShake(dt) {
+    if (ST.shakeAmp > 0) {
+      ST.shakeAmp = Math.max(0, ST.shakeAmp - ST.shakeDecay * dt);
+      const a = ST.shakeAmp;
+      const dx = (Math.random() - 0.5) * 2 * a;
+      const dy = (Math.random() - 0.5) * 2 * a;
+      shakeHost.style.transform = `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px)`;
+    } else {
+      shakeHost.style.transform = '';
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────
   function drawStage() {
-    const W = viewW(), H = viewH();
+    const W = vw(), H = vh();
     stage.clearRect(0, 0, W, H);
 
-    // Background grid lines (subtle).
     stage.save();
-    stage.translate(0, STATE.cameraY);
-    stage.strokeStyle = 'rgba(255,255,255,0.04)';
-    stage.lineWidth = 1;
-    for (let y = -200; y < H + 200; y += 28) {
-      stage.beginPath(); stage.moveTo(0, y); stage.lineTo(W, y); stage.stroke();
-    }
+    stage.translate(0, ST.cameraY);
 
-    // Floor glow under foundation.
-    if (STATE.blocks.length) {
-      const b0 = STATE.blocks[0];
-      const grd = stage.createRadialGradient(b0.x + b0.w/2, b0.y + BLOCK_HEIGHT, 8, b0.x + b0.w/2, b0.y + BLOCK_HEIGHT, 220);
-      grd.addColorStop(0, 'rgba(62,207,142,0.18)');
-      grd.addColorStop(1, 'rgba(62,207,142,0)');
+    // Ground line + soft horizon glow under the foundation.
+    if (ST.blocks.length) {
+      const b0 = ST.blocks[0];
+      const groundY = b0.y + BLOCK_HEIGHT;
+      // Glow under tower.
+      const grd = stage.createRadialGradient(W / 2, groundY + 6, 6, W / 2, groundY + 6, W * 0.55);
+      grd.addColorStop(0, 'rgba(255,210,140,0.22)');
+      grd.addColorStop(1, 'rgba(255,210,140,0)');
       stage.fillStyle = grd;
-      stage.fillRect(0, b0.y, W, 240);
+      stage.fillRect(0, groundY - 30, W, 80);
+      // Hairline ground.
+      stage.strokeStyle = 'rgba(255,255,255,0.08)';
+      stage.lineWidth = 1;
+      stage.beginPath(); stage.moveTo(0, groundY + 0.5); stage.lineTo(W, groundY + 0.5); stage.stroke();
     }
 
-    // Settled blocks
-    for (const b of STATE.blocks) drawBlock(b, false);
+    // Settled tower (oldest at bottom, draw bottom-up so newer can occlude).
+    for (let i = 0; i < ST.blocks.length; i++) {
+      drawBuilding(ST.blocks[i], false);
+    }
 
-    // Slider on top
-    if (STATE.slider) drawBlock(STATE.slider, true);
+    // Slider on top.
+    if (ST.slider) drawBuilding(ST.slider, true);
+
+    // Debris.
+    for (const d of ST.debris) drawDebris(d);
+
+    // Sparks.
+    for (const p of ST.sparks) drawSpark(p);
 
     stage.restore();
   }
 
-  function drawBlock(b, isSlider) {
-    const hue = b.hue || 0;
-    const baseFill = isSlider
-      ? `linear-gradient`
-      : 'block';
+  function drawBuilding(b, isSlider) {
+    const pal = PALETTE[b.paletteIdx % PALETTE.length];
+    const [base, accent, win, trim] = pal;
 
-    // Soft outer glow on slider.
+    // Squash-spring on landing: scale Y down 8% then back up.
+    let drawH = BLOCK_HEIGHT, drawW = b.w;
+    let dy = 0;
+    if (b.land > 0) {
+      const k = b.land;          // 1 (just landed) → 0
+      const t = 1 - k;           // 0 → 1
+      // ease back: stronger squash at start, settle at end
+      const squash = Math.sin(t * Math.PI) * 0.08; // peak 8%
+      drawH = BLOCK_HEIGHT * (1 - squash);
+      drawW = b.w * (1 + squash * 0.5);
+      dy = BLOCK_HEIGHT - drawH;
+    }
+    const x = b.x - (drawW - b.w) / 2;
+    const y = b.y + dy;
+
+    // Drop shadow for slider so it pops against the sky.
     if (isSlider) {
-      stage.shadowColor = `hsla(${(150 + hue) % 360}, 80%, 60%, 0.55)`;
-      stage.shadowBlur  = 22;
+      stage.fillStyle = 'rgba(0,0,0,0.28)';
+      roundRect(stage, x + 4, y + drawH - 6, drawW, 8, 4);
+      stage.fill();
     }
 
-    const grd = stage.createLinearGradient(b.x, b.y, b.x, b.y + BLOCK_HEIGHT);
-    if (isSlider) {
-      grd.addColorStop(0, `hsl(${(150 + hue) % 360}, 80%, 62%)`);
-      grd.addColorStop(1, `hsl(${(150 + hue) % 360}, 80%, 38%)`);
-    } else {
-      grd.addColorStop(0, `hsl(${(150 + hue) % 360}, 50%, 32%)`);
-      grd.addColorStop(1, `hsl(${(150 + hue) % 360}, 50%, 18%)`);
-    }
+    // Body.
+    const grd = stage.createLinearGradient(x, y, x, y + drawH);
+    grd.addColorStop(0, accent);
+    grd.addColorStop(0.55, base);
+    grd.addColorStop(1, shade(base, -22));
     stage.fillStyle = grd;
-    roundRect(stage, b.x, b.y, b.w, BLOCK_HEIGHT, 6);
+    roundRect(stage, x, y, drawW, drawH, 4);
     stage.fill();
-    stage.shadowBlur = 0;
 
-    // Top highlight stripe
-    stage.fillStyle = isSlider ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.08)';
-    stage.fillRect(b.x + 2, b.y + 2, Math.max(0, b.w - 4), 1.5);
-
-    // Inner border
-    stage.strokeStyle = isSlider ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.12)';
+    // Top trim line.
+    stage.strokeStyle = 'rgba(255,255,255,0.18)';
     stage.lineWidth = 1;
-    roundRect(stage, b.x + 0.5, b.y + 0.5, b.w - 1, BLOCK_HEIGHT - 1, 6);
+    stage.beginPath();
+    stage.moveTo(x + 2, y + 1.5);
+    stage.lineTo(x + drawW - 2, y + 1.5);
     stage.stroke();
+
+    // Bottom shadow line.
+    stage.strokeStyle = 'rgba(0,0,0,0.35)';
+    stage.beginPath();
+    stage.moveTo(x + 2, y + drawH - 1);
+    stage.lineTo(x + drawW - 2, y + drawH - 1);
+    stage.stroke();
+
+    // Vertical edge highlight.
+    stage.strokeStyle = 'rgba(255,255,255,0.12)';
+    stage.beginPath();
+    stage.moveTo(x + 1, y + 2);
+    stage.lineTo(x + 1, y + drawH - 2);
+    stage.stroke();
+
+    // Windows (count scales with width).
+    const winCount = Math.max(1, Math.min(4, Math.round(drawW / 60)));
+    const winGap = drawW / (winCount + 1);
+    const winW = Math.max(8, Math.min(18, drawW / (winCount * 3.2)));
+    const winH = Math.max(12, drawH * 0.55);
+    const winY = y + (drawH - winH) / 2;
+    for (let i = 1; i <= winCount; i++) {
+      const wx = x + winGap * i - winW / 2;
+      // Window frame.
+      stage.fillStyle = shade(base, -30);
+      roundRect(stage, wx - 1.5, winY - 1.5, winW + 3, winH + 3, 3);
+      stage.fill();
+      // Window glow.
+      const wg = stage.createLinearGradient(wx, winY, wx, winY + winH);
+      wg.addColorStop(0, lighten(win, 0.12));
+      wg.addColorStop(1, win);
+      stage.fillStyle = wg;
+      roundRect(stage, wx, winY, winW, winH, 3);
+      stage.fill();
+      // Window mullion (thin vertical line).
+      stage.strokeStyle = 'rgba(0,0,0,0.18)';
+      stage.lineWidth = 1;
+      stage.beginPath();
+      stage.moveTo(wx + winW / 2, winY + 1);
+      stage.lineTo(wx + winW / 2, winY + winH - 1);
+      stage.stroke();
+      // Sparkle highlight.
+      stage.fillStyle = 'rgba(255,255,255,0.45)';
+      stage.fillRect(wx + 1.5, winY + 1.5, Math.max(2, winW * 0.18), 2);
+    }
+
+    // Optional rooftop trim every 4th floor (cornice).
+    if (b.trim && !isSlider) {
+      stage.fillStyle = trim;
+      stage.fillRect(x - 2, y - 4, drawW + 4, 4);
+      stage.fillStyle = shade(trim, -25);
+      stage.fillRect(x - 2, y - 1, drawW + 4, 1);
+    }
+  }
+
+  function drawDebris(d) {
+    const pal = PALETTE[d.paletteIdx % PALETTE.length];
+    stage.save();
+    stage.globalAlpha = d.alpha;
+    stage.translate(d.x + d.w / 2, d.y + d.h / 2);
+    stage.rotate(d.angle);
+    stage.fillStyle = pal[1];
+    roundRect(stage, -d.w / 2, -d.h / 2, d.w, d.h, 3);
+    stage.fill();
+    stage.fillStyle = 'rgba(0,0,0,0.18)';
+    stage.fillRect(-d.w / 2 + 2, d.h / 2 - 3, d.w - 4, 2);
+    stage.restore();
+  }
+
+  function drawSpark(p) {
+    const a = Math.max(0, p.life / p.maxLife);
+    stage.save();
+    stage.globalAlpha = a;
+    stage.fillStyle = `hsl(${p.hue}, 95%, 65%)`;
+    stage.shadowColor = `hsl(${p.hue}, 95%, 65%)`;
+    stage.shadowBlur = 8;
+    stage.beginPath();
+    stage.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    stage.fill();
+    stage.restore();
   }
 
   function roundRect(c, x, y, w, h, r) {
-    r = Math.min(r, w / 2, h / 2);
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
     c.beginPath();
     c.moveTo(x + r, y);
     c.lineTo(x + w - r, y); c.quadraticCurveTo(x + w, y, x + w, y + r);
@@ -587,98 +1030,40 @@
     c.closePath();
   }
 
-  // ── Tap to drop ───────────────────────────────────────────
-  function handleTap(ev) {
-    if (!STATE.running) return;
-    const now = performance.now();
-    // Hard floor that matches backend MIN_TAP_GAP_MS to avoid being
-    // marked "tap_too_fast" by a doubled click.
-    if (now - STATE.lastTapAt < 200) return;
-    STATE.lastTapAt = now;
-
-    tapHint.classList.remove('visible');
-
-    const s = STATE.slider; if (!s) return;
-    const last = STATE.blocks[STATE.blocks.length - 1];
-    if (!last) return;
-
-    // Compute overlap with the previous top block.
-    const ax = Math.max(s.x, last.x);
-    const bx = Math.min(s.x + s.w, last.x + last.w);
-    const overlap = bx - ax;
-
-    STATE.taps.push({ t: Math.round(now - STATE.startedAt) });
-
-    if (overlap <= 0) {
-      // Total miss — game over.
-      onMiss(s, last);
-      return;
-    }
-
-    // Trim slider to the overlap width and lock it as a settled block.
-    const newBlock = { x: ax, y: s.y, w: overlap, hue: s.hue };
-    STATE.blocks.push(newBlock);
-    STATE.slider = null;
-    STATE.height++;
-    STATE.correct++;
-    STATE.awarded = Math.min(STATE.maxStacks, STATE.height);
-
-    const perfect = Math.abs(overlap - last.w) < 2 && Math.abs(s.x - last.x) < 2;
-    if (perfect) {
-      // Perfect alignment keeps full width — bonus pop and snappy sound.
-      newBlock.w = last.w;
-      newBlock.x = last.x;
-      sndPerfect();
-      flashPop(newBlock, '+1 PERFECT');
-    } else {
-      sndPlace(STATE.height);
-      flashPop(newBlock, `+${STATE.perPt}`);
-    }
-
-    hudHeight.textContent = STATE.height;
-    hudPoints.textContent = STATE.awarded;
-
-    // Cap reached → auto end the game with a celebratory cashout.
-    if (STATE.height >= STATE.maxStacks) {
-      setTimeout(() => endGame('cap'), 600);
-      return;
-    }
-
-    spawnSlider();
+  // Color helpers (operate on #rrggbb).
+  function shade(hex, amt) {
+    const c = hex.replace('#', '');
+    const r = parseInt(c.substr(0, 2), 16);
+    const g = parseInt(c.substr(2, 2), 16);
+    const b = parseInt(c.substr(4, 2), 16);
+    const adj = (v) => Math.max(0, Math.min(255, v + amt));
+    const to = (v) => v.toString(16).padStart(2, '0');
+    return '#' + to(adj(r)) + to(adj(g)) + to(adj(b));
   }
-
-  function onMiss(s, last) {
-    sndMiss();
-    flashPop({ x: s.x, y: s.y, w: s.w }, 'MISS', true);
-    STATE.slider = null;
-    STATE.running = false;
-    document.getElementById('game-container').classList.add('shake');
-    setTimeout(() => document.getElementById('game-container').classList.remove('shake'), 360);
-    setTimeout(() => endGame('miss'), 700);
-  }
-
-  function flashPop(b, text, miss) {
-    const el = document.createElement('div');
-    el.className = 'score-pop' + (miss ? ' miss' : '');
-    el.textContent = text;
-    el.style.left = (b.x + b.w / 2) + 'px';
-    el.style.top  = (b.y - 18 + STATE.cameraY) + 'px';
-    document.getElementById('game-container').appendChild(el);
-    setTimeout(() => el.remove(), 950);
+  function lighten(hex, t) {
+    const c = hex.replace('#', '');
+    const r = parseInt(c.substr(0, 2), 16);
+    const g = parseInt(c.substr(2, 2), 16);
+    const b = parseInt(c.substr(4, 2), 16);
+    const lr = Math.round(r + (255 - r) * t);
+    const lg = Math.round(g + (255 - g) * t);
+    const lb = Math.round(b + (255 - b) * t);
+    const to = (v) => v.toString(16).padStart(2, '0');
+    return '#' + to(lr) + to(lg) + to(lb);
   }
 
   // ── End game ──────────────────────────────────────────────
   async function endGame(reason) {
-    STATE.running = false;
+    ST.running = false;
     let resp = null;
     try {
       const r = await fetch(`${API}/littower/end`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionId: STATE.sessionId,
-          token:     STATE.token,
-          taps:      STATE.taps,
+          sessionId: ST.sessionId,
+          token:     ST.token,
+          taps:      ST.taps,
         }),
       });
       resp = await r.json();
@@ -689,8 +1074,8 @@
       showErr('Network error');
     }
 
-    const awarded = Number(resp?.awarded ?? STATE.awarded ?? 0);
-    const height  = Number(resp?.height  ?? STATE.height  ?? 0);
+    const awarded = Number(resp?.awarded ?? ST.awarded ?? 0);
+    const height  = Number(resp?.height  ?? ST.height  ?? 0);
     const best    = Number(resp?.bestHeight ?? 0);
 
     if (awarded > 0) sndCash();
@@ -698,25 +1083,21 @@
     postParent({
       type: 'litdex:littower:end',
       reason: reason === 'cap' ? 'cap' : 'miss',
-      height,
-      awarded,
-      best,
+      height, awarded, best,
     });
 
-    // Show end card.
+    const stats = await fetchStats();
+    const left  = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 0;
+    ST.gamesLeft = left;
+
     const body = `
       <div class="panel-big green">+${awarded} PTS</div>
       <div class="panel-stat-row"><span class="lbl">Height</span><span class="val">${height}</span></div>
       <div class="panel-stat-row"><span class="lbl">Best</span><span class="val">${best}</span></div>
-      <div class="panel-stat-row"><span class="lbl">Cap</span><span class="val">${STATE.maxStacks}</span></div>
+      <div class="panel-stat-row"><span class="lbl">Cap</span><span class="val">${ST.maxStacks}</span></div>
     `;
-    // Refresh games-left from server.
-    const stats = await fetchStats();
-    const left  = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 0;
-    STATE.gamesLeft = left;
-
     panelTitle.textContent = reason === 'cap' ? 'TOWER MAXED' : 'TOWER FELL';
-    panelSub.textContent   = reason === 'cap' ? 'You hit the daily cap on this game.' : 'Better luck next stack.';
+    panelSub.textContent   = reason === 'cap' ? 'Daily cap hit on this run.' : 'Better luck next stack.';
     panelBody.innerHTML    = body;
     btnPrimary.disabled    = left <= 0;
     btnPrimary.textContent = left <= 0 ? 'NO GAMES LEFT' : 'PLAY AGAIN';
@@ -725,27 +1106,38 @@
   }
 
   // ── Input wiring ──────────────────────────────────────────
-  function onPointer(e) {
-    if (panel.classList.contains('hidden')) {
-      e.preventDefault?.();
-      handleTap(e);
-    }
-  }
-  stageCanvas.addEventListener('pointerdown', onPointer);
-  stageCanvas.addEventListener('touchstart', onPointer, { passive: false });
-  // Allow space / enter as accessibility tap.
+  // Use pointerdown for instant response, capture on the whole container
+  // (anywhere in playfield is tappable) but ignore taps when panel is up.
+  function tapHandler(e) { onTap(e); }
+  container.addEventListener('pointerdown', tapHandler);
+  container.addEventListener('touchstart',  (e) => { tapHandler(e); }, { passive: false });
+  // Keyboard accessibility.
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' || e.code === 'Enter') {
       if (!panel.classList.contains('hidden')) return;
       e.preventDefault();
-      handleTap();
+      onTap();
     }
+  });
+
+  // Prevent the start panel buttons from also triggering a stage tap.
+  ['btn-primary', 'btn-exit'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    el.addEventListener('touchstart',  (e) => e.stopPropagation());
   });
 
   // ── Boot ──────────────────────────────────────────────────
   (async () => {
     if (!wallet) {
-      showPanel('LIT TOWER', 'Wallet missing', '<div style="color:#ef4956;font-family:JetBrains Mono,monospace;font-size:11px">Open this game from the LitDeX games page.</div>', 'CLOSE', () => postParent({ type: 'litdex:littower:exit' }));
+      showPanel(
+        'LIT TOWER',
+        'Wallet missing',
+        '<div style="color:#ef4956;font-family:JetBrains Mono,monospace;font-size:11px">Open this game from the LitDeX games page.</div>',
+        'CLOSE',
+        () => postParent({ type: 'litdex:littower:exit' })
+      );
       return;
     }
     await showLobby();
