@@ -12,7 +12,7 @@
     width: 100%; height: 100%; overflow: hidden;
     background: #050912;
     color: #fff;
-    touch-action: manipulation;
+    touch-action: none;
     user-select: none;
     -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
@@ -24,7 +24,7 @@
     width: 100%; height: 100%;
     overflow: hidden;
     background:
-      radial-gradient(ellipse 100% 80% at 50% 100%, #244169 0%, #0c1a30 30%, transparent 65%),
+      radial-gradient(ellipse 100% 40% at 50% 100%, #244169 0%, #0c1a30 30%, transparent 65%),
       radial-gradient(ellipse 80% 60% at 50% 0%, #050918 0%, transparent 70%),
       linear-gradient(180deg, #04060c 0%, #0a1226 50%, #1d3856 100%);
   }
@@ -33,6 +33,7 @@
     position: absolute; left: 0; top: 0;
     width: 100%; height: 100%;
     display: block;
+    touch-action: none;
   }
   #stage-canvas { z-index: 2; }
 
@@ -45,6 +46,7 @@
     padding-top: max(14px, env(safe-area-inset-top));
     pointer-events: none;
     display: flex; justify-content: space-between; gap: 10px;
+    align-items: flex-start;
   }
   .hud-pill {
     flex: 1;
@@ -67,171 +69,83 @@
     margin-top: 3px;
     letter-spacing: 0.5px;
   }
-  .hud-pill.mult .v { font-size: 22px; color: #5be0a4; text-shadow: 0 0 14px rgba(91,224,164,0.6); }
+  .hud-pill.score { background: linear-gradient(180deg, rgba(255,213,90,0.25), rgba(120,80,15,0.4)); border-color: rgba(255,213,90,0.5); color: #ffe9bf; }
+  .hud-pill.score .v { color: #ffe97a; font-size: 22px; text-shadow: 0 0 12px rgba(255,213,90,0.5); }
+  .hud-pill.lives  { background: linear-gradient(180deg, rgba(255,90,120,0.25), rgba(80,15,40,0.4)); border-color: rgba(255,138,168,0.45); color: #ffd2dc; }
+  .hud-pill.lives .v { color: #ff8a8a; font-size: 18px; }
+  .hud-pill.spd    { background: linear-gradient(180deg, rgba(91,224,164,0.22), rgba(20,80,50,0.4)); border-color: rgba(91,224,164,0.45); color: #d2ffe2; }
+  .hud-pill.spd .v { color: #5be0a4; }
 
-  /* Big multiplier readout (Crash-style) */
-  #mult-mega {
+  /* 3-2-1-GO countdown overlay */
+  #countdown {
     position: absolute;
-    top: 24%; left: 50%;
-    transform: translate(-50%, 0);
-    z-index: 5;
-    font-family: 'Bangers', cursive;
-    font-size: clamp(64px, 18vw, 156px);
-    line-height: 1;
-    color: #fff;
-    text-shadow: 0 4px 0 rgba(0,0,0,0.5), 0 0 36px rgba(140,200,255,0.35);
-    pointer-events: none;
-    letter-spacing: 4px;
-    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.2s ease;
-    opacity: 0;
-  }
-  #mult-mega.visible { opacity: 1; }
-  #mult-mega.bump { transform: translate(-50%, 0) scale(1.06); }
-  #mult-mega.danger { color: #ff8a8a; text-shadow: 0 4px 0 rgba(60,0,0,0.6), 0 0 32px rgba(255,80,80,0.55); }
-
-  /* Bottom action zone */
-  #pad {
-    position: absolute;
-    left: 0; right: 0; bottom: 0;
-    z-index: 6;
-    padding: 0 14px 18px;
-    padding-bottom: max(18px, env(safe-area-inset-bottom));
+    inset: 0;
+    z-index: 8;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(2px);
+    transition: opacity 0.25s ease;
     pointer-events: none;
   }
-  #fuel-wrap {
-    background: linear-gradient(180deg, rgba(15,25,45,0.85), rgba(5,10,20,0.9));
-    border: 1px solid rgba(140,180,255,0.18);
-    border-radius: 14px;
-    padding: 8px 12px 10px;
-    margin-bottom: 10px;
-    backdrop-filter: blur(6px);
-  }
-  .fuel-head {
-    display: flex; justify-content: space-between; align-items: baseline;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px; letter-spacing: 0.18em;
-    color: #aac6ee;
-    text-transform: uppercase;
-    margin-bottom: 5px;
-  }
-  .fuel-head .pct {
+  #countdown.hidden { opacity: 0; }
+  #countdown-num {
     font-family: 'Bangers', cursive;
-    font-size: 20px; letter-spacing: 2px;
+    font-size: clamp(120px, 28vw, 280px);
+    line-height: 1.2;
     color: #fff;
-    text-shadow: 0 0 12px rgba(255,210,90,0.5);
-  }
-  #fuel-track {
-    position: relative;
-    height: 14px;
-    background: rgba(0,0,0,0.55);
-    border-radius: 999px;
-    overflow: hidden;
-    box-shadow: inset 0 0 0 1px rgba(140,180,255,0.18);
-  }
-  #fuel-fill {
-    position: absolute; top: 0; left: 0; bottom: 0;
-    width: 0%;
-    background: linear-gradient(90deg, #6ed0ff 0%, #ffe97a 65%, #ff7a45 100%);
-    box-shadow: 0 0 16px rgba(255,210,120,0.6);
-    transition: width 0.06s linear;
-  }
-  /* Sweet-spot marker. Set with --sweet-mid, --sweet-w. */
-  #fuel-sweet {
-    position: absolute;
-    top: 0; bottom: 0;
-    left: calc((var(--sweet-mid, 56) - var(--sweet-w, 6)) * 1%);
-    width: calc(var(--sweet-w, 6) * 2 * 1%);
-    background: rgba(91,224,164,0.4);
-    border-left: 1px solid rgba(91,224,164,0.7);
-    border-right: 1px solid rgba(91,224,164,0.7);
-    pointer-events: none;
-  }
-  #fuel-sweet.show { display: block; }
-
-  #thrust-btn {
-    pointer-events: auto;
-    width: 100%;
-    min-height: 84px;
-    border-radius: 16px;
-    border: none;
-    background: linear-gradient(180deg, #ff7a45 0%, #c54616 100%);
-    color: #fff;
-    font-family: 'Bangers', cursive;
-    font-size: 32px;
+    text-shadow: 0 6px 0 rgba(0,0,0,0.45), 0 0 36px rgba(140,200,255,0.5);
     letter-spacing: 6px;
-    text-shadow: 0 3px 0 rgba(0,0,0,0.4);
-    box-shadow: 0 8px 0 #6e2a0a, 0 0 32px rgba(255,120,60,0.4);
-    cursor: pointer;
-    transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.1s ease;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: none;
+    animation: cdPop 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    padding: 0 24px;
   }
-  #thrust-btn:active, #thrust-btn.held {
-    transform: translateY(4px);
-    box-shadow: 0 4px 0 #6e2a0a, 0 0 48px rgba(255,200,90,0.6);
-    filter: brightness(1.18);
+  #countdown-num.go {
+    color: #5be0a4;
+    font-size: clamp(70px, 14vw, 160px);
+    letter-spacing: 8px;
+    text-shadow: 0 6px 0 rgba(0,40,20,0.5), 0 0 36px rgba(91,224,164,0.7);
   }
-  #thrust-btn.cashout {
-    background: linear-gradient(180deg, #5be0a4 0%, #1f9c66 100%);
-    box-shadow: 0 8px 0 #0e5d3a, 0 0 32px rgba(91,224,164,0.45);
-    color: #04241a;
-    text-shadow: 0 2px 0 rgba(255,255,255,0.18);
-  }
-  #thrust-btn.cashout:active, #thrust-btn.cashout.held {
-    box-shadow: 0 4px 0 #0e5d3a, 0 0 48px rgba(120,255,180,0.65);
-  }
-  #thrust-btn.disabled {
-    pointer-events: none;
-    opacity: 0.5; filter: grayscale(0.4);
+  @keyframes cdPop {
+    0%   { transform: scale(0.4); opacity: 0; }
+    25%  { transform: scale(1.1); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
   }
 
-  /* Side legend (altitude markers) */
-  #ladder {
+  /* Bottom hint while playing */
+  #move-hint {
     position: absolute;
-    top: 22%; bottom: 26%;
-    left: 8px;
-    z-index: 4;
-    width: 78px;
-    pointer-events: none;
-  }
-  .ladder-tick {
-    position: absolute;
-    left: 0; right: 0;
-    display: flex; flex-direction: column; align-items: flex-start;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 9px; letter-spacing: 0.1em;
-    color: rgba(255,255,255,0.5);
-    text-transform: uppercase;
-  }
-  .ladder-tick .lbl { color: rgba(255,255,255,0.85); font-weight: 700; }
-  .ladder-tick .mult {
-    color: #ffe97a; font-size: 10px; letter-spacing: 0.04em;
-    text-shadow: 0 0 8px rgba(255,213,90,0.5);
-  }
-  .ladder-tick::before {
-    content: ''; position: absolute; left: 64px; top: 50%;
-    width: 12px; height: 1px; background: rgba(255,255,255,0.3);
-  }
-
-  /* Banner */
-  #banner {
-    position: absolute;
-    top: 16%; left: 50%;
-    transform: translate(-50%, 0) scale(0.8);
+    bottom: 36px; left: 0; right: 0;
     z-index: 5;
-    background: linear-gradient(180deg, #ffe97a 0%, #ffae3b 100%);
-    color: #5a3a0a;
-    padding: 6px 18px;
-    border-radius: 999px;
-    font-family: 'Bangers', cursive;
-    font-size: 22px;
-    letter-spacing: 4px;
-    box-shadow: 0 4px 0 rgba(0,0,0,0.3), 0 0 28px rgba(255,213,90,0.6);
-    opacity: 0;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: rgba(255,255,255,0.55);
+    text-transform: uppercase;
     pointer-events: none;
-    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease;
+    opacity: 0;
+    transition: opacity 0.3s ease;
   }
-  #banner.visible { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  #move-hint.visible { opacity: 1; }
+
+  /* Score popups */
+  .score-pop {
+    position: absolute;
+    z-index: 7;
+    font-family: 'Bangers', cursive;
+    font-size: 30px; letter-spacing: 2px;
+    color: #ffe97a;
+    text-shadow: 0 3px 0 rgba(60,30,0,0.55), 0 0 22px rgba(255,213,90,0.55);
+    pointer-events: none;
+    transform: translate(-50%, 0);
+    animation: popUp 0.95s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  .score-pop.green { color: #5be0a4; text-shadow: 0 3px 0 rgba(0,40,20,0.55), 0 0 22px rgba(91,224,164,0.6); }
+  .score-pop.red   { color: #ff8a8a; text-shadow: 0 3px 0 rgba(80,0,0,0.55); }
+  @keyframes popUp {
+    0%   { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+    25%  { transform: translate(-50%, -22px) scale(1.18); opacity: 1; }
+    100% { transform: translate(-50%, -110px) scale(0.95); opacity: 0; }
+  }
 
   /* Panel (start / end) */
   #panel {
@@ -241,7 +155,6 @@
     display: flex; align-items: center; justify-content: center;
     background: rgba(0,0,0,0.78);
     backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
     transition: opacity 0.3s ease;
   }
   #panel.hidden { opacity: 0; pointer-events: none; }
@@ -285,7 +198,6 @@
     margin: 14px 0 4px;
   }
   .panel-big.green  { color: #5be0a4; }
-  .panel-big.red    { color: #ff8a8a; }
   .panel-big.gold   { color: #ffe97a; }
   .panel-btns { display: flex; gap: 10px; margin-top: 14px; }
   .panel-btn {
@@ -302,26 +214,6 @@
   }
   .panel-btn.primary { background: #fff; color: #000; border: none; }
   .panel-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  /* Score popups */
-  .score-pop {
-    position: absolute;
-    z-index: 7;
-    font-family: 'Bangers', cursive;
-    font-size: 36px; letter-spacing: 2px;
-    color: #ffe97a;
-    text-shadow: 0 3px 0 rgba(60,30,0,0.55), 0 0 22px rgba(255,213,90,0.55);
-    pointer-events: none;
-    transform: translate(-50%, 0);
-    animation: popUp 0.95s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-  }
-  .score-pop.green { color: #5be0a4; text-shadow: 0 3px 0 rgba(0,40,20,0.55), 0 0 22px rgba(91,224,164,0.6); }
-  .score-pop.red   { color: #ff8a8a; text-shadow: 0 3px 0 rgba(80,0,0,0.55); }
-  @keyframes popUp {
-    0%   { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
-    25%  { transform: translate(-50%, -22px) scale(1.18); opacity: 1; }
-    100% { transform: translate(-50%, -110px) scale(0.95); opacity: 0; }
-  }
 
   /* Camera shake target */
   #shake-host { position: absolute; inset: 0; z-index: 2; will-change: transform; }
@@ -348,36 +240,24 @@
   </div>
 
   <div id="hud-top">
-    <div class="hud-pill">STAKE<span class="v" id="hud-stake">10</span></div>
-    <div class="hud-pill mult">MULT<span class="v" id="hud-mult">1.00x</span></div>
-    <div class="hud-pill">ALT<span class="v" id="hud-alt">0 km</span></div>
+    <div class="hud-pill score">SCORE<span class="v" id="hud-score">0</span></div>
+    <div class="hud-pill lives">LIVES<span class="v" id="hud-lives">❤️❤️❤️</span></div>
+    <div class="hud-pill spd">SPEED<span class="v" id="hud-speed">1.0x</span></div>
   </div>
 
-  <div id="ladder"></div>
-  <div id="mult-mega">1.00x</div>
-  <div id="banner">PERFECT LAUNCH</div>
-
-  <div id="pad">
-    <div id="fuel-wrap">
-      <div class="fuel-head">
-        <div>FUEL</div>
-        <div class="pct" id="fuel-pct">0%</div>
-      </div>
-      <div id="fuel-track">
-        <div id="fuel-sweet" class="show"></div>
-        <div id="fuel-fill"></div>
-      </div>
-    </div>
-    <button id="thrust-btn">HOLD TO LAUNCH</button>
+  <div id="countdown" class="hidden">
+    <div id="countdown-num">3</div>
   </div>
+
+  <div id="move-hint">DRAG OR SWIPE LEFT/RIGHT TO STEER</div>
 
   <div id="panel">
     <div class="panel-card" id="panel-card">
       <div class="panel-title" id="panel-title">LIT LAUNCH</div>
-      <div class="panel-sub" id="panel-sub">Hold to fuel · release to fly · cash out before crash</div>
+      <div class="panel-sub" id="panel-sub">Dodge asteroids · catch coins · 3 lives</div>
       <div id="panel-body"></div>
       <div class="panel-btns">
-        <button class="panel-btn primary" id="btn-primary">PLAY · 10 PTS</button>
+        <button class="panel-btn primary" id="btn-primary">PLAY</button>
         <button class="panel-btn" id="btn-exit">EXIT</button>
       </div>
     </div>
@@ -405,27 +285,31 @@
   const btnExit     = document.getElementById('btn-exit');
   const errBanner   = document.getElementById('err-banner');
   const errMsg      = document.getElementById('err-msg');
-  const hudStake    = document.getElementById('hud-stake');
-  const hudMult     = document.getElementById('hud-mult');
-  const hudAlt      = document.getElementById('hud-alt');
-  const multMega    = document.getElementById('mult-mega');
-  const fuelFill    = document.getElementById('fuel-fill');
-  const fuelPct     = document.getElementById('fuel-pct');
-  const fuelSweet   = document.getElementById('fuel-sweet');
-  const thrustBtn   = document.getElementById('thrust-btn');
-  const banner      = document.getElementById('banner');
-  const ladder      = document.getElementById('ladder');
+  const hudScore    = document.getElementById('hud-score');
+  const hudLives    = document.getElementById('hud-lives');
+  const hudSpeed    = document.getElementById('hud-speed');
+  const countdown   = document.getElementById('countdown');
+  const cdNum       = document.getElementById('countdown-num');
+  const moveHint    = document.getElementById('move-hint');
   const shakeHost   = document.getElementById('shake-host');
   const container   = document.getElementById('game-container');
 
-  // ── Constants (mirror backend) ─────────────────────────────
-  const G              = 9.8;
-  const MAX_THRUST_MS  = 3000;
-  const MIN_THRUST_MS  = 200;
-  const THRUST_TO_VEL  = 0.13;
-  const MAX_ALT_KM     = 4500;
-  const ENTRY_COST     = 10;
-  const MAX_MULT       = 25;
+  // ── Constants ──────────────────────────────────────────────
+  const MAX_LIVES         = 3;
+  const MAX_COINS         = 50;
+  const PERFECT_HIT_BONUS = 0;
+  const ROCKET_W          = 38;        // CSS px
+  const ROCKET_H          = 56;
+  const ROCKET_SPEED_BASE = 280;       // px/sec horizontal slide
+  const SCROLL_BASE_PXS   = 220;       // world scroll velocity (px/s of "rising") at speed 1.0
+  const SCROLL_GROW_PER_S = 9;         // +px/s every second
+  const SCROLL_MAX_PXS    = 600;
+  const ASTEROID_BASE_HZ  = 1.4;       // spawns / sec at start
+  const ASTEROID_GROW_HZ  = 0.04;      // additional per second
+  const COIN_BASE_HZ      = 1.6;
+  const COIN_GROW_HZ      = 0.02;
+  const LANE_PADDING      = 36;
+  const MIN_TAP_GAP_MS    = 90;        // matches >80 ms backend floor
 
   // ── Canvas sizing ─────────────────────────────────────────
   let DPR = 1;
@@ -449,7 +333,7 @@
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === 'suspended') audioCtx.resume();
   }
-  function tone(freq, durMs, type = 'sine', gain = 0.18) {
+  function tone(freq, durMs, type = 'sine', gain = 0.16) {
     try {
       ensureAudio();
       const o = audioCtx.createOscillator();
@@ -464,78 +348,44 @@
       o.stop(audioCtx.currentTime + durMs / 1000);
     } catch {}
   }
-  // Continuous rumble while thrusting (white noise burst loop).
-  let rumbleNode = null, rumbleGain = null;
-  function rumbleStart() {
-    try {
-      ensureAudio();
-      if (rumbleNode) return;
-      const len = 0.5;
-      const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * len, audioCtx.sampleRate);
-      const data = buf.getChannelData(0);
-      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.6;
-      rumbleNode = audioCtx.createBufferSource();
-      rumbleNode.buffer = buf;
-      rumbleNode.loop = true;
-      const filter = audioCtx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 220;
-      rumbleGain = audioCtx.createGain();
-      rumbleGain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-      rumbleGain.gain.exponentialRampToValueAtTime(0.18, audioCtx.currentTime + 0.08);
-      rumbleNode.connect(filter).connect(rumbleGain).connect(audioCtx.destination);
-      rumbleNode.start();
-    } catch {}
-  }
-  function rumbleStop() {
-    try {
-      if (!rumbleNode) return;
-      rumbleGain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.18);
-      const node = rumbleNode;
-      setTimeout(() => { try { node.stop(); } catch {} }, 200);
-      rumbleNode = null; rumbleGain = null;
-    } catch {}
-  }
-  function sndIgnite() { tone(120, 220, 'sawtooth', 0.20); setTimeout(() => tone(80, 320, 'sawtooth', 0.16), 80); }
-  function sndCash()   { tone(523, 70, 'square', 0.16); setTimeout(() => tone(659, 70, 'square', 0.16), 80); setTimeout(() => tone(880, 140, 'square', 0.18), 160); }
-  function sndCrash()  { tone(60, 600, 'sawtooth', 0.25); setTimeout(() => tone(40, 800, 'sawtooth', 0.18), 200); }
-  function sndPerfect(){ tone(880, 60, 'square', 0.16); setTimeout(() => tone(1320, 90, 'square', 0.15), 60); setTimeout(() => tone(1760, 140, 'square', 0.13), 130); }
-  function sndTick(level) { tone(420 + level * 8, 30, 'sine', 0.05); }
+  function sndCoin()    { tone(880, 60, 'square', 0.15); setTimeout(() => tone(1320, 80, 'square', 0.13), 50); }
+  function sndHit()     { tone(120, 320, 'sawtooth', 0.20); setTimeout(() => tone(80, 280, 'sawtooth', 0.16), 100); }
+  function sndGameOver(){ tone(180, 420, 'sawtooth', 0.20); setTimeout(() => tone(110, 520, 'sawtooth', 0.18), 240); }
+  function sndCount(big){ tone(big ? 880 : 660, 100, 'square', 0.16); }
+  function sndIgnite()  { tone(110, 220, 'sawtooth', 0.20); setTimeout(() => tone(60, 320, 'sawtooth', 0.18), 100); }
 
   // ── Game state ────────────────────────────────────────────
-  const PHASE_LOBBY = 'lobby', PHASE_FUELING = 'fueling', PHASE_FLIGHT = 'flight',
-        PHASE_END   = 'end';
+  const PHASE_LOBBY = 'lobby', PHASE_COUNT = 'count', PHASE_FLIGHT = 'flight', PHASE_END = 'end';
   const ST = {
-    sessionId: null, token: null, seedHash: null,
+    sessionId: null, token: null, serverSeed: null,
     phase: PHASE_LOBBY,
-    stake: ENTRY_COST,
     starting: false,
+    gamesLeft: 0,
 
-    holdStartT: 0,         // performance.now() when fuel hold began
-    thrustMs: 0,           // total ms held this round
-    flightStartT: 0,       // performance.now() when rocket launched
-    cashoutAtMs: null,     // ms after flightStartT (set if user cashes out)
-    ended: false,
+    score: 0,
+    hits: 0,
+    speedMul: 1.0,                  // grows over time
+    elapsedMs: 0,
+    runStartT: 0,
+    spawnAcc: { ast: 0, coin: 0 },
 
-    // Live physics (client mirror — server is source of truth at /end)
-    altKm: 0, velKms: 0, multiplier: 1,
-    crashAlt: null,        // hidden; never shown
-    sweet: null,           // hidden; never shown
-
-    // FX
-    parallax: { far: [], mid: [], near: [] },
-    trail: [],
+    rocket: { x: 0, y: 0, targetX: 0, vx: 0 },
+    asteroids: [],                  // {x,y, vx, vy, r, rot, vrot, color, hit:false}
+    coins: [],                      // {x,y, vy, r, twirl}
     sparks: [],
-    rocketX: 0, rocketY: 0,
-    cameraY: 0,            // upward camera offset in world km
-    moonRevealed: false,
-    marsRevealed: false,
+    trail: [],
+    parallax: { far: [], mid: [], near: [] },
+
+    taps: [],                       // [{t}] — pointer movement events for anti-bot
+    lastTapAt: -1e9,
+
+    invulMs: 0,                     // brief invul after taking a hit
+    flashMs: 0,                     // red flash on hit
     shakeAmp: 0, shakeDecay: 0,
 
-    gamesLeft: 0,
+    // Server-seeded RNG state for spawns; seed is mixed with elapsed time.
+    seedHash: 0,
   };
-
-  function vmin() { return Math.min(vw(), vh()); }
 
   // ── Helpers ───────────────────────────────────────────────
   function showErr(m) {
@@ -552,12 +402,6 @@
     container.appendChild(el);
     setTimeout(() => el.remove(), 950);
   }
-  function showBanner(text) {
-    banner.textContent = text;
-    banner.classList.remove('visible'); void banner.offsetWidth;
-    banner.classList.add('visible');
-    setTimeout(() => banner.classList.remove('visible'), 1200);
-  }
   function showPanel(title, sub, bodyHTML, primaryLabel, primaryAction) {
     panelTitle.textContent = title;
     panelSub.textContent   = sub;
@@ -569,9 +413,32 @@
   function hidePanel() { panel.classList.add('hidden'); }
   btnExit.onclick = () => postParent({ type: 'litdex:litlaunch:exit' });
 
+  function updateHud() {
+    hudScore.textContent = String(ST.score);
+    hudLives.textContent = '❤️'.repeat(Math.max(0, MAX_LIVES - ST.hits));
+    hudSpeed.textContent = ST.speedMul.toFixed(1) + 'x';
+  }
   function addShake(amp, durMs) {
     ST.shakeAmp = Math.max(ST.shakeAmp, amp);
     ST.shakeDecay = ST.shakeAmp / (durMs / 1000);
+  }
+
+  // tiny xorshift seeded by serverSeed string — used so any
+  // post-mortem replay matches; here it just drives spawns.
+  let _rng = 1;
+  function seedRng(seedStr) {
+    let h = 2166136261;
+    for (let i = 0; i < seedStr.length; i++) {
+      h ^= seedStr.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    _rng = h || 1;
+  }
+  function rng() {
+    let x = _rng | 0;
+    x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+    _rng = x | 0;
+    return ((x >>> 0) % 100000) / 100000;
   }
 
   // ── Backend wiring ────────────────────────────────────────
@@ -583,53 +450,41 @@
       return await r.json();
     } catch { return null; }
   }
-  function multiplierAt(altKm) {
-    return Math.min(MAX_MULT, Math.max(1, 1 + Math.max(0, altKm) / 200));
-  }
 
   async function showLobby() {
     ST.phase = PHASE_LOBBY;
-    ST.thrustMs = 0; ST.cashoutAtMs = null; ST.altKm = 0; ST.velKms = 0;
-    ST.multiplier = 1; ST.cameraY = 0; ST.trail = []; ST.sparks = [];
-    ST.moonRevealed = false; ST.marsRevealed = false; ST.shakeAmp = 0;
-    ST.ended = false;
-    fuelFill.style.width = '0%';
-    fuelPct.textContent = '0%';
-    multMega.textContent = '1.00x';
-    multMega.classList.remove('visible', 'danger');
-    hudMult.textContent = '1.00x';
-    hudAlt.textContent  = '0 km';
-    hudStake.textContent = String(ENTRY_COST);
-    setThrustButtonMode('lobby');
+    ST.score = 0; ST.hits = 0; ST.speedMul = 1.0; ST.elapsedMs = 0;
+    ST.asteroids = []; ST.coins = []; ST.sparks = []; ST.trail = [];
+    ST.invulMs = 0; ST.flashMs = 0; ST.shakeAmp = 0; ST.taps = [];
+    initParallax();
+    initRocket();
+    updateHud();
+    countdown.classList.add('hidden');
+    moveHint.classList.remove('visible');
     drawStage();
 
     const stats = await fetchStats();
-    const left = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 10;
+    const left = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 5;
     ST.gamesLeft = left;
-    const balance = stats ? Number(stats.pointsBalance ?? 0) : 0;
-    const bestM   = stats ? Number(stats.bestMultiplier || 0) : 0;
-    const bestA   = stats ? Number(stats.bestAltitudeKm || 0) : 0;
+    const best = stats ? Number(stats.bestScore || 0) : 0;
 
     const noGames = left <= 0;
-    const lowBal  = balance < ENTRY_COST;
     const body = `
-      <div class="panel-stat-row"><span class="lbl">Stake</span><span class="val">${ENTRY_COST} PTS</span></div>
-      <div class="panel-stat-row"><span class="lbl">Max Multiplier</span><span class="val">25x</span></div>
-      <div class="panel-stat-row"><span class="lbl">Games Today</span><span class="val">${10 - left} / 10</span></div>
-      <div class="panel-stat-row"><span class="lbl">Best Multiplier</span><span class="val">${bestM.toFixed(2)}x</span></div>
-      <div class="panel-stat-row"><span class="lbl">Best Altitude</span><span class="val">${bestA.toLocaleString()} km</span></div>
+      <div class="panel-stat-row"><span class="lbl">Reward</span><span class="val">+1 PT / coin</span></div>
+      <div class="panel-stat-row"><span class="lbl">Lives</span><span class="val">${MAX_LIVES}</span></div>
+      <div class="panel-stat-row"><span class="lbl">Cap / Game</span><span class="val">${MAX_COINS} PTS</span></div>
+      <div class="panel-stat-row"><span class="lbl">Games Today</span><span class="val">${5 - left} / 5</span></div>
+      <div class="panel-stat-row"><span class="lbl">Best Score</span><span class="val">${best} PTS</span></div>
     `;
     showPanel(
       'LIT LAUNCH',
       noGames ? 'Daily limit reached · resets 00:00 IST'
-              : (lowBal ? `Need ${ENTRY_COST} PTS to launch`
-                        : 'Hold the booster · release · cash out at the right altitude'),
+              : 'Drag left/right · dodge asteroids · catch coins',
       body,
-      noGames ? 'NO GAMES LEFT'
-              : (lowBal ? 'NOT ENOUGH PTS' : `PLAY · ${ENTRY_COST} PTS`),
-      (noGames || lowBal) ? () => {} : startGame
+      noGames ? 'NO GAMES LEFT' : 'PLAY',
+      noGames ? () => {} : startGame
     );
-    btnPrimary.disabled = noGames || lowBal;
+    btnPrimary.disabled = noGames;
   }
 
   async function startGame() {
@@ -637,7 +492,7 @@
     if (ST.starting) return;
     ST.starting = true;
     btnPrimary.disabled = true;
-    btnPrimary.textContent = 'STAKING…';
+    btnPrimary.textContent = 'STARTING…';
 
     try {
       const r = await fetch(`${API}/litlaunch/start`, {
@@ -647,74 +502,34 @@
       });
       const data = await r.json();
       if (!r.ok || data.error) {
-        showErr(data?.error === 'daily_limit_reached' ? 'Daily limit reached'
-              : data?.error === 'need_min_points'    ? `Need ${ENTRY_COST} PTS`
-              : (data?.error || 'start_failed'));
+        showErr(data?.error === 'daily_limit_reached' ? 'Daily limit reached' : (data?.error || 'start_failed'));
         ST.starting = false;
         btnPrimary.disabled = false;
-        btnPrimary.textContent = `PLAY · ${ENTRY_COST} PTS`;
+        btnPrimary.textContent = 'PLAY';
         return;
       }
       ST.sessionId = data.sessionId;
       ST.token     = data.token;
-      ST.seedHash  = data.seedHash;
-      ST.stake     = Number(data.stake || ENTRY_COST);
-      ST.gamesLeft = Number(data.gamesLeft || 0);
-      enterFueling();
+      ST.serverSeed = data.serverSeed;
+      ST.gamesLeft  = Number(data.gamesLeft || 0);
+      seedRng(ST.serverSeed + ':' + ST.sessionId);
+      hidePanel();
+      runCountdown();
     } catch (e) {
       showErr('Network error');
       ST.starting = false;
       btnPrimary.disabled = false;
-      btnPrimary.textContent = `PLAY · ${ENTRY_COST} PTS`;
+      btnPrimary.textContent = 'PLAY';
     }
   }
 
-  function enterFueling() {
-    ST.starting = false;
-    ST.phase = PHASE_FUELING;
-    ST.thrustMs = 0;
-    ST.altKm = 0; ST.velKms = 0; ST.multiplier = 1;
-    ST.cameraY = 0;
-    ST.trail = [];
-    ST.sparks = [];
-    ST.cashoutAtMs = null;
-    ST.ended = false;
-    ST.shakeAmp = 0;
-    fuelFill.style.width = '0%';
-    fuelPct.textContent = '0%';
-    multMega.textContent = '1.00x';
-    multMega.classList.remove('danger');
-    multMega.classList.add('visible');
-    hudMult.textContent = '1.00x';
-    hudAlt.textContent  = '0 km';
-    hudStake.textContent = String(ST.stake);
-    setThrustButtonMode('lobby');
-    setupParallax();
-    rebuildLadder();
-    hidePanel();
-    lastT = 0;
-    requestAnimationFrame(loop);
-  }
-
-  function setThrustButtonMode(mode) {
-    thrustBtn.classList.remove('cashout', 'disabled', 'held');
-    if (mode === 'lobby') {
-      thrustBtn.textContent = 'HOLD TO LAUNCH';
-    } else if (mode === 'flight') {
-      thrustBtn.classList.add('cashout');
-      thrustBtn.textContent = 'CASH OUT';
-    } else if (mode === 'disabled') {
-      thrustBtn.classList.add('disabled');
-      thrustBtn.textContent = 'WAIT…';
-    }
-  }
-
-  function setupParallax() {
+  // ── Init helpers ──────────────────────────────────────────
+  function initParallax() {
     ST.parallax = { far: [], mid: [], near: [] };
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 70; i++) {
       ST.parallax.far.push({
         x: Math.random() * vw(),
-        y: Math.random() * vh() * 4,
+        y: Math.random() * vh(),
         r: 0.5 + Math.random() * 0.7,
         tw: 0.3 + Math.random() * 0.7,
       });
@@ -722,7 +537,7 @@
     for (let i = 0; i < 30; i++) {
       ST.parallax.mid.push({
         x: Math.random() * vw(),
-        y: Math.random() * vh() * 4,
+        y: Math.random() * vh(),
         r: 0.7 + Math.random() * 1.0,
         tw: 0.3 + Math.random() * 0.7,
       });
@@ -730,248 +545,155 @@
     for (let i = 0; i < 14; i++) {
       ST.parallax.near.push({
         x: Math.random() * vw(),
-        y: Math.random() * vh() * 4,
+        y: Math.random() * vh(),
         r: 1.0 + Math.random() * 1.4,
         tw: 0.4 + Math.random() * 0.6,
       });
     }
   }
 
-  function rebuildLadder() {
-    ladder.innerHTML = '';
-    const tiers = [
-      { km: 100,  lbl: 'STRATO',  mult: '1.5x' },
-      { km: 400,  lbl: 'ORBIT',   mult: '3.0x' },
-      { km: 800,  lbl: 'MOON',    mult: '5.0x' },
-      { km: 1800, lbl: 'MARS',    mult: '10.0x'},
-      { km: 3600, lbl: 'DEEP',    mult: '19.0x'},
+  function initRocket() {
+    ST.rocket.x = vw() / 2;
+    ST.rocket.targetX = vw() / 2;
+    ST.rocket.y = vh() - ROCKET_H * 1.4 - 24;
+    ST.rocket.vx = 0;
+  }
+
+  // ── Countdown ─────────────────────────────────────────────
+  async function runCountdown() {
+    ST.starting = false;
+    ST.phase = PHASE_COUNT;
+    initParallax();
+    initRocket();
+    countdown.classList.remove('hidden');
+    const steps = [
+      { text: '3',  go: false, ms: 700 },
+      { text: '2',  go: false, ms: 700 },
+      { text: '1',  go: false, ms: 700 },
+      { text: 'GO', go: true,  ms: 500 },
     ];
-    for (const t of tiers) {
-      const el = document.createElement('div');
-      el.className = 'ladder-tick';
-      el.style.bottom = (t.km / MAX_ALT_KM * 100) + '%';
-      el.innerHTML = `<div class="lbl">${t.lbl}</div><div class="mult">${t.mult}</div>`;
-      ladder.appendChild(el);
+    for (const step of steps) {
+      cdNum.classList.remove('go');
+      cdNum.style.animation = 'none';
+      void cdNum.offsetWidth;
+      cdNum.textContent = step.text;
+      if (step.go) cdNum.classList.add('go');
+      cdNum.style.animation = '';
+      sndCount(step.go);
+      await new Promise(r => setTimeout(r, step.ms));
     }
+    countdown.classList.add('hidden');
+    enterFlight();
+  }
+
+  function enterFlight() {
+    ST.phase = PHASE_FLIGHT;
+    ST.score = 0;
+    ST.hits  = 0;
+    ST.speedMul = 1.0;
+    ST.elapsedMs = 0;
+    ST.runStartT = performance.now();
+    ST.spawnAcc = { ast: 0, coin: 0 };
+    ST.asteroids = []; ST.coins = []; ST.sparks = []; ST.trail = [];
+    ST.taps = [];
+    ST.invulMs = 0; ST.flashMs = 0;
+    sndIgnite();
+    addShake(6, 320);
+    moveHint.classList.add('visible');
+    setTimeout(() => moveHint.classList.remove('visible'), 1800);
+    updateHud();
+    lastT = 0;
+    requestAnimationFrame(loop);
   }
 
   // ── Input ─────────────────────────────────────────────────
-  function pressDown(e) {
+  // Drag/swipe sets target X; rocket eases toward it. Anywhere on
+  // screen is valid input — we listen on the container so the player
+  // doesn't have to aim at the rocket itself.
+  let dragging = false;
+  function inputCoords(e) {
+    const cx = e.clientX ?? e.touches?.[0]?.clientX ?? e.changedTouches?.[0]?.clientX;
+    return cx != null ? cx : null;
+  }
+  function onDown(e) {
+    if (ST.phase !== PHASE_FLIGHT) return;
     e.preventDefault?.();
-    if (ST.phase === PHASE_FUELING) {
-      if (ST.holdStartT) return;
-      ST.holdStartT = performance.now();
-      thrustBtn.classList.add('held');
-      sndIgnite();
-      rumbleStart();
-    } else if (ST.phase === PHASE_FLIGHT) {
-      cashOut();
-    }
+    const cx = inputCoords(e);
+    if (cx == null) return;
+    dragging = true;
+    setTargetX(cx);
+    recordTap();
   }
-  function pressUp(e) {
-    e?.preventDefault?.();
-    if (ST.phase === PHASE_FUELING && ST.holdStartT) {
-      const held = Math.min(MAX_THRUST_MS, performance.now() - ST.holdStartT);
-      ST.thrustMs = held;
-      ST.holdStartT = 0;
-      thrustBtn.classList.remove('held');
-      rumbleStop();
-      launchRocket();
-    }
+  function onMove(e) {
+    if (!dragging || ST.phase !== PHASE_FLIGHT) return;
+    e.preventDefault?.();
+    const cx = inputCoords(e);
+    if (cx == null) return;
+    setTargetX(cx);
+    recordTap();
   }
-  thrustBtn.addEventListener('pointerdown', pressDown);
-  thrustBtn.addEventListener('pointerup',   pressUp);
-  thrustBtn.addEventListener('pointercancel', pressUp);
-  thrustBtn.addEventListener('pointerleave', (e) => { if (ST.phase === PHASE_FUELING && ST.holdStartT) pressUp(e); });
-  thrustBtn.addEventListener('touchstart',  pressDown, { passive: false });
-  thrustBtn.addEventListener('touchend',    pressUp,   { passive: false });
-  thrustBtn.addEventListener('touchcancel', pressUp,   { passive: false });
-  // Stop the panel buttons from leaking taps.
+  function onUp(e) {
+    dragging = false;
+  }
+  function setTargetX(clientX) {
+    const r = container.getBoundingClientRect();
+    let x = clientX - r.left;
+    x = Math.max(LANE_PADDING + ROCKET_W / 2, Math.min(vw() - LANE_PADDING - ROCKET_W / 2, x));
+    ST.rocket.targetX = x;
+  }
+  function recordTap() {
+    const now = performance.now();
+    if (now - ST.lastTapAt < MIN_TAP_GAP_MS) return;
+    ST.lastTapAt = now;
+    if (ST.taps.length < 600) ST.taps.push({ t: Math.round(now - ST.runStartT) });
+  }
+
+  container.addEventListener('pointerdown', onDown);
+  container.addEventListener('pointermove', onMove);
+  container.addEventListener('pointerup',   onUp);
+  container.addEventListener('pointercancel', onUp);
+  container.addEventListener('touchstart', onDown, { passive: false });
+  container.addEventListener('touchmove',  onMove, { passive: false });
+  container.addEventListener('touchend',   onUp,   { passive: false });
+  // Stop panel buttons from leaking into game.
   ['btn-primary','btn-exit'].forEach((id) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('pointerdown', (e) => e.stopPropagation());
     el.addEventListener('touchstart',  (e) => e.stopPropagation());
   });
+  // Keyboard: Arrow keys move target by a step.
+  window.addEventListener('keydown', (e) => {
+    if (ST.phase !== PHASE_FLIGHT) return;
+    if (e.key === 'ArrowLeft')  { ST.rocket.targetX = Math.max(LANE_PADDING + ROCKET_W/2, ST.rocket.targetX - 60); recordTap(); }
+    if (e.key === 'ArrowRight') { ST.rocket.targetX = Math.min(vw() - LANE_PADDING - ROCKET_W/2, ST.rocket.targetX + 60); recordTap(); }
+  });
 
-  // ── Launch / cashout / outcomes ───────────────────────────
-  function launchRocket() {
-    if (ST.thrustMs < MIN_THRUST_MS) {
-      // Fizzle — refund (server will refund stake on /end).
-      finishWithThrust(ST.thrustMs, null);
-      return;
-    }
-    ST.phase = PHASE_FLIGHT;
-    ST.flightStartT = performance.now();
-    ST.cashoutAtMs = null;
-    ST.altKm = 0;
-    ST.velKms = (ST.thrustMs - MIN_THRUST_MS) * THRUST_TO_VEL;
-    setThrustButtonMode('flight');
-    addShake(7, 380);
-    sndIgnite();
-  }
-
-  function cashOut() {
-    if (ST.phase !== PHASE_FLIGHT || ST.cashoutAtMs != null) return;
-    ST.cashoutAtMs = performance.now() - ST.flightStartT;
-    setThrustButtonMode('disabled');
-    sndCash();
-    addShake(5, 240);
-    finishWithThrust(ST.thrustMs, ST.cashoutAtMs);
-  }
-
-  async function finishWithThrust(thrustMs, cashoutAtMs) {
-    if (ST.ended) return;
-    ST.ended = true;
-    let resp = null;
-    try {
-      const r = await fetch(`${API}/litlaunch/end`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: ST.sessionId,
-          token:     ST.token,
-          thrustMs:  Math.round(thrustMs || 0),
-          cashoutAtMs: cashoutAtMs == null ? null : Math.round(cashoutAtMs),
-        }),
-      });
-      resp = await r.json();
-      if (!r.ok || resp.error) showErr(resp?.error || 'end_failed');
-    } catch {
-      showErr('Network error');
-    }
-    handleVerdict(resp);
-  }
-
-  function handleVerdict(resp) {
-    const outcome = resp?.outcome || (ST.cashoutAtMs != null ? 'cashout' : 'crash');
-    const altKm   = Number(resp?.altitudeKm || 0);
-    const mult    = Number(resp?.multiplier || 1);
-    const awarded = Number(resp?.awarded || 0);
-    const perfect = !!resp?.perfect;
-    const stake   = Number(resp?.stake || ST.stake);
-
-    if (outcome === 'cashout') {
-      // Snap visuals to server's altitude / multiplier.
-      ST.altKm = altKm; ST.multiplier = mult;
-      hudMult.textContent = mult.toFixed(2) + 'x';
-      hudAlt.textContent  = altKm.toLocaleString() + ' km';
-      multMega.textContent = mult.toFixed(2) + 'x';
-      if (perfect) { sndPerfect(); showBanner('PERFECT LAUNCH'); addShake(10, 480); }
-      explosion(false);
-      setTimeout(() => endPanel(resp), 900);
-    } else if (outcome === 'crash') {
-      // Server reports the rocket exploded at the hidden ceiling.
-      ST.altKm = altKm;
-      multMega.classList.add('danger');
-      multMega.textContent = 'BOOM';
-      sndCrash(); addShake(14, 700);
-      explosion(true);
-      setTimeout(() => endPanel(resp), 1100);
-    } else if (outcome === 'fellback') {
-      multMega.classList.add('danger');
-      multMega.textContent = 'FELL';
-      sndCrash(); addShake(8, 500);
-      explosion(true);
-      setTimeout(() => endPanel(resp), 1000);
-    } else {
-      // fizzle
-      multMega.textContent = 'FIZZLE';
-      setTimeout(() => endPanel(resp), 700);
-    }
-  }
-
-  function explosion(big) {
-    const x = ST.rocketX;
-    const y = ST.rocketY;
-    const n = big ? 36 : 18;
-    const speed = big ? 320 : 200;
-    for (let i = 0; i < n; i++) {
-      const ang = Math.random() * Math.PI * 2;
-      const sp = 80 + Math.random() * speed;
-      ST.sparks.push({
-        x, y,
-        vx: Math.cos(ang) * sp,
-        vy: Math.sin(ang) * sp,
-        life: 0.5 + Math.random() * (big ? 0.7 : 0.4),
-        maxLife: big ? 1.2 : 0.9,
-        size: 2 + Math.random() * (big ? 4 : 3),
-        hue: big ? (10 + Math.random() * 30) : (40 + Math.random() * 60),
-      });
-    }
-  }
-
-  function endPanel(resp) {
-    ST.phase = PHASE_END;
-    setThrustButtonMode('disabled');
-    const outcome = resp?.outcome || 'crash';
-    const altKm   = Number(resp?.altitudeKm || 0);
-    const mult    = Number(resp?.multiplier || 1);
-    const awarded = Number(resp?.awarded || 0);
-    const perfect = !!resp?.perfect;
-    const stake   = Number(resp?.stake || ST.stake);
-    const profit  = awarded - stake;
-    const bestM   = Number(resp?.bestMultiplier || 0);
-    const bestA   = Number(resp?.bestAltitudeKm || 0);
-    const txUrl   = resp?.explorerUrl;
-    const crashAlt = Number(resp?.crashAltKm || 0);
-
-    let bigClass = 'gold';
-    let bigText  = `${mult.toFixed(2)}x`;
-    if (outcome === 'cashout') bigClass = profit >= 0 ? 'green' : 'gold';
-    if (outcome === 'crash' || outcome === 'fellback') { bigClass = 'red'; bigText = 'CRASH'; }
-    if (outcome === 'fizzle') { bigClass = 'gold'; bigText = 'FIZZLE'; }
-
-    const titleText = outcome === 'cashout' ? (perfect ? 'PERFECT LAUNCH' : 'CASHED OUT')
-                    : outcome === 'crash'   ? 'EXPLODED'
-                    : outcome === 'fellback'? 'FELL BACK'
-                    : 'FIZZLE';
-
-    const body = `
-      <div class="panel-big ${bigClass}">${bigText}</div>
-      <div style="font-size:10px;letter-spacing:0.2em;color:#666;text-transform:uppercase;margin-bottom:14px">
-        ${outcome === 'cashout' ? `+${awarded} PTS · ${altKm.toLocaleString()} km` :
-          outcome === 'crash'   ? `Hidden ceiling at ${crashAlt.toLocaleString()} km` :
-          outcome === 'fellback'? `Peaked at ${altKm.toLocaleString()} km` :
-                                 `Held only ${ST.thrustMs}ms — refund issued`}
-      </div>
-      <div class="panel-stat-row"><span class="lbl">Stake</span><span class="val">${stake} PTS</span></div>
-      <div class="panel-stat-row"><span class="lbl">Banked</span><span class="val" style="color:${profit >= 0 ? '#5be0a4' : '#ff8a8a'}">${profit >= 0 ? '+' : ''}${profit} PTS</span></div>
-      <div class="panel-stat-row"><span class="lbl">Multiplier</span><span class="val">${mult.toFixed(2)}x</span></div>
-      <div class="panel-stat-row"><span class="lbl">Best</span><span class="val">${bestM.toFixed(2)}x · ${bestA.toLocaleString()} km</span></div>
-      ${txUrl ? `<div class="panel-stat-row"><span class="lbl">Tx</span><a class="val" style="color:#5be0a4;text-decoration:underline" href="${txUrl}" target="_blank" rel="noreferrer">${(resp.txHash || '').slice(0,10)}…</a></div>` : ''}
-    `;
-
-    postParent({
-      type: 'litdex:litlaunch:end',
-      reason: outcome,
-      multiplier: mult,
-      altitudeKm: altKm,
-      awarded,
-      stake,
-      profit,
-      perfect,
-      txInfo: txUrl ? { txHash: resp.txHash, explorerUrl: txUrl } : null,
+  // ── Spawning ──────────────────────────────────────────────
+  function spawnAsteroid() {
+    const x = LANE_PADDING + 20 + rng() * (vw() - LANE_PADDING * 2 - 40);
+    const r = 14 + rng() * 18;
+    const baseV = 220 + rng() * 110;
+    ST.asteroids.push({
+      x, y: -r - 10,
+      vx: (rng() - 0.5) * 60,
+      vy: baseV + ST.speedMul * 60,
+      r,
+      rot: rng() * Math.PI * 2,
+      vrot: (rng() - 0.5) * 4,
+      hue: 18 + rng() * 14,
+      hit: false,
     });
-
-    panelTitle.textContent = titleText;
-    panelSub.textContent   = perfect ? 'Sweet-spot release · bonus +0.5x'
-                                     : (outcome === 'fizzle' ? 'Stake refunded' : 'Session ended');
-    panelBody.innerHTML    = body;
-
-    fetchStats().then((stats) => {
-      const left = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 0;
-      const balance = stats ? Number(stats.pointsBalance ?? 0) : 0;
-      ST.gamesLeft = left;
-      const noGames = left <= 0 || balance < ENTRY_COST;
-      btnPrimary.disabled    = noGames;
-      btnPrimary.textContent = left <= 0 ? 'NO GAMES LEFT'
-                              : balance < ENTRY_COST ? 'NOT ENOUGH PTS'
-                              : `PLAY · ${ENTRY_COST} PTS`;
-      btnPrimary.onclick     = noGames ? () => {} : startGame;
+  }
+  function spawnCoin() {
+    const x = LANE_PADDING + 20 + rng() * (vw() - LANE_PADDING * 2 - 40);
+    ST.coins.push({
+      x, y: -18,
+      vx: (rng() - 0.5) * 30,
+      vy: 200 + rng() * 80 + ST.speedMul * 40,
+      r: 12,
+      twirl: rng() * Math.PI * 2,
     });
-
-    panel.classList.remove('hidden');
   }
 
   // ── Loop ──────────────────────────────────────────────────
@@ -982,73 +704,80 @@
     const dt = Math.min(0.05, (t - lastT) / 1000);
     lastT = t;
 
-    update(dt);
+    if (ST.phase === PHASE_FLIGHT) update(dt);
     drawStage();
     applyShake();
-
-    if (ST.phase === PHASE_FUELING || ST.phase === PHASE_FLIGHT || ST.sparks.length > 0) {
-      requestAnimationFrame(loop);
-    }
+    if (ST.phase === PHASE_FLIGHT || ST.sparks.length > 0) requestAnimationFrame(loop);
   }
 
   function update(dt) {
-    // Phase-specific updates.
-    if (ST.phase === PHASE_FUELING) {
-      if (ST.holdStartT) {
-        const held = Math.min(MAX_THRUST_MS, performance.now() - ST.holdStartT);
-        const pct = Math.min(100, (held / MAX_THRUST_MS) * 100);
-        fuelFill.style.width = pct + '%';
-        fuelPct.textContent = pct.toFixed(0) + '%';
-        if (Math.random() < 0.4) sndTick(Math.floor(pct / 10));
-        // Auto-release if user holds past max — prevents "did the
-        // game freeze?" feel; release at the cap.
-        if (held >= MAX_THRUST_MS) {
-          ST.thrustMs = MAX_THRUST_MS;
-          ST.holdStartT = 0;
-          rumbleStop();
-          launchRocket();
-        }
-      }
-    } else if (ST.phase === PHASE_FLIGHT) {
-      // Mirror server physics for live readout.
-      const tSec = (performance.now() - ST.flightStartT) / 1000;
-      const v0 = (ST.thrustMs - MIN_THRUST_MS) * THRUST_TO_VEL;
-      ST.altKm = Math.max(0, v0 * tSec - 0.5 * G * tSec * tSec);
-      ST.velKms = v0 - G * tSec;
-      ST.multiplier = multiplierAt(ST.altKm);
+    ST.elapsedMs += dt * 1000;
+    ST.speedMul = Math.min(SCROLL_MAX_PXS / SCROLL_BASE_PXS,
+                           1.0 + (ST.elapsedMs / 1000) * (SCROLL_GROW_PER_S / SCROLL_BASE_PXS));
 
-      // HUD updates.
-      hudMult.textContent = ST.multiplier.toFixed(2) + 'x';
-      hudAlt.textContent  = Math.round(ST.altKm).toLocaleString() + ' km';
-      multMega.textContent = ST.multiplier.toFixed(2) + 'x';
-      if (ST.multiplier > 10) multMega.classList.add('danger');
-      else                    multMega.classList.remove('danger');
+    // Rocket easing toward targetX.
+    const dx = ST.rocket.targetX - ST.rocket.x;
+    ST.rocket.x += Math.sign(dx) * Math.min(Math.abs(dx), ROCKET_SPEED_BASE * (1 + ST.speedMul * 0.4) * dt);
 
-      // Trail emission while ascending.
-      if (ST.velKms > 0) {
-        ST.trail.push({
-          x: ST.rocketX + (Math.random() - 0.5) * 6,
-          y: ST.rocketY + 22,
-          life: 0.6, maxLife: 0.6,
-          size: 4 + Math.random() * 4,
-          hue: 25 + Math.random() * 30,
-          vx: (Math.random() - 0.5) * 30,
-          vy: 90 + Math.random() * 60,
-        });
-      }
+    // Spawn schedule.
+    const astHz  = ASTEROID_BASE_HZ + ST.elapsedMs / 1000 * ASTEROID_GROW_HZ;
+    const coinHz = COIN_BASE_HZ     + ST.elapsedMs / 1000 * COIN_GROW_HZ;
+    ST.spawnAcc.ast  += dt * astHz;
+    ST.spawnAcc.coin += dt * coinHz;
+    while (ST.spawnAcc.ast >= 1)  { ST.spawnAcc.ast  -= 1; spawnAsteroid(); }
+    while (ST.spawnAcc.coin >= 1) { ST.spawnAcc.coin -= 1; spawnCoin(); }
 
-      // If velocity goes negative, treat as fellback regardless and
-      // settle locally (server already knows). But avoid double-end.
-      if (ST.velKms < 0 && !ST.ended) {
-        finishWithThrust(ST.thrustMs, null);
+    // Update asteroids.
+    const aliveAst = [];
+    for (const a of ST.asteroids) {
+      a.x += a.vx * dt;
+      a.y += a.vy * dt;
+      a.rot += a.vrot * dt;
+      // Bounce off side walls so they stay on the playfield.
+      if (a.x < LANE_PADDING + a.r) { a.x = LANE_PADDING + a.r; a.vx = Math.abs(a.vx); }
+      if (a.x > vw() - LANE_PADDING - a.r) { a.x = vw() - LANE_PADDING - a.r; a.vx = -Math.abs(a.vx); }
+      if (a.y - a.r > vh() + 60) continue; // off bottom — drop
+      // Collision with rocket (when not invulnerable).
+      if (ST.invulMs <= 0 && circleHitsRocket(a)) {
+        a.hit = true;
+        registerHit(a);
+        continue;
       }
+      aliveAst.push(a);
     }
+    ST.asteroids = aliveAst;
 
-    // Trail/sparks always update.
+    // Update coins.
+    const aliveCoins = [];
+    for (const c of ST.coins) {
+      c.x += c.vx * dt;
+      c.y += c.vy * dt;
+      c.twirl += dt * 4;
+      if (c.x < LANE_PADDING + c.r) { c.x = LANE_PADDING + c.r; c.vx = Math.abs(c.vx); }
+      if (c.x > vw() - LANE_PADDING - c.r) { c.x = vw() - LANE_PADDING - c.r; c.vx = -Math.abs(c.vx); }
+      if (c.y - c.r > vh() + 30) continue;
+      if (circleHitsRocket(c)) {
+        registerCoin(c);
+        continue;
+      }
+      aliveCoins.push(c);
+    }
+    ST.coins = aliveCoins;
+
+    // Engine trail.
+    ST.trail.push({
+      x: ST.rocket.x + (Math.random() - 0.5) * 8,
+      y: ST.rocket.y + ROCKET_H * 0.55,
+      life: 0.45, maxLife: 0.45,
+      size: 4 + Math.random() * 4,
+      hue: 25 + Math.random() * 30,
+      vy: 90 + Math.random() * 60,
+    });
+
+    // Trail / spark physics.
     const aliveTrail = [];
     for (const p of ST.trail) {
       p.life -= dt;
-      p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.size *= (1 - dt * 1.4);
       if (p.life > 0 && p.size > 0.5) aliveTrail.push(p);
@@ -1057,7 +786,7 @@
 
     const aliveSparks = [];
     for (const p of ST.sparks) {
-      p.vy += 240 * dt;
+      p.vy += 220 * dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.life -= dt;
@@ -1065,13 +794,127 @@
     }
     ST.sparks = aliveSparks;
 
-    // Camera follow: keep rocket at ~58% of viewport in flight.
-    const idealRocketScreenY = vh() * 0.58;
-    // World-y position of the rocket = vh() - groundOffset - altPx
-    const PX_PER_KM = vh() / 320;       // 320km fills one screen
-    const altPx = ST.altKm * PX_PER_KM;
-    const desiredCameraY = altPx > vh() * 0.42 ? altPx - vh() * 0.42 : 0;
-    ST.cameraY += (desiredCameraY - ST.cameraY) * Math.min(1, dt * 5.5);
+    if (ST.invulMs > 0) ST.invulMs -= dt * 1000;
+    if (ST.flashMs > 0) ST.flashMs -= dt * 1000;
+
+    updateHud();
+
+    // Hit cap or 3 lives gone -> end.
+    if (ST.score >= MAX_COINS || ST.hits >= MAX_LIVES) {
+      endGame(ST.hits >= MAX_LIVES ? 'gameover' : 'cap');
+    }
+  }
+
+  function circleHitsRocket(o) {
+    // Approximate rocket as a circle slightly smaller than its body.
+    const R = ROCKET_W * 0.45;
+    const dx = o.x - ST.rocket.x;
+    const dy = o.y - ST.rocket.y;
+    return (dx * dx + dy * dy) <= (R + o.r) * (R + o.r);
+  }
+
+  function registerCoin(c) {
+    ST.score = Math.min(MAX_COINS, ST.score + 1);
+    sndCoin();
+    popup('+1', c.x, c.y - 6, 'gold');
+    // Spawn small sparkles.
+    for (let i = 0; i < 6; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const sp  = 60 + Math.random() * 120;
+      ST.sparks.push({
+        x: c.x, y: c.y,
+        vx: Math.cos(ang) * sp,
+        vy: Math.sin(ang) * sp - 40,
+        life: 0.5, maxLife: 0.5,
+        size: 2 + Math.random() * 2,
+        hue: 50 + Math.random() * 20,
+      });
+    }
+  }
+
+  function registerHit(a) {
+    ST.hits = Math.min(MAX_LIVES, ST.hits + 1);
+    ST.invulMs = 1100;
+    ST.flashMs = 280;
+    sndHit();
+    addShake(12, 480);
+    popup('-1 LIFE', ST.rocket.x, ST.rocket.y - 30, 'red');
+    // Big debris burst from asteroid.
+    for (let i = 0; i < 22; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const sp  = 100 + Math.random() * 220;
+      ST.sparks.push({
+        x: a.x, y: a.y,
+        vx: Math.cos(ang) * sp,
+        vy: Math.sin(ang) * sp,
+        life: 0.6 + Math.random() * 0.5,
+        maxLife: 1.0,
+        size: 2 + Math.random() * 4,
+        hue: 18 + Math.random() * 18,
+      });
+    }
+  }
+
+  // ── End game ──────────────────────────────────────────────
+  let _ending = false;
+  async function endGame(reason) {
+    if (_ending) return; _ending = true;
+    ST.phase = PHASE_END;
+    sndGameOver();
+    addShake(8, 600);
+
+    let resp = null;
+    try {
+      const r = await fetch(`${API}/litlaunch/end`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: ST.sessionId,
+          token:     ST.token,
+          score:     ST.score,
+          hits:      ST.hits,
+          durationMs: Math.round(ST.elapsedMs),
+          taps:      ST.taps,
+        }),
+      });
+      resp = await r.json();
+      if (!r.ok || resp.error) showErr(resp?.reason || resp?.error || 'end_failed');
+    } catch {
+      showErr('Network error');
+    }
+    _ending = false;
+
+    const score   = Number(resp?.score   ?? ST.score);
+    const hits    = Number(resp?.hits    ?? ST.hits);
+    const awarded = Number(resp?.awarded ?? score);
+    const best    = Number(resp?.bestScore ?? 0);
+    const txUrl   = resp?.explorerUrl || null;
+
+    postParent({
+      type: 'litdex:litlaunch:end',
+      reason,
+      score, hits, awarded, best,
+      txInfo: txUrl ? { txHash: resp.txHash, explorerUrl: txUrl } : null,
+    });
+
+    fetchStats().then((stats) => {
+      const left = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 0;
+      ST.gamesLeft = left;
+      const body = `
+        <div class="panel-big green">+${awarded} PTS</div>
+        <div class="panel-stat-row"><span class="lbl">Coins</span><span class="val">${score}</span></div>
+        <div class="panel-stat-row"><span class="lbl">Hits</span><span class="val">${hits} / ${MAX_LIVES}</span></div>
+        <div class="panel-stat-row"><span class="lbl">Best Score</span><span class="val">${best}</span></div>
+        ${txUrl ? `<div class="panel-stat-row"><span class="lbl">Tx</span><a class="val" style="color:#5be0a4;text-decoration:underline" href="${txUrl}" target="_blank" rel="noreferrer">${(resp.txHash || '').slice(0,10)}…</a></div>` : ''}
+      `;
+      panelTitle.textContent = reason === 'cap' ? 'COIN CAP' : 'GAME OVER';
+      panelSub.textContent   = reason === 'cap' ? 'You hit the per-game cap.' : 'Lost all 3 lives.';
+      panelBody.innerHTML    = body;
+      btnPrimary.disabled    = left <= 0;
+      btnPrimary.textContent = left <= 0 ? 'NO GAMES LEFT' : 'PLAY AGAIN';
+      btnPrimary.onclick     = left <= 0 ? () => {} : startGame;
+      panel.classList.remove('hidden');
+    });
   }
 
   function applyShake() {
@@ -1091,112 +934,59 @@
     const W = vw(), H = vh();
     stage.clearRect(0, 0, W, H);
 
-    // Parallax stars (3 layers).
-    drawStars(ST.parallax.far, 0.15);
-    drawStars(ST.parallax.mid, 0.4);
-    drawStars(ST.parallax.near, 0.9);
+    drawStars();
 
-    // Earth disk at bottom (only visible when low altitude).
-    drawEarth();
-    drawMoon();
-    drawMars();
+    // Lane edges (subtle).
+    stage.strokeStyle = 'rgba(140,200,255,0.05)';
+    stage.lineWidth = 1;
+    stage.beginPath(); stage.moveTo(LANE_PADDING + 0.5, 0); stage.lineTo(LANE_PADDING + 0.5, H); stage.stroke();
+    stage.beginPath(); stage.moveTo(W - LANE_PADDING - 0.5, 0); stage.lineTo(W - LANE_PADDING - 0.5, H); stage.stroke();
 
-    // Trail (under rocket).
+    // Trail (under everything).
     for (const p of ST.trail) drawTrailParticle(p);
+
+    // Coins.
+    for (const c of ST.coins) drawCoin(c);
+
+    // Asteroids.
+    for (const a of ST.asteroids) drawAsteroid(a);
 
     // Rocket.
     drawRocket();
 
-    // Sparks (over everything).
-    for (const p of ST.sparks) drawSparkPx(p);
+    // Sparks (above rocket).
+    for (const p of ST.sparks) drawSpark(p);
+
+    // Damage flash.
+    if (ST.flashMs > 0) {
+      stage.fillStyle = `rgba(255,80,80,${0.2 * (ST.flashMs / 280)})`;
+      stage.fillRect(0, 0, W, H);
+    }
   }
 
-  function drawStars(layer, parallaxFactor) {
+  function drawStars() {
     const W = vw(), H = vh();
-    const off = ST.cameraY * parallaxFactor;
-    stage.fillStyle = '#ffffff';
-    for (const s of layer) {
-      let y = (s.y - off) % (H * 4);
-      if (y < 0) y += H * 4;
-      // Wrap into 0..H window (vertical scroll illusion)
-      const yScreen = (y % H);
-      const tw = 0.4 + 0.6 * Math.abs(Math.sin(performance.now() * 0.001 * s.tw + s.x));
-      stage.globalAlpha = 0.4 + tw * 0.6;
-      stage.beginPath();
-      stage.arc(s.x, yScreen, s.r, 0, Math.PI * 2);
-      stage.fill();
+    const scrollPx = (ST.phase === PHASE_FLIGHT)
+      ? (ST.elapsedMs / 1000) * SCROLL_BASE_PXS * (0.5 + ST.speedMul * 0.5)
+      : 0;
+    const layers = [
+      { layer: ST.parallax.far,  factor: 0.3, alpha: 0.45 },
+      { layer: ST.parallax.mid,  factor: 0.6, alpha: 0.7  },
+      { layer: ST.parallax.near, factor: 0.9, alpha: 1.0  },
+    ];
+    stage.fillStyle = '#fff';
+    for (const { layer, factor, alpha } of layers) {
+      const off = scrollPx * factor;
+      for (const s of layer) {
+        const y = ((s.y + off) % H + H) % H;
+        const tw = 0.5 + 0.5 * Math.abs(Math.sin(performance.now() * 0.0012 * s.tw + s.x));
+        stage.globalAlpha = alpha * (0.4 + tw * 0.6);
+        stage.beginPath();
+        stage.arc(s.x, y, s.r, 0, Math.PI * 2);
+        stage.fill();
+      }
     }
     stage.globalAlpha = 1;
-  }
-
-  function drawEarth() {
-    const W = vw(), H = vh();
-    // Earth visible until ~120km altitude.
-    if (ST.altKm > 220) return;
-    const earthRadius = vw() * 1.6;
-    const earthY = H + earthRadius - 80 + ST.cameraY * 0.05;
-    const grd = stage.createRadialGradient(W / 2, earthY - earthRadius * 0.4, earthRadius * 0.1,
-                                           W / 2, earthY, earthRadius);
-    grd.addColorStop(0, '#5be0a4');
-    grd.addColorStop(0.4, '#2a8a64');
-    grd.addColorStop(0.85, '#0d3a47');
-    grd.addColorStop(1, '#04141d');
-    stage.fillStyle = grd;
-    stage.beginPath();
-    stage.arc(W / 2, earthY, earthRadius, 0, Math.PI * 2);
-    stage.fill();
-
-    // Atmospheric glow ring
-    const ringGrd = stage.createRadialGradient(W / 2, earthY, earthRadius * 0.95,
-                                               W / 2, earthY, earthRadius * 1.15);
-    ringGrd.addColorStop(0, 'rgba(94,200,255,0.4)');
-    ringGrd.addColorStop(1, 'rgba(94,200,255,0)');
-    stage.fillStyle = ringGrd;
-    stage.beginPath();
-    stage.arc(W / 2, earthY, earthRadius * 1.15, 0, Math.PI * 2);
-    stage.fill();
-  }
-
-  function drawMoon() {
-    if (ST.altKm < 250) return;
-    const W = vw(), H = vh();
-    const screenT = Math.min(1, (ST.altKm - 250) / 600);
-    const radius = 60 + 30 * screenT;
-    const x = W * 0.78;
-    // Approach from above-screen down to center as we ascend.
-    const y = H * 0.35 - (1 - screenT) * H * 0.5;
-    const grd = stage.createRadialGradient(x - radius * 0.3, y - radius * 0.3, radius * 0.2, x, y, radius);
-    grd.addColorStop(0, '#fff8d8');
-    grd.addColorStop(0.6, '#c9c2a8');
-    grd.addColorStop(1, '#41382a');
-    stage.fillStyle = grd;
-    stage.beginPath();
-    stage.arc(x, y, radius, 0, Math.PI * 2);
-    stage.fill();
-    // Crater specks
-    stage.fillStyle = 'rgba(60,50,30,0.4)';
-    [[-12, -6, 4], [10, 8, 6], [-6, 14, 3]].forEach(([dx, dy, r]) => {
-      stage.beginPath();
-      stage.arc(x + dx, y + dy, r, 0, Math.PI * 2);
-      stage.fill();
-    });
-  }
-
-  function drawMars() {
-    if (ST.altKm < 1500) return;
-    const W = vw(), H = vh();
-    const screenT = Math.min(1, (ST.altKm - 1500) / 1200);
-    const radius = 40 + 26 * screenT;
-    const x = W * 0.22;
-    const y = H * 0.25 - (1 - screenT) * H * 0.4;
-    const grd = stage.createRadialGradient(x - radius * 0.3, y - radius * 0.3, radius * 0.2, x, y, radius);
-    grd.addColorStop(0, '#ffae8a');
-    grd.addColorStop(0.7, '#c0552a');
-    grd.addColorStop(1, '#3d1408');
-    stage.fillStyle = grd;
-    stage.beginPath();
-    stage.arc(x, y, radius, 0, Math.PI * 2);
-    stage.fill();
   }
 
   function drawTrailParticle(p) {
@@ -1212,98 +1002,148 @@
     stage.restore();
   }
 
-  function drawSparkPx(p) {
+  function drawSpark(p) {
     const a = Math.max(0, p.life / p.maxLife);
     stage.save();
     stage.globalAlpha = a;
     stage.fillStyle = `hsl(${p.hue}, 95%, 60%)`;
     stage.shadowColor = `hsl(${p.hue}, 95%, 60%)`;
-    stage.shadowBlur = 10;
+    stage.shadowBlur = 8;
     stage.beginPath();
     stage.arc(p.x, p.y, p.size, 0, Math.PI * 2);
     stage.fill();
     stage.restore();
   }
 
-  function drawRocket() {
-    const W = vw(), H = vh();
-    const PX_PER_KM = H / 320;
-    const baseY = H - 90;
-    const screenY = ST.phase === PHASE_LOBBY
-      ? baseY
-      : Math.max(H * 0.42, baseY - ST.altKm * PX_PER_KM + ST.cameraY);
-    const x = W / 2;
-    ST.rocketX = x; ST.rocketY = screenY;
-
-    // Launchpad (fading away at altitude).
-    if (ST.altKm < 120) {
-      const padOpacity = 1 - (ST.altKm / 120);
-      stage.save();
-      stage.globalAlpha = padOpacity;
-      stage.fillStyle = 'rgba(160,180,200,0.7)';
-      stage.fillRect(x - 36, baseY + 38, 72, 6);
-      stage.fillStyle = 'rgba(120,140,160,0.6)';
-      stage.fillRect(x - 28, baseY + 44, 56, 12);
-      // Small support struts on either side.
-      stage.strokeStyle = 'rgba(180,200,220,0.5)';
-      stage.lineWidth = 2;
-      stage.beginPath();
-      stage.moveTo(x - 24, baseY + 38);
-      stage.lineTo(x - 30, baseY + 18);
-      stage.moveTo(x + 24, baseY + 38);
-      stage.lineTo(x + 30, baseY + 18);
-      stage.stroke();
-      stage.restore();
-    }
-
-    // Rocket body.
+  function drawCoin(c) {
+    const w = c.r * Math.abs(Math.cos(c.twirl));
     stage.save();
-    stage.translate(x, screenY);
-    // Slight wobble during fueling.
-    if (ST.phase === PHASE_FUELING && ST.holdStartT) {
-      stage.rotate((Math.random() - 0.5) * 0.04);
+    stage.translate(c.x, c.y);
+    // Outer glow.
+    stage.shadowColor = '#ffd76a';
+    stage.shadowBlur = 14;
+    const grd = stage.createRadialGradient(-w * 0.3, -c.r * 0.3, c.r * 0.2, 0, 0, c.r);
+    grd.addColorStop(0, '#fff5d2');
+    grd.addColorStop(0.45, '#ffd76a');
+    grd.addColorStop(1, '#a16e10');
+    stage.fillStyle = grd;
+    stage.beginPath();
+    stage.ellipse(0, 0, Math.max(2, w), c.r, 0, 0, Math.PI * 2);
+    stage.fill();
+    stage.shadowBlur = 0;
+    // Inner ring.
+    stage.strokeStyle = 'rgba(255,255,255,0.55)';
+    stage.lineWidth = 1.2;
+    stage.beginPath();
+    stage.ellipse(0, 0, Math.max(1, w * 0.7), c.r * 0.7, 0, 0, Math.PI * 2);
+    stage.stroke();
+    // L glyph.
+    if (w > 4) {
+      stage.fillStyle = 'rgba(110,70,10,0.85)';
+      stage.font = `bold ${Math.floor(c.r * 1.1)}px 'Bangers', cursive`;
+      stage.textAlign = 'center';
+      stage.textBaseline = 'middle';
+      stage.fillText('L', 0, 1);
     }
-    // Body (capsule).
-    const grd = stage.createLinearGradient(-12, 0, 12, 0);
+    stage.restore();
+  }
+
+  function drawAsteroid(a) {
+    stage.save();
+    stage.translate(a.x, a.y);
+    stage.rotate(a.rot);
+    // Body.
+    const grd = stage.createRadialGradient(-a.r * 0.3, -a.r * 0.3, a.r * 0.2, 0, 0, a.r);
+    grd.addColorStop(0, '#a08070');
+    grd.addColorStop(0.55, '#5a4a40');
+    grd.addColorStop(1, '#241914');
+    stage.fillStyle = grd;
+    stage.beginPath();
+    // Lumpy polygon.
+    const sides = 9;
+    for (let i = 0; i <= sides; i++) {
+      const ang = (i / sides) * Math.PI * 2;
+      const rr = a.r * (0.78 + 0.22 * Math.sin(i * 1.7 + a.r));
+      const x = Math.cos(ang) * rr;
+      const y = Math.sin(ang) * rr;
+      if (i === 0) stage.moveTo(x, y); else stage.lineTo(x, y);
+    }
+    stage.closePath();
+    stage.fill();
+    stage.strokeStyle = 'rgba(0,0,0,0.5)';
+    stage.lineWidth = 1.2;
+    stage.stroke();
+    // Crater specks.
+    stage.fillStyle = 'rgba(0,0,0,0.45)';
+    [[-0.3, -0.2, 0.18], [0.25, 0.1, 0.22], [-0.15, 0.35, 0.14]].forEach(([fx, fy, fr]) => {
+      stage.beginPath();
+      stage.arc(fx * a.r, fy * a.r, fr * a.r, 0, Math.PI * 2);
+      stage.fill();
+    });
+    stage.restore();
+  }
+
+  function drawRocket() {
+    if (ST.phase === PHASE_LOBBY) return;
+    const x = ST.rocket.x, y = ST.rocket.y;
+    const tilt = Math.max(-0.25, Math.min(0.25, (ST.rocket.targetX - ST.rocket.x) * 0.01));
+    stage.save();
+    stage.translate(x, y);
+    stage.rotate(tilt);
+    // Engine glow underneath.
+    const glowGrd = stage.createRadialGradient(0, ROCKET_H * 0.55, 4, 0, ROCKET_H * 0.55, ROCKET_H * 0.65);
+    glowGrd.addColorStop(0, 'rgba(255,240,180,1)');
+    glowGrd.addColorStop(0.4, 'rgba(255,140,40,0.8)');
+    glowGrd.addColorStop(1, 'rgba(255,80,20,0)');
+    stage.fillStyle = glowGrd;
+    stage.beginPath();
+    stage.arc(0, ROCKET_H * 0.55, ROCKET_H * 0.55, 0, Math.PI * 2);
+    stage.fill();
+
+    // Body
+    const flicker = (ST.invulMs > 0 && Math.floor(performance.now() / 80) % 2 === 0) ? 0.55 : 1;
+    stage.globalAlpha = flicker;
+
+    const grd = stage.createLinearGradient(-ROCKET_W / 2, 0, ROCKET_W / 2, 0);
     grd.addColorStop(0, '#7c95b8');
     grd.addColorStop(0.5, '#e6edf6');
     grd.addColorStop(1, '#7c95b8');
     stage.fillStyle = grd;
-    roundRect(stage, -12, -28, 24, 56, 6);
+    roundRect(stage, -ROCKET_W * 0.32, -ROCKET_H * 0.45, ROCKET_W * 0.64, ROCKET_H * 0.85, 8);
     stage.fill();
-    // Window (triangular nose).
+    // Window
     stage.fillStyle = '#5be0a4';
     stage.beginPath();
-    stage.arc(0, -10, 5, 0, Math.PI * 2);
+    stage.arc(0, -ROCKET_H * 0.18, ROCKET_W * 0.16, 0, Math.PI * 2);
     stage.fill();
-    stage.fillStyle = 'rgba(255,255,255,0.55)';
+    stage.fillStyle = 'rgba(255,255,255,0.6)';
     stage.beginPath();
-    stage.arc(-1.5, -11.5, 2, 0, Math.PI * 2);
+    stage.arc(-ROCKET_W * 0.05, -ROCKET_H * 0.21, ROCKET_W * 0.06, 0, Math.PI * 2);
     stage.fill();
-    // Fins.
+    // Fins
     stage.fillStyle = '#ff7a45';
     stage.beginPath();
-    stage.moveTo(-12, 16); stage.lineTo(-22, 28); stage.lineTo(-12, 28); stage.closePath();
+    stage.moveTo(-ROCKET_W * 0.32, ROCKET_H * 0.2);
+    stage.lineTo(-ROCKET_W * 0.55, ROCKET_H * 0.45);
+    stage.lineTo(-ROCKET_W * 0.32, ROCKET_H * 0.45);
+    stage.closePath();
     stage.fill();
     stage.beginPath();
-    stage.moveTo(12, 16); stage.lineTo(22, 28); stage.lineTo(12, 28); stage.closePath();
+    stage.moveTo(ROCKET_W * 0.32, ROCKET_H * 0.2);
+    stage.lineTo(ROCKET_W * 0.55, ROCKET_H * 0.45);
+    stage.lineTo(ROCKET_W * 0.32, ROCKET_H * 0.45);
+    stage.closePath();
     stage.fill();
-    // Nose cone outline.
+    // Nose cone
     stage.fillStyle = '#ff7a45';
     stage.beginPath();
-    stage.moveTo(-12, -28); stage.lineTo(0, -42); stage.lineTo(12, -28); stage.closePath();
+    stage.moveTo(-ROCKET_W * 0.32, -ROCKET_H * 0.45);
+    stage.lineTo(0, -ROCKET_H * 0.7);
+    stage.lineTo(ROCKET_W * 0.32, -ROCKET_H * 0.45);
+    stage.closePath();
     stage.fill();
-    // Engine glow when thrusting/flying.
-    if (ST.phase === PHASE_FLIGHT && ST.velKms > 0) {
-      const glowGrd = stage.createRadialGradient(0, 32, 4, 0, 32, 28);
-      glowGrd.addColorStop(0, 'rgba(255,240,180,1)');
-      glowGrd.addColorStop(0.4, 'rgba(255,140,40,0.8)');
-      glowGrd.addColorStop(1, 'rgba(255,80,20,0)');
-      stage.fillStyle = glowGrd;
-      stage.beginPath();
-      stage.arc(0, 32, 28, 0, Math.PI * 2);
-      stage.fill();
-    }
+
+    stage.globalAlpha = 1;
     stage.restore();
   }
 
@@ -1318,16 +1158,6 @@
     c.closePath();
   }
 
-  // Sweet-spot indicator on fuel bar (cosmetic only — actual sweet
-  // is server-seed jittered ±400ms, indicator shows the typical
-  // window so players have a visual aim point).
-  (function paintSweet() {
-    const SWEET_BASE_PCT = (1700 / MAX_THRUST_MS) * 100; // ~56.7%
-    const SWEET_HALF_PCT = (180 / MAX_THRUST_MS) * 100;
-    fuelSweet.style.setProperty('--sweet-mid', SWEET_BASE_PCT.toFixed(1));
-    fuelSweet.style.setProperty('--sweet-w', SWEET_HALF_PCT.toFixed(1));
-  })();
-
   // ── Boot ──────────────────────────────────────────────────
   (async () => {
     if (!wallet) {
@@ -1340,8 +1170,8 @@
       );
       return;
     }
-    setupParallax();
-    rebuildLadder();
+    initParallax();
+    initRocket();
     drawStage();
     await showLobby();
   })();
