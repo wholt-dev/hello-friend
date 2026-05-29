@@ -82,7 +82,7 @@
   .hud-pill.moves  { background: linear-gradient(180deg, rgba(180,130,40,0.95), rgba(80,50,15,0.92)); border-color: rgba(255,200,90,0.45); color: #ffe9bf; }
   .hud-pill.moves  .v { color: #fff; }
 
-  /* Mining rig charge bar */
+  /* Score progress bar */
   #rig-wrap {
     position: relative;
     background: linear-gradient(180deg, rgba(15,25,45,0.85), rgba(5,10,20,0.85));
@@ -312,13 +312,13 @@
 
   <div id="hud-top">
     <div class="hud-row">
-      <div class="hud-pill points">CHARGES <span class="v" id="hud-charges">0/10</span></div>
+      <div class="hud-pill points">SCORE <span class="v" id="hud-score">0.0</span></div>
       <div class="hud-pill moves">MOVES <span class="v" id="hud-moves">30</span></div>
     </div>
     <div id="rig-wrap">
       <div class="rig-head">
-        <div>MINING RIG</div>
-        <div class="charges" id="rig-pct-big">0%</div>
+        <div>POINTS THIS RUN</div>
+        <div class="charges" id="rig-pct-big">0.0</div>
       </div>
       <div id="rig-track">
         <div id="rig-fill"></div>
@@ -363,7 +363,7 @@
   const btnExit     = document.getElementById('btn-exit');
   const errBanner   = document.getElementById('err-banner');
   const errMsg      = document.getElementById('err-msg');
-  const hudCharges  = document.getElementById('hud-charges');
+  const hudScore    = document.getElementById('hud-score');
   const hudMoves    = document.getElementById('hud-moves');
   const rigFill     = document.getElementById('rig-fill');
   const rigPctBig   = document.getElementById('rig-pct-big');
@@ -376,10 +376,9 @@
   // ── Constants (mirror backend) ────────────────────────────
   const COLS = 7, ROWS = 8, COLORS = 5;
   const MOVES_PER_GAME = 30;
-  const MAX_CHARGES_PER_GAME = 10;
+  const MAX_SCORE_DECI = 500;
+  const DECI_PER_PT = 10;
   const MIN_MOVE_GAP_MS = 220;          // matches >200 server floor
-  const PER_GEM_PCT = 1, FOUR_BONUS = 5, FIVE_BONUS = 10;
-  const CHARGE_PER_PT = 100;
 
   // Visual gem palette: [base, glow, label]
   const GEMS = [
@@ -550,7 +549,7 @@
   const ST = {
     sessionId: null, token: null, serverSeed: null,
     board: [], dropIdx: 0,
-    movesLeft: 0, charges: 0, pct: 0,
+    movesLeft: 0, scoreDeci: 0,
     moves: [],            // [{ a:[r,c], b:[r,c], t }]
     startedAt: 0,
     lastMoveAt: -1e9,
@@ -598,12 +597,13 @@
     scoreNum.classList.add('bump');
   }
   function updateHud() {
-    hudCharges.textContent = `${ST.charges}/${MAX_CHARGES_PER_GAME}`;
+    const pts = (ST.scoreDeci / DECI_PER_PT).toFixed(1);
+    hudScore.textContent = pts;
     hudMoves.textContent = String(Math.max(0, ST.movesLeft));
-    const pct = Math.max(0, Math.min(100, ST.pct));
+    const pct = Math.max(0, Math.min(100, (ST.scoreDeci / MAX_SCORE_DECI) * 100));
     rigFill.style.width = pct + '%';
-    rigPctBig.textContent = `${ST.charges}/${MAX_CHARGES_PER_GAME}`;
-    setScore(ST.charges);
+    rigPctBig.textContent = pts;
+    setScore(pts);
   }
   function showPanel(title, sub, bodyHTML, primaryLabel, primaryAction) {
     panelTitle.textContent = title;
@@ -634,26 +634,27 @@
   async function showLobby() {
     ST.running = false;
     ST.board = []; ST.pieces = []; ST.falling = []; ST.sparks = [];
-    ST.charges = 0; ST.pct = 0; ST.movesLeft = MOVES_PER_GAME;
+    ST.scoreDeci = 0; ST.movesLeft = MOVES_PER_GAME;
     updateHud();
     drawStage();
 
     const stats = await fetchStats();
     const left = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 5;
     ST.gamesLeft = left;
-    const best = stats ? Number(stats.bestCharges || 0) : 0;
+    const bestPts = stats ? Number(stats.bestScorePts || 0) : 0;
 
     const noGames = left <= 0;
     const body = `
-      <div class="panel-stat-row"><span class="lbl">Reward</span><span class="val">+1 PT / charge</span></div>
-      <div class="panel-stat-row"><span class="lbl">Cap / Game</span><span class="val">${MAX_CHARGES_PER_GAME}</span></div>
+      <div class="panel-stat-row"><span class="lbl">3-match</span><span class="val">+0.3 PT</span></div>
+      <div class="panel-stat-row"><span class="lbl">4-match</span><span class="val">+0.4 PT</span></div>
+      <div class="panel-stat-row"><span class="lbl">5+match / cascade</span><span class="val">stacks up</span></div>
       <div class="panel-stat-row"><span class="lbl">Moves</span><span class="val">${MOVES_PER_GAME}</span></div>
       <div class="panel-stat-row"><span class="lbl">Games Today</span><span class="val">${5 - left} / 5</span></div>
-      <div class="panel-stat-row"><span class="lbl">Best Charges</span><span class="val">${best}</span></div>
+      <div class="panel-stat-row"><span class="lbl">Best Score</span><span class="val">${bestPts.toFixed(1)} PTS</span></div>
     `;
     showPanel(
       'ZK MINER',
-      noGames ? 'Daily limit reached · resets 00:00 IST' : 'Match 3+ gems to charge the rig',
+      noGames ? 'Daily limit reached · resets 00:00 IST' : 'Match 3+ gems to score',
       body,
       noGames ? 'NO GAMES LEFT' : 'PLAY',
       noGames ? () => {} : startGame
@@ -760,8 +761,7 @@
     ST.board    = built.board;
     ST.dropIdx  = built.dropIdx;
     ST.movesLeft = MOVES_PER_GAME;
-    ST.charges = 0;
-    ST.pct = 0;
+    ST.scoreDeci = 0;
     ST.moves = [];
     ST.startedAt = performance.now();
     ST.lastMoveAt = -1e9;
@@ -942,7 +942,7 @@
     // Cascade loop.
     while (cleared.size > 0) {
       await resolveCleared(cleared, ST.cascadeDepth);
-      if (ST.charges >= MAX_CHARGES_PER_GAME) break;
+      if (ST.scoreDeci >= MAX_SCORE_DECI) break;
       gravityAndRefill(cleared);
       await animateSettle(180);
       cleared = findMatches(ST.board);
@@ -955,8 +955,8 @@
 
     ST.busy = false;
 
-    if (ST.charges >= MAX_CHARGES_PER_GAME || ST.movesLeft <= 0) {
-      setTimeout(() => endGame(ST.charges >= MAX_CHARGES_PER_GAME ? 'cap' : 'moves_out'), 500);
+    if (ST.scoreDeci >= MAX_SCORE_DECI || ST.movesLeft <= 0) {
+      setTimeout(() => endGame(ST.scoreDeci >= MAX_SCORE_DECI ? 'cap' : 'moves_out'), 500);
     }
   }
 
@@ -1010,12 +1010,6 @@
 
   async function resolveCleared(cleared, depth) {
     const cellCount = cleared.size;
-    const longestRun = maxRunInCleared(cleared);
-    let gain = cellCount * PER_GEM_PCT;
-    if (longestRun >= 5) gain += FIVE_BONUS;
-    else if (longestRun >= 4) gain += FOUR_BONUS;
-    const mult = Math.min(3, 1 + 0.5 * depth);
-    gain = gain * mult;
 
     // Spawn pop animation + sparks for each cleared cell.
     for (const k of cleared) {
@@ -1046,25 +1040,23 @@
       requestAnimationFrame(step);
     });
 
-    // Show floating gain.
-    if (cleared.size > 0) {
-      const [r, c] = [...cleared][0].split(',').map(Number);
+    // Score: 1 deci-point per cleared gem. 3-match = 0.3 PT,
+    // 4-match = 0.4 PT, 5-match = 0.5 PT, etc.
+    const gainDeci = cellCount;
+    ST.scoreDeci = Math.min(MAX_SCORE_DECI, ST.scoreDeci + gainDeci);
+
+    // Floating popup near the first cleared cell.
+    const first = [...cleared][0];
+    if (first) {
+      const [r, c] = first.split(',').map(Number);
       const p = pieceAt(r, c) || { x: BOARD_X + c * CELL, y: BOARD_Y + r * CELL };
-      popup(`+${Math.round(gain)}%`, p.x + CELL / 2, p.y - 10, 'gold');
+      popup(`+${(gainDeci / DECI_PER_PT).toFixed(1)}`, p.x + CELL / 2, p.y - 10, 'gold');
     }
 
-    // Apply charge.
-    ST.pct += gain;
-    while (ST.pct >= CHARGE_PER_PT) {
-      ST.pct -= CHARGE_PER_PT;
-      ST.charges++;
-      sndCharge();
-      addShake(8, 350);
+    // Cascade depth >= 1 plays a glow burst on the score bar.
+    if (depth >= 1) {
+      addShake(4 + Math.min(depth, 4) * 1.2, 250);
       flashRig();
-      const cx = vw() / 2;
-      const cy = BOARD_Y + 40;
-      popup(`+1 PT · CHARGE!`, cx, cy, 'charge');
-      if (ST.charges >= MAX_CHARGES_PER_GAME) { ST.pct = 0; break; }
     }
     updateHud();
   }
@@ -1353,14 +1345,16 @@
       showErr('Network error');
     }
 
-    const awarded = Number(resp?.awarded ?? ST.charges ?? 0);
-    const charges = Number(resp?.charges ?? ST.charges ?? 0);
-    const best    = Number(resp?.bestCharges ?? 0);
+    const scorePts = Number(resp?.scorePts ?? (ST.scoreDeci / DECI_PER_PT));
+    const awarded  = Number(resp?.awarded  ?? Math.floor(ST.scoreDeci / DECI_PER_PT));
+    const bestPts  = Number(resp?.bestScorePts ?? 0);
+
+    if (awarded > 0) sndCharge();
 
     postParent({
       type: 'litdex:zkminer:end',
       reason: reason === 'cap' ? 'cap' : (reason === 'moves_out' ? 'moves_out' : 'end'),
-      charges, awarded, best,
+      scorePts, awarded, bestPts,
     });
 
     const stats = await fetchStats();
@@ -1368,13 +1362,13 @@
     ST.gamesLeft = left;
 
     const body = `
-      <div class="panel-big">+${awarded} PTS</div>
-      <div class="panel-stat-row"><span class="lbl">Charges</span><span class="val">${charges}</span></div>
-      <div class="panel-stat-row"><span class="lbl">Best</span><span class="val">${best}</span></div>
-      <div class="panel-stat-row"><span class="lbl">Cap</span><span class="val">${MAX_CHARGES_PER_GAME}</span></div>
+      <div class="panel-big">${scorePts.toFixed(1)} PTS</div>
+      <div class="panel-stat-row"><span class="lbl">Credited</span><span class="val">+${awarded} PTS on chain</span></div>
+      <div class="panel-stat-row"><span class="lbl">Best</span><span class="val">${bestPts.toFixed(1)} PTS</span></div>
+      <div class="panel-stat-row"><span class="lbl">Moves Used</span><span class="val">${MOVES_PER_GAME - ST.movesLeft} / ${MOVES_PER_GAME}</span></div>
     `;
-    panelTitle.textContent = reason === 'cap' ? 'RIG MAXED' : 'OUT OF MOVES';
-    panelSub.textContent   = reason === 'cap' ? 'Daily cap on this run.' : 'Match more next time.';
+    panelTitle.textContent = reason === 'cap' ? 'MAX SCORE' : 'OUT OF MOVES';
+    panelSub.textContent   = reason === 'cap' ? 'You hit the per-game cap.' : 'Score banked.';
     panelBody.innerHTML    = body;
     btnPrimary.disabled    = left <= 0;
     btnPrimary.textContent = left <= 0 ? 'NO GAMES LEFT' : 'PLAY AGAIN';

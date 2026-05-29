@@ -4975,9 +4975,9 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
   const [starting, setStarting] = useState(false);
   const [gameOver, setGameOver] = useState<{
     reason: string;
-    charges: number;
+    scorePts: number;
     awarded: number;
-    best: number;
+    bestPts: number;
   } | null>(null);
   const [iframeKey, setIframeKey] = useState(0);
   const [errMsg, setErrMsg] = useState('');
@@ -5014,18 +5014,19 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
       }
       if (d.type === 'litdex:zkminer:end') {
         const awarded = Number(d.awarded) || 0;
+        const scorePts = Number(d.scorePts) || 0;
         setGameOver({
-          reason:  String(d.reason || 'end'),
-          charges: Number(d.charges) || 0,
+          reason:   String(d.reason || 'end'),
+          scorePts,
           awarded,
-          best:    Number(d.best) || 0,
+          bestPts:  Number(d.bestPts) || 0,
         });
         try {
           if (awarded > 0) {
             addNotif(lowerAddr, {
               type: 'game',
-              title: 'ZK Miner · Rig Banked',
-              message: `${d.charges} charges · +${awarded} PTS`,
+              title: 'ZK Miner · Run Banked',
+              message: `Score ${scorePts.toFixed(1)} · +${awarded} PTS`,
             });
           }
         } catch {}
@@ -5068,8 +5069,8 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
 
   const balance     = Math.max(0, Number(stats?.pointsBalance ?? 0));
   const gamesLeft   = Math.max(0, Number(stats?.gamesLeft ?? Math.max(0, DAILY_LIMIT - Number(stats?.gamesPlayed ?? 0))));
-  const bestCharges = Number(stats?.bestCharges ?? 0);
-  const maxCharges  = Number(stats?.maxCharges ?? 10);
+  const bestScore   = Number(stats?.bestScorePts ?? 0);
+  const maxScore    = Number(stats?.maxScorePts ?? 50);
   const movesGame   = Number(stats?.movesPerGame ?? 30);
 
   const startGame = async () => {
@@ -5109,12 +5110,12 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
                     <div className="text-brand-text-primary text-sm font-bold">{balance.toLocaleString()} PTS</div>
                   </div>
                   <div className="mb-3">
-                    <div className="text-[10px] uppercase text-brand-text-muted">Reward</div>
-                    <div className="text-brand-text-primary text-sm">+1 PT / charge</div>
+                    <div className="text-[10px] uppercase text-brand-text-muted">Per Match</div>
+                    <div className="text-brand-text-primary text-sm">3=+0.3 · 4=+0.4 · 5=+0.5</div>
                   </div>
                   <div className="mb-3">
                     <div className="text-[10px] uppercase text-brand-text-muted">Cap / Game</div>
-                    <div className="text-brand-text-primary text-sm">{maxCharges} charges</div>
+                    <div className="text-brand-text-primary text-sm">{maxScore.toFixed(0)} PTS</div>
                   </div>
                   <div className="mb-3">
                     <div className="text-[10px] uppercase text-brand-text-muted">Moves</div>
@@ -5127,8 +5128,8 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
                   <div className="pt-3 border-t border-brand-border">
                     <div className="text-[10px] uppercase text-brand-text-muted mb-2">Personal Best</div>
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-brand-text-muted">Best Charges</span>
-                      <span className="text-brand-text-primary">{bestCharges}</span>
+                      <span className="text-brand-text-muted">Best Score</span>
+                      <span className="text-brand-text-primary">{bestScore.toFixed(1)} PTS</span>
                     </div>
                   </div>
                 </>
@@ -5141,8 +5142,8 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
           {!playing ? (
             <div className="p-6 sm:p-8 text-center">
               <div className="font-mono text-brand-text-primary text-base sm:text-lg mb-2">ZK MINER</div>
-              <div className="font-mono text-brand-text-muted text-xs mb-2">Match 3+ token gems to charge the rig. Each full charge mints +1 PT.</div>
-              <div className="font-mono text-[10px] text-brand-text-muted mb-6">Free · {DAILY_LIMIT} games/day · {movesGame} moves · cap {maxCharges} charges · resets 00:00 IST</div>
+              <div className="font-mono text-brand-text-muted text-xs mb-2">Match 3+ token gems to score points. 3-match = +0.3 PT, 4-match = +0.4, cascades stack.</div>
+              <div className="font-mono text-[10px] text-brand-text-muted mb-6">Free · {DAILY_LIMIT} games/day · {movesGame} moves · cap {maxScore.toFixed(0)} PTS · resets 00:00 IST</div>
               <button
                 type="button"
                 onClick={startGame}
@@ -5192,25 +5193,25 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
                     borderRadius: 16, padding: 24, textAlign: 'center', color: '#fff',
                   }}>
                     <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 4 }}>
-                      {gameOver.reason === 'cap' ? 'RIG MAXED' : 'OUT OF MOVES'}
+                      {gameOver.reason === 'cap' ? 'MAX SCORE' : 'OUT OF MOVES'}
                     </div>
                     <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#666', letterSpacing: '0.2em', marginBottom: 18 }}>
                       Session ended
                     </div>
 
-                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#777', letterSpacing: '0.15em' }}>Banked</div>
-                    <div style={{ fontSize: 40, fontWeight: 700, lineHeight: 1, marginTop: 4, color: '#5be0a4' }}>+{gameOver.awarded}</div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#777', letterSpacing: '0.15em' }}>Score</div>
+                    <div style={{ fontSize: 40, fontWeight: 700, lineHeight: 1, marginTop: 4, color: '#5be0a4' }}>{gameOver.scorePts.toFixed(1)}</div>
                     <div style={{ fontSize: 11, color: '#777', marginTop: 4, marginBottom: 18, letterSpacing: '0.1em' }}>POINTS</div>
 
                     <div style={{ display: 'grid', gap: 10, marginBottom: 18, textAlign: 'left' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Charges</span><span>{gameOver.charges}</span>
+                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Credited On Chain</span><span>+{gameOver.awarded} PTS</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Best</span><span>{gameOver.best}</span>
+                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Best</span><span>{gameOver.bestPts.toFixed(1)} PTS</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Cap</span><span>{maxCharges}</span>
+                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Cap</span><span>{maxScore.toFixed(0)} PTS</span>
                       </div>
                     </div>
 
@@ -5249,12 +5250,324 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
+const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
+  const { address, isConnected } = useAccount();
+  const SIMPLE_API = 'https://game.test-hub.xyz';
+  const DAILY_LIMIT = 10;
+  const ENTRY_COST = 10;
+
+  const [stats, setStats] = useState<any>(null);
+  const [playing, setPlaying] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [gameOver, setGameOver] = useState<{
+    reason: string;
+    multiplier: number;
+    altitudeKm: number;
+    awarded: number;
+    stake: number;
+    profit: number;
+    perfect: boolean;
+  } | null>(null);
+  const [iframeKey, setIframeKey] = useState(0);
+  const [errMsg, setErrMsg] = useState('');
+
+  const lowerAddr = address ? address.toLowerCase() : '';
+
+  const fetchStats = async () => {
+    if (!lowerAddr) return;
+    try {
+      const r = await fetch(`${SIMPLE_API}/litlaunch/stats/${lowerAddr}`);
+      if (r.ok) setStats(await r.json());
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (!lowerAddr) return;
+    fetchStats();
+    const t = setInterval(fetchStats, 20000);
+    return () => clearInterval(t);
+  }, [lowerAddr]);
+
+  useEffect(() => {
+    if (!lowerAddr) return;
+    const onMsg = (e: MessageEvent) => {
+      const d: any = e?.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'litdex:litlaunch:exit') {
+        setPlaying(false);
+        setGameOver(null);
+        try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
+        try { (screen.orientation as any)?.unlock?.(); } catch {}
+        fetchStats();
+        return;
+      }
+      if (d.type === 'litdex:litlaunch:end') {
+        setGameOver({
+          reason:     String(d.reason || 'crash'),
+          multiplier: Number(d.multiplier) || 1,
+          altitudeKm: Number(d.altitudeKm) || 0,
+          awarded:    Number(d.awarded) || 0,
+          stake:      Number(d.stake) || ENTRY_COST,
+          profit:     Number(d.profit) || 0,
+          perfect:    !!d.perfect,
+        });
+        try {
+          if (d.reason === 'cashout' && Number(d.awarded) > 0) {
+            addNotif(lowerAddr, {
+              type: 'game',
+              title: d.perfect ? 'Lit Launch · PERFECT' : 'Lit Launch · Cashed Out',
+              message: `${Number(d.multiplier).toFixed(2)}x · +${d.awarded} PTS · ${Number(d.altitudeKm).toLocaleString()} km`,
+              link: d?.txInfo?.explorerUrl,
+            });
+          } else if (d.reason === 'crash' || d.reason === 'fellback') {
+            addNotif(lowerAddr, {
+              type: 'game',
+              title: 'Lit Launch · Crashed',
+              message: `Lost ${ENTRY_COST} PTS at ${Number(d.altitudeKm).toLocaleString()} km`,
+            });
+          }
+        } catch {}
+        fetchStats();
+      }
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [lowerAddr]);
+
+  const handlePlayAgain = () => {
+    setGameOver(null);
+    setErrMsg('');
+    setIframeKey((k) => k + 1);
+    fetchStats();
+  };
+
+  const handleGameOverExit = () => {
+    setGameOver(null);
+    setErrMsg('');
+    setPlaying(false);
+    try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.unlock?.(); } catch {}
+    fetchStats();
+  };
+
+  const handleExitGame = () => {
+    setPlaying(false);
+    setGameOver(null);
+    try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {}
+    try { (screen.orientation as any)?.unlock?.(); } catch {}
+    fetchStats();
+  };
+
+  useEffect(() => {
+    if (playing) document.body.classList.add('hide-nav');
+    else document.body.classList.remove('hide-nav');
+    return () => document.body.classList.remove('hide-nav');
+  }, [playing]);
+
+  const balance     = Math.max(0, Number(stats?.pointsBalance ?? 0));
+  const gamesLeft   = Math.max(0, Number(stats?.gamesLeft ?? Math.max(0, DAILY_LIMIT - Number(stats?.gamesPlayed ?? 0))));
+  const bestMult    = Number(stats?.bestMultiplier ?? 0);
+  const bestAlt     = Number(stats?.bestAltitudeKm ?? 0);
+
+  const startGame = async () => {
+    if (!lowerAddr || starting) return;
+    if (balance < ENTRY_COST) { setErrMsg(`Need ${ENTRY_COST} PTS to launch.`); return; }
+    if (gamesLeft <= 0) { setErrMsg('Daily limit reached. Resets at 00:00 IST.'); return; }
+    setErrMsg('');
+    setGameOver(null);
+    setStarting(true);
+    setPlaying(true);
+    try {
+      const elx: any = document.documentElement;
+      const req = elx.requestFullscreen || elx.webkitRequestFullscreen || elx.mozRequestFullScreen;
+      if (req) req.call(elx).catch(() => {});
+    } catch {}
+    try { (screen.orientation as any)?.lock?.('portrait').catch(() => {}); } catch {}
+    setStarting(false);
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-launch-page py-8 max-w-7xl mx-auto px-4">
+      <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
+
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+        {!playing && (
+          <div className="order-2 lg:order-1 space-y-5">
+            <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-[11px] uppercase text-brand-text-muted">Your Stats</div>
+                <span className="text-[9px] uppercase px-2 py-0.5 rounded-full text-black bg-white font-bold">{ENTRY_COST} PTS Stake</span>
+              </div>
+              {!isConnected ? (
+                <div className="text-brand-text-muted text-xs">Connect wallet to track your stats</div>
+              ) : (
+                <>
+                  <div className="mb-3">
+                    <div className="text-[10px] uppercase text-brand-text-muted">Balance</div>
+                    <div className="text-brand-text-primary text-sm font-bold">{balance.toLocaleString()} PTS</div>
+                  </div>
+                  <div className="mb-3">
+                    <div className="text-[10px] uppercase text-brand-text-muted">Max Multiplier</div>
+                    <div className="text-brand-text-primary text-sm">25x</div>
+                  </div>
+                  <div className="mb-4">
+                    <div className="text-[10px] uppercase text-brand-text-muted">Games Today</div>
+                    <div className="text-brand-text-primary text-sm">{Math.max(0, DAILY_LIMIT - gamesLeft)} / {DAILY_LIMIT}</div>
+                  </div>
+                  <div className="pt-3 border-t border-brand-border">
+                    <div className="text-[10px] uppercase text-brand-text-muted mb-2">Personal Best</div>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-brand-text-muted">Multiplier</span>
+                      <span className="text-brand-text-primary">{bestMult.toFixed(2)}x</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] mt-1">
+                      <span className="text-brand-text-muted">Altitude</span>
+                      <span className="text-brand-text-primary">{bestAlt.toLocaleString()} km</span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
+          {!playing ? (
+            <div className="p-6 sm:p-8 text-center">
+              <div className="font-mono text-brand-text-primary text-base sm:text-lg mb-2">LIT LAUNCH</div>
+              <div className="font-mono text-brand-text-muted text-xs mb-2">Tap and hold to fuel · release to launch · cash out before the rocket explodes.</div>
+              <div className="font-mono text-[10px] text-brand-text-muted mb-6">{ENTRY_COST} PTS stake · {DAILY_LIMIT} games/day · max 25x · resets 00:00 IST</div>
+              <button
+                type="button"
+                onClick={startGame}
+                onTouchEnd={(e) => { e.preventDefault(); (e.currentTarget as HTMLButtonElement).click(); }}
+                disabled={!isConnected || starting || (isConnected && (gamesLeft <= 0 || balance < ENTRY_COST))}
+                className="w-full sm:w-auto min-h-12 px-8 py-3 rounded-lg bg-brand-text-primary text-brand-bg font-mono font-bold text-sm cursor-pointer touch-manipulation select-none active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                {!isConnected ? 'CONNECT WALLET' :
+                  starting ? 'STARTING…' :
+                  balance < ENTRY_COST ? `NEED ${ENTRY_COST} PTS` :
+                  gamesLeft <= 0 ? 'DAILY LIMIT REACHED' : `START · ${ENTRY_COST} PTS`}
+              </button>
+              {errMsg && (
+                <div className="mt-4 font-mono text-[11px]" style={{ color: '#c44' }}>{errMsg}</div>
+              )}
+            </div>
+          ) : (
+            <div className="relative w-screen h-screen ll-playing-root" style={{ width: '100vw', height: '100dvh', touchAction: 'manipulation', overscrollBehavior: 'none' }}>
+              {!gameOver && (
+                <button
+                  onClick={handleExitGame}
+                  aria-label="Exit game"
+                  className="ll-exit-btn font-mono text-[11px] uppercase bg-brand-surface-2 text-brand-text-primary border border-brand-border"
+                  style={{ position: 'fixed', bottom: 16, left: 16, zIndex: 999999, borderRadius: 8, padding: '8px 12px' }}
+                >
+                  EXIT
+                </button>
+              )}
+              <iframe
+                key={iframeKey}
+                src={`/games/lit-launch.html?wallet=${lowerAddr}`}
+                title="Lit Launch"
+                style={{ border: 'none', position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                allow="autoplay; fullscreen"
+              />
+
+              {gameOver && (
+                <div style={{
+                  position: 'fixed', inset: 0, zIndex: 1000001,
+                  background: 'rgba(0,0,0,0.92)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: 16,
+                }}>
+                  <div className="font-mono" style={{
+                    width: '100%', maxWidth: 380,
+                    background: '#0a0e1a', border: '1px solid #1f2638',
+                    borderRadius: 16, padding: 24, textAlign: 'center', color: '#fff',
+                  }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 4 }}>
+                      {gameOver.reason === 'cashout' ? (gameOver.perfect ? 'PERFECT LAUNCH' : 'CASHED OUT') :
+                       gameOver.reason === 'crash'   ? 'EXPLODED' :
+                       gameOver.reason === 'fellback'? 'FELL BACK' :
+                                                      'FIZZLE'}
+                    </div>
+                    <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#666', letterSpacing: '0.2em', marginBottom: 18 }}>
+                      Session ended
+                    </div>
+
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#777', letterSpacing: '0.15em' }}>Multiplier</div>
+                    <div style={{
+                      fontSize: 40, fontWeight: 700, lineHeight: 1, marginTop: 4,
+                      color: gameOver.reason === 'cashout' ? '#5be0a4' :
+                             gameOver.reason === 'fizzle'  ? '#ffe97a' : '#ff8a8a',
+                    }}>
+                      {gameOver.reason === 'cashout' || gameOver.reason === 'fizzle'
+                        ? `${gameOver.multiplier.toFixed(2)}x`
+                        : 'CRASH'}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#777', marginTop: 4, marginBottom: 18, letterSpacing: '0.1em' }}>
+                      {gameOver.altitudeKm.toLocaleString()} KM
+                    </div>
+
+                    <div style={{ display: 'grid', gap: 10, marginBottom: 18, textAlign: 'left' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Stake</span><span>{gameOver.stake} PTS</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Profit</span>
+                        <span style={{ color: gameOver.profit >= 0 ? '#5be0a4' : '#ff8a8a' }}>
+                          {gameOver.profit >= 0 ? '+' : ''}{gameOver.profit} PTS
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                        <span style={{ color: '#777', textTransform: 'uppercase' }}>Banked</span><span>+{gameOver.awarded} PTS</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                      <button
+                        onClick={handlePlayAgain}
+                        disabled={gamesLeft <= 0 || balance < ENTRY_COST}
+                        style={{
+                          flex: 1, minHeight: 48, borderRadius: 10,
+                          background: '#fff', color: '#000', border: 'none',
+                          fontSize: 12, fontWeight: 700, letterSpacing: '0.1em',
+                          textTransform: 'uppercase',
+                          cursor: (gamesLeft <= 0 || balance < ENTRY_COST) ? 'not-allowed' : 'pointer',
+                          opacity: (gamesLeft <= 0 || balance < ENTRY_COST) ? 0.4 : 1,
+                          WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation',
+                        }}
+                      >{gamesLeft <= 0 ? 'NO GAMES LEFT' : balance < ENTRY_COST ? `NEED ${ENTRY_COST} PTS` : 'PLAY AGAIN'}</button>
+                      <button
+                        onClick={handleGameOverExit}
+                        style={{
+                          flex: 1, minHeight: 48, borderRadius: 10,
+                          background: 'transparent', color: '#fff', border: '1px solid #333',
+                          fontSize: 12, fontWeight: 700, letterSpacing: '0.1em',
+                          textTransform: 'uppercase', cursor: 'pointer',
+                          WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation',
+                        }}
+                      >EXIT</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
 const GamesPage = () => {
-  const [sub, setSub] = useState<'lobby' | 'math-slash' | 'pump-dump' | 'lit-tower' | 'zk-miner'>('lobby');
+  const [sub, setSub] = useState<'lobby' | 'math-slash' | 'pump-dump' | 'lit-tower' | 'zk-miner' | 'lit-launch'>('lobby');
   if (sub === 'math-slash') return <MathSlashPage onBack={() => setSub('lobby')} />;
   if (sub === 'pump-dump')  return <PumpDumpPage  onBack={() => setSub('lobby')} />;
   if (sub === 'lit-tower')  return <LitTowerPage  onBack={() => setSub('lobby')} />;
   if (sub === 'zk-miner')   return <ZkMinerPage   onBack={() => setSub('lobby')} />;
+  if (sub === 'lit-launch') return <LitLaunchPage onBack={() => setSub('lobby')} />;
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-12 max-w-6xl mx-auto px-4">
       <h1 className="text-3xl font-bold tracking-tighter text-white mb-8">Games</h1>
@@ -5360,6 +5673,51 @@ const GamesPage = () => {
               <h3 className="font-bold text-xl text-white mb-2">ZK MINER</h3>
               <p className="text-sm text-[#888] mb-6 leading-relaxed">Match 3+ token gems to charge the rig. +1 PT per full charge.</p>
               <button onClick={() => setSub('zk-miner')} className="mt-auto w-full py-3 rounded-lg bg-white text-black font-mono font-bold text-xs uppercase tracking-widest">
+                Play Now
+              </button>
+            </div>
+          </div>
+
+          <div className="games-card-dark rounded-2xl overflow-hidden flex flex-col" style={{ background: '#0a0a0a', border: '1px solid #1f1f1f' }}>
+            <div className="h-44 flex items-center justify-center relative" style={{ background: 'linear-gradient(180deg, #050912 0%, #1d3856 100%)' }}>
+              <svg width="160" height="120" viewBox="0 0 160 120" style={{ opacity: 0.95 }}>
+                <defs>
+                  <radialGradient id="llEarth" cx="50%" cy="100%" r="80%">
+                    <stop offset="0%" stopColor="#5be0a4"/><stop offset="60%" stopColor="#0d3a47"/><stop offset="100%" stopColor="#04141d"/>
+                  </radialGradient>
+                  <linearGradient id="llRocket" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#7c95b8"/><stop offset="50%" stopColor="#e6edf6"/><stop offset="100%" stopColor="#7c95b8"/>
+                  </linearGradient>
+                  <linearGradient id="llTrail" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="rgba(255,255,180,0.9)"/>
+                    <stop offset="50%" stopColor="rgba(255,140,40,0.7)"/>
+                    <stop offset="100%" stopColor="rgba(255,80,20,0)"/>
+                  </linearGradient>
+                </defs>
+                {/* Stars */}
+                <circle cx="20"  cy="20"  r="1.2" fill="#fff" opacity="0.8"/>
+                <circle cx="135" cy="14"  r="1.5" fill="#fff" opacity="0.9"/>
+                <circle cx="50"  cy="35"  r="0.9" fill="#fff" opacity="0.6"/>
+                <circle cx="125" cy="52"  r="1.0" fill="#fff" opacity="0.7"/>
+                <circle cx="32"  cy="62"  r="1.0" fill="#fff" opacity="0.7"/>
+                <circle cx="98"  cy="32"  r="1.3" fill="#fff" opacity="0.85"/>
+                {/* Earth at bottom */}
+                <ellipse cx="80" cy="135" rx="120" ry="55" fill="url(#llEarth)"/>
+                {/* Trail */}
+                <ellipse cx="80" cy="86" rx="10" ry="22" fill="url(#llTrail)"/>
+                {/* Rocket */}
+                <rect x="74" y="52" width="12" height="28" rx="3" fill="url(#llRocket)"/>
+                <polygon points="74,52 80,40 86,52" fill="#ff7a45"/>
+                <polygon points="74,76 66,84 74,84" fill="#ff7a45"/>
+                <polygon points="86,76 94,84 86,84" fill="#ff7a45"/>
+                <circle cx="80" cy="62" r="2.5" fill="#5be0a4"/>
+              </svg>
+              <span className="absolute top-3 right-3 text-[9px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full" style={{ background: '#ff7a45', color: '#0a0a0a' }}>10 PTS</span>
+            </div>
+            <div className="p-6 flex-1 flex flex-col">
+              <h3 className="font-bold text-xl text-white mb-2">LIT LAUNCH</h3>
+              <p className="text-sm text-[#888] mb-6 leading-relaxed">Hold to fuel · release to fly · cash out before crash. Up to 25x.</p>
+              <button onClick={() => setSub('lit-launch')} className="mt-auto w-full py-3 rounded-lg bg-white text-black font-mono font-bold text-xs uppercase tracking-widest">
                 Play Now
               </button>
             </div>

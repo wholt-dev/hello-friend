@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Lit Launch — LitDeX</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka+One&family=JetBrains+Mono:wght@400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #050912;
+    color: #fff;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    font-family: 'Fredoka One', cursive;
+  }
+
+  #game-container {
+    position: relative;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse 100% 80% at 50% 100%, #244169 0%, #0c1a30 30%, transparent 65%),
+      radial-gradient(ellipse 80% 60% at 50% 0%, #050918 0%, transparent 70%),
+      linear-gradient(180deg, #04060c 0%, #0a1226 50%, #1d3856 100%);
+  }
+
+  canvas {
+    position: absolute; left: 0; top: 0;
+    width: 100%; height: 100%;
+    display: block;
+  }
+  #stage-canvas { z-index: 2; }
+
+  /* HUD */
+  #hud-top {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 6;
+    padding: 14px 12px 0;
+    padding-top: max(14px, env(safe-area-inset-top));
+    pointer-events: none;
+    display: flex; justify-content: space-between; gap: 10px;
+  }
+  .hud-pill {
+    flex: 1;
+    background: linear-gradient(180deg, rgba(15,25,45,0.95), rgba(5,10,20,0.92));
+    border: 1px solid rgba(140,180,255,0.18);
+    border-radius: 12px;
+    padding: 7px 10px 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; letter-spacing: 0.16em;
+    color: #aac6ee;
+    text-transform: uppercase;
+    backdrop-filter: blur(6px);
+    text-align: center;
+  }
+  .hud-pill .v {
+    display: block;
+    color: #fff;
+    font-weight: 700;
+    font-size: 16px;
+    margin-top: 3px;
+    letter-spacing: 0.5px;
+  }
+  .hud-pill.mult .v { font-size: 22px; color: #5be0a4; text-shadow: 0 0 14px rgba(91,224,164,0.6); }
+
+  /* Big multiplier readout (Crash-style) */
+  #mult-mega {
+    position: absolute;
+    top: 24%; left: 50%;
+    transform: translate(-50%, 0);
+    z-index: 5;
+    font-family: 'Bangers', cursive;
+    font-size: clamp(64px, 18vw, 156px);
+    line-height: 1;
+    color: #fff;
+    text-shadow: 0 4px 0 rgba(0,0,0,0.5), 0 0 36px rgba(140,200,255,0.35);
+    pointer-events: none;
+    letter-spacing: 4px;
+    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.2s ease;
+    opacity: 0;
+  }
+  #mult-mega.visible { opacity: 1; }
+  #mult-mega.bump { transform: translate(-50%, 0) scale(1.06); }
+  #mult-mega.danger { color: #ff8a8a; text-shadow: 0 4px 0 rgba(60,0,0,0.6), 0 0 32px rgba(255,80,80,0.55); }
+
+  /* Bottom action zone */
+  #pad {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    z-index: 6;
+    padding: 0 14px 18px;
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+    pointer-events: none;
+  }
+  #fuel-wrap {
+    background: linear-gradient(180deg, rgba(15,25,45,0.85), rgba(5,10,20,0.9));
+    border: 1px solid rgba(140,180,255,0.18);
+    border-radius: 14px;
+    padding: 8px 12px 10px;
+    margin-bottom: 10px;
+    backdrop-filter: blur(6px);
+  }
+  .fuel-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.18em;
+    color: #aac6ee;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+  }
+  .fuel-head .pct {
+    font-family: 'Bangers', cursive;
+    font-size: 20px; letter-spacing: 2px;
+    color: #fff;
+    text-shadow: 0 0 12px rgba(255,210,90,0.5);
+  }
+  #fuel-track {
+    position: relative;
+    height: 14px;
+    background: rgba(0,0,0,0.55);
+    border-radius: 999px;
+    overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgba(140,180,255,0.18);
+  }
+  #fuel-fill {
+    position: absolute; top: 0; left: 0; bottom: 0;
+    width: 0%;
+    background: linear-gradient(90deg, #6ed0ff 0%, #ffe97a 65%, #ff7a45 100%);
+    box-shadow: 0 0 16px rgba(255,210,120,0.6);
+    transition: width 0.06s linear;
+  }
+  /* Sweet-spot marker. Set with --sweet-mid, --sweet-w. */
+  #fuel-sweet {
+    position: absolute;
+    top: 0; bottom: 0;
+    left: calc((var(--sweet-mid, 56) - var(--sweet-w, 6)) * 1%);
+    width: calc(var(--sweet-w, 6) * 2 * 1%);
+    background: rgba(91,224,164,0.4);
+    border-left: 1px solid rgba(91,224,164,0.7);
+    border-right: 1px solid rgba(91,224,164,0.7);
+    pointer-events: none;
+  }
+  #fuel-sweet.show { display: block; }
+
+  #thrust-btn {
+    pointer-events: auto;
+    width: 100%;
+    min-height: 84px;
+    border-radius: 16px;
+    border: none;
+    background: linear-gradient(180deg, #ff7a45 0%, #c54616 100%);
+    color: #fff;
+    font-family: 'Bangers', cursive;
+    font-size: 32px;
+    letter-spacing: 6px;
+    text-shadow: 0 3px 0 rgba(0,0,0,0.4);
+    box-shadow: 0 8px 0 #6e2a0a, 0 0 32px rgba(255,120,60,0.4);
+    cursor: pointer;
+    transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.1s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+  }
+  #thrust-btn:active, #thrust-btn.held {
+    transform: translateY(4px);
+    box-shadow: 0 4px 0 #6e2a0a, 0 0 48px rgba(255,200,90,0.6);
+    filter: brightness(1.18);
+  }
+  #thrust-btn.cashout {
+    background: linear-gradient(180deg, #5be0a4 0%, #1f9c66 100%);
+    box-shadow: 0 8px 0 #0e5d3a, 0 0 32px rgba(91,224,164,0.45);
+    color: #04241a;
+    text-shadow: 0 2px 0 rgba(255,255,255,0.18);
+  }
+  #thrust-btn.cashout:active, #thrust-btn.cashout.held {
+    box-shadow: 0 4px 0 #0e5d3a, 0 0 48px rgba(120,255,180,0.65);
+  }
+  #thrust-btn.disabled {
+    pointer-events: none;
+    opacity: 0.5; filter: grayscale(0.4);
+  }
+
+  /* Side legend (altitude markers) */
+  #ladder {
+    position: absolute;
+    top: 22%; bottom: 26%;
+    left: 8px;
+    z-index: 4;
+    width: 78px;
+    pointer-events: none;
+  }
+  .ladder-tick {
+    position: absolute;
+    left: 0; right: 0;
+    display: flex; flex-direction: column; align-items: flex-start;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+  }
+  .ladder-tick .lbl { color: rgba(255,255,255,0.85); font-weight: 700; }
+  .ladder-tick .mult {
+    color: #ffe97a; font-size: 10px; letter-spacing: 0.04em;
+    text-shadow: 0 0 8px rgba(255,213,90,0.5);
+  }
+  .ladder-tick::before {
+    content: ''; position: absolute; left: 64px; top: 50%;
+    width: 12px; height: 1px; background: rgba(255,255,255,0.3);
+  }
+
+  /* Banner */
+  #banner {
+    position: absolute;
+    top: 16%; left: 50%;
+    transform: translate(-50%, 0) scale(0.8);
+    z-index: 5;
+    background: linear-gradient(180deg, #ffe97a 0%, #ffae3b 100%);
+    color: #5a3a0a;
+    padding: 6px 18px;
+    border-radius: 999px;
+    font-family: 'Bangers', cursive;
+    font-size: 22px;
+    letter-spacing: 4px;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.3), 0 0 28px rgba(255,213,90,0.6);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease;
+  }
+  #banner.visible { opacity: 1; transform: translate(-50%, 0) scale(1); }
+
+  /* Panel (start / end) */
+  #panel {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.78);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: opacity 0.3s ease;
+  }
+  #panel.hidden { opacity: 0; pointer-events: none; }
+  .panel-card {
+    background: #0a0e1a;
+    border: 1px solid #1f2638;
+    border-radius: 18px;
+    padding: 26px 22px;
+    text-align: center;
+    width: 88%; max-width: 360px;
+    color: #fff;
+    font-family: 'Fredoka One', cursive;
+  }
+  .panel-title {
+    font-family: 'Bangers', cursive;
+    font-size: 38px;
+    letter-spacing: 4px;
+    margin-bottom: 4px;
+    text-shadow: 0 0 18px rgba(140,200,255,0.4);
+  }
+  .panel-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: rgba(255,255,255,0.55);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .panel-stat-row {
+    display: flex; justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    margin: 6px 0;
+  }
+  .panel-stat-row .lbl { color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.12em; }
+  .panel-stat-row .val { color: #fff; font-weight: 700; }
+  .panel-big {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 44px; line-height: 1;
+    font-weight: 700;
+    margin: 14px 0 4px;
+  }
+  .panel-big.green  { color: #5be0a4; }
+  .panel-big.red    { color: #ff8a8a; }
+  .panel-big.gold   { color: #ffe97a; }
+  .panel-btns { display: flex; gap: 10px; margin-top: 14px; }
+  .panel-btn {
+    flex: 1; min-height: 48px; border-radius: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border: 1px solid #333;
+    background: transparent;
+    color: #fff;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .panel-btn.primary { background: #fff; color: #000; border: none; }
+  .panel-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Score popups */
+  .score-pop {
+    position: absolute;
+    z-index: 7;
+    font-family: 'Bangers', cursive;
+    font-size: 36px; letter-spacing: 2px;
+    color: #ffe97a;
+    text-shadow: 0 3px 0 rgba(60,30,0,0.55), 0 0 22px rgba(255,213,90,0.55);
+    pointer-events: none;
+    transform: translate(-50%, 0);
+    animation: popUp 0.95s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  .score-pop.green { color: #5be0a4; text-shadow: 0 3px 0 rgba(0,40,20,0.55), 0 0 22px rgba(91,224,164,0.6); }
+  .score-pop.red   { color: #ff8a8a; text-shadow: 0 3px 0 rgba(80,0,0,0.55); }
+  @keyframes popUp {
+    0%   { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+    25%  { transform: translate(-50%, -22px) scale(1.18); opacity: 1; }
+    100% { transform: translate(-50%, -110px) scale(0.95); opacity: 0; }
+  }
+
+  /* Camera shake target */
+  #shake-host { position: absolute; inset: 0; z-index: 2; will-change: transform; }
+
+  #err-banner {
+    position: absolute; top: 12px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(239,73,86,0.92);
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.1em;
+    padding: 8px 14px; border-radius: 8px;
+    z-index: 40;
+    opacity: 0; transition: opacity 0.25s ease;
+    pointer-events: none;
+  }
+  #err-banner.visible { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="game-container">
+  <div id="shake-host">
+    <canvas id="stage-canvas"></canvas>
+  </div>
+
+  <div id="hud-top">
+    <div class="hud-pill">STAKE<span class="v" id="hud-stake">10</span></div>
+    <div class="hud-pill mult">MULT<span class="v" id="hud-mult">1.00x</span></div>
+    <div class="hud-pill">ALT<span class="v" id="hud-alt">0 km</span></div>
+  </div>
+
+  <div id="ladder"></div>
+  <div id="mult-mega">1.00x</div>
+  <div id="banner">PERFECT LAUNCH</div>
+
+  <div id="pad">
+    <div id="fuel-wrap">
+      <div class="fuel-head">
+        <div>FUEL</div>
+        <div class="pct" id="fuel-pct">0%</div>
+      </div>
+      <div id="fuel-track">
+        <div id="fuel-sweet" class="show"></div>
+        <div id="fuel-fill"></div>
+      </div>
+    </div>
+    <button id="thrust-btn">HOLD TO LAUNCH</button>
+  </div>
+
+  <div id="panel">
+    <div class="panel-card" id="panel-card">
+      <div class="panel-title" id="panel-title">LIT LAUNCH</div>
+      <div class="panel-sub" id="panel-sub">Hold to fuel · release to fly · cash out before crash</div>
+      <div id="panel-body"></div>
+      <div class="panel-btns">
+        <button class="panel-btn primary" id="btn-primary">PLAY · 10 PTS</button>
+        <button class="panel-btn" id="btn-exit">EXIT</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="err-banner"><span id="err-msg"></span></div>
+</div>
+<script>
+(() => {
+  // ── URL params ─────────────────────────────────────────────
+  const params  = new URLSearchParams(location.search);
+  const wallet  = (params.get('wallet') || '').toLowerCase();
+  const API     = (params.get('api') || 'https://game.test-hub.xyz').replace(/\/$/, '');
+  const PARENT_ORIGIN = '*';
+  const postParent = (m) => { try { window.parent && window.parent.postMessage(m, PARENT_ORIGIN); } catch {} };
+
+  // ── DOM ────────────────────────────────────────────────────
+  const stageCanvas = document.getElementById('stage-canvas');
+  const stage       = stageCanvas.getContext('2d', { alpha: true });
+  const panel       = document.getElementById('panel');
+  const panelTitle  = document.getElementById('panel-title');
+  const panelSub    = document.getElementById('panel-sub');
+  const panelBody   = document.getElementById('panel-body');
+  const btnPrimary  = document.getElementById('btn-primary');
+  const btnExit     = document.getElementById('btn-exit');
+  const errBanner   = document.getElementById('err-banner');
+  const errMsg      = document.getElementById('err-msg');
+  const hudStake    = document.getElementById('hud-stake');
+  const hudMult     = document.getElementById('hud-mult');
+  const hudAlt      = document.getElementById('hud-alt');
+  const multMega    = document.getElementById('mult-mega');
+  const fuelFill    = document.getElementById('fuel-fill');
+  const fuelPct     = document.getElementById('fuel-pct');
+  const fuelSweet   = document.getElementById('fuel-sweet');
+  const thrustBtn   = document.getElementById('thrust-btn');
+  const banner      = document.getElementById('banner');
+  const ladder      = document.getElementById('ladder');
+  const shakeHost   = document.getElementById('shake-host');
+  const container   = document.getElementById('game-container');
+
+  // ── Constants (mirror backend) ─────────────────────────────
+  const G              = 9.8;
+  const MAX_THRUST_MS  = 3000;
+  const MIN_THRUST_MS  = 200;
+  const THRUST_TO_VEL  = 0.13;
+  const MAX_ALT_KM     = 4500;
+  const ENTRY_COST     = 10;
+  const MAX_MULT       = 25;
+
+  // ── Canvas sizing ─────────────────────────────────────────
+  let DPR = 1;
+  function resize() {
+    DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    const r = container.getBoundingClientRect();
+    stageCanvas.style.width  = r.width + 'px';
+    stageCanvas.style.height = r.height + 'px';
+    stageCanvas.width  = Math.floor(r.width * DPR);
+    stageCanvas.height = Math.floor(r.height * DPR);
+    stage.setTransform(1, 0, 0, 1, 0, 0); stage.scale(DPR, DPR);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+  function vw() { return container.clientWidth; }
+  function vh() { return container.clientHeight; }
+
+  // ── Audio ─────────────────────────────────────────────────
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function tone(freq, durMs, type = 'sine', gain = 0.18) {
+    try {
+      ensureAudio();
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = type;
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(gain, audioCtx.currentTime + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + durMs / 1000);
+      o.connect(g).connect(audioCtx.destination);
+      o.start();
+      o.stop(audioCtx.currentTime + durMs / 1000);
+    } catch {}
+  }
+  // Continuous rumble while thrusting (white noise burst loop).
+  let rumbleNode = null, rumbleGain = null;
+  function rumbleStart() {
+    try {
+      ensureAudio();
+      if (rumbleNode) return;
+      const len = 0.5;
+      const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * len, audioCtx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.6;
+      rumbleNode = audioCtx.createBufferSource();
+      rumbleNode.buffer = buf;
+      rumbleNode.loop = true;
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 220;
+      rumbleGain = audioCtx.createGain();
+      rumbleGain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      rumbleGain.gain.exponentialRampToValueAtTime(0.18, audioCtx.currentTime + 0.08);
+      rumbleNode.connect(filter).connect(rumbleGain).connect(audioCtx.destination);
+      rumbleNode.start();
+    } catch {}
+  }
+  function rumbleStop() {
+    try {
+      if (!rumbleNode) return;
+      rumbleGain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.18);
+      const node = rumbleNode;
+      setTimeout(() => { try { node.stop(); } catch {} }, 200);
+      rumbleNode = null; rumbleGain = null;
+    } catch {}
+  }
+  function sndIgnite() { tone(120, 220, 'sawtooth', 0.20); setTimeout(() => tone(80, 320, 'sawtooth', 0.16), 80); }
+  function sndCash()   { tone(523, 70, 'square', 0.16); setTimeout(() => tone(659, 70, 'square', 0.16), 80); setTimeout(() => tone(880, 140, 'square', 0.18), 160); }
+  function sndCrash()  { tone(60, 600, 'sawtooth', 0.25); setTimeout(() => tone(40, 800, 'sawtooth', 0.18), 200); }
+  function sndPerfect(){ tone(880, 60, 'square', 0.16); setTimeout(() => tone(1320, 90, 'square', 0.15), 60); setTimeout(() => tone(1760, 140, 'square', 0.13), 130); }
+  function sndTick(level) { tone(420 + level * 8, 30, 'sine', 0.05); }
+
+  // ── Game state ────────────────────────────────────────────
+  const PHASE_LOBBY = 'lobby', PHASE_FUELING = 'fueling', PHASE_FLIGHT = 'flight',
+        PHASE_END   = 'end';
+  const ST = {
+    sessionId: null, token: null, seedHash: null,
+    phase: PHASE_LOBBY,
+    stake: ENTRY_COST,
+    starting: false,
+
+    holdStartT: 0,         // performance.now() when fuel hold began
+    thrustMs: 0,           // total ms held this round
+    flightStartT: 0,       // performance.now() when rocket launched
+    cashoutAtMs: null,     // ms after flightStartT (set if user cashes out)
+    ended: false,
+
+    // Live physics (client mirror — server is source of truth at /end)
+    altKm: 0, velKms: 0, multiplier: 1,
+    crashAlt: null,        // hidden; never shown
+    sweet: null,           // hidden; never shown
+
+    // FX
+    parallax: { far: [], mid: [], near: [] },
+    trail: [],
+    sparks: [],
+    rocketX: 0, rocketY: 0,
+    cameraY: 0,            // upward camera offset in world km
+    moonRevealed: false,
+    marsRevealed: false,
+    shakeAmp: 0, shakeDecay: 0,
+
+    gamesLeft: 0,
+  };
+
+  function vmin() { return Math.min(vw(), vh()); }
+
+  // ── Helpers ───────────────────────────────────────────────
+  function showErr(m) {
+    errMsg.textContent = m || 'error';
+    errBanner.classList.add('visible');
+    setTimeout(() => errBanner.classList.remove('visible'), 2400);
+  }
+  function popup(text, x, y, kind) {
+    const el = document.createElement('div');
+    el.className = 'score-pop ' + (kind || '');
+    el.textContent = text;
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 950);
+  }
+  function showBanner(text) {
+    banner.textContent = text;
+    banner.classList.remove('visible'); void banner.offsetWidth;
+    banner.classList.add('visible');
+    setTimeout(() => banner.classList.remove('visible'), 1200);
+  }
+  function showPanel(title, sub, bodyHTML, primaryLabel, primaryAction) {
+    panelTitle.textContent = title;
+    panelSub.textContent   = sub;
+    panelBody.innerHTML    = bodyHTML || '';
+    btnPrimary.textContent = primaryLabel;
+    btnPrimary.onclick     = primaryAction;
+    panel.classList.remove('hidden');
+  }
+  function hidePanel() { panel.classList.add('hidden'); }
+  btnExit.onclick = () => postParent({ type: 'litdex:litlaunch:exit' });
+
+  function addShake(amp, durMs) {
+    ST.shakeAmp = Math.max(ST.shakeAmp, amp);
+    ST.shakeDecay = ST.shakeAmp / (durMs / 1000);
+  }
+
+  // ── Backend wiring ────────────────────────────────────────
+  async function fetchStats() {
+    if (!wallet) return null;
+    try {
+      const r = await fetch(`${API}/litlaunch/stats/${wallet}`);
+      if (!r.ok) return null;
+      return await r.json();
+    } catch { return null; }
+  }
+  function multiplierAt(altKm) {
+    return Math.min(MAX_MULT, Math.max(1, 1 + Math.max(0, altKm) / 200));
+  }
+
+  async function showLobby() {
+    ST.phase = PHASE_LOBBY;
+    ST.thrustMs = 0; ST.cashoutAtMs = null; ST.altKm = 0; ST.velKms = 0;
+    ST.multiplier = 1; ST.cameraY = 0; ST.trail = []; ST.sparks = [];
+    ST.moonRevealed = false; ST.marsRevealed = false; ST.shakeAmp = 0;
+    ST.ended = false;
+    fuelFill.style.width = '0%';
+    fuelPct.textContent = '0%';
+    multMega.textContent = '1.00x';
+    multMega.classList.remove('visible', 'danger');
+    hudMult.textContent = '1.00x';
+    hudAlt.textContent  = '0 km';
+    hudStake.textContent = String(ENTRY_COST);
+    setThrustButtonMode('lobby');
+    drawStage();
+
+    const stats = await fetchStats();
+    const left = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 10;
+    ST.gamesLeft = left;
+    const balance = stats ? Number(stats.pointsBalance ?? 0) : 0;
+    const bestM   = stats ? Number(stats.bestMultiplier || 0) : 0;
+    const bestA   = stats ? Number(stats.bestAltitudeKm || 0) : 0;
+
+    const noGames = left <= 0;
+    const lowBal  = balance < ENTRY_COST;
+    const body = `
+      <div class="panel-stat-row"><span class="lbl">Stake</span><span class="val">${ENTRY_COST} PTS</span></div>
+      <div class="panel-stat-row"><span class="lbl">Max Multiplier</span><span class="val">25x</span></div>
+      <div class="panel-stat-row"><span class="lbl">Games Today</span><span class="val">${10 - left} / 10</span></div>
+      <div class="panel-stat-row"><span class="lbl">Best Multiplier</span><span class="val">${bestM.toFixed(2)}x</span></div>
+      <div class="panel-stat-row"><span class="lbl">Best Altitude</span><span class="val">${bestA.toLocaleString()} km</span></div>
+    `;
+    showPanel(
+      'LIT LAUNCH',
+      noGames ? 'Daily limit reached · resets 00:00 IST'
+              : (lowBal ? `Need ${ENTRY_COST} PTS to launch`
+                        : 'Hold the booster · release · cash out at the right altitude'),
+      body,
+      noGames ? 'NO GAMES LEFT'
+              : (lowBal ? 'NOT ENOUGH PTS' : `PLAY · ${ENTRY_COST} PTS`),
+      (noGames || lowBal) ? () => {} : startGame
+    );
+    btnPrimary.disabled = noGames || lowBal;
+  }
+
+  async function startGame() {
+    if (!wallet) { showErr('No wallet'); return; }
+    if (ST.starting) return;
+    ST.starting = true;
+    btnPrimary.disabled = true;
+    btnPrimary.textContent = 'STAKING…';
+
+    try {
+      const r = await fetch(`${API}/litlaunch/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet }),
+      });
+      const data = await r.json();
+      if (!r.ok || data.error) {
+        showErr(data?.error === 'daily_limit_reached' ? 'Daily limit reached'
+              : data?.error === 'need_min_points'    ? `Need ${ENTRY_COST} PTS`
+              : (data?.error || 'start_failed'));
+        ST.starting = false;
+        btnPrimary.disabled = false;
+        btnPrimary.textContent = `PLAY · ${ENTRY_COST} PTS`;
+        return;
+      }
+      ST.sessionId = data.sessionId;
+      ST.token     = data.token;
+      ST.seedHash  = data.seedHash;
+      ST.stake     = Number(data.stake || ENTRY_COST);
+      ST.gamesLeft = Number(data.gamesLeft || 0);
+      enterFueling();
+    } catch (e) {
+      showErr('Network error');
+      ST.starting = false;
+      btnPrimary.disabled = false;
+      btnPrimary.textContent = `PLAY · ${ENTRY_COST} PTS`;
+    }
+  }
+
+  function enterFueling() {
+    ST.starting = false;
+    ST.phase = PHASE_FUELING;
+    ST.thrustMs = 0;
+    ST.altKm = 0; ST.velKms = 0; ST.multiplier = 1;
+    ST.cameraY = 0;
+    ST.trail = [];
+    ST.sparks = [];
+    ST.cashoutAtMs = null;
+    ST.ended = false;
+    ST.shakeAmp = 0;
+    fuelFill.style.width = '0%';
+    fuelPct.textContent = '0%';
+    multMega.textContent = '1.00x';
+    multMega.classList.remove('danger');
+    multMega.classList.add('visible');
+    hudMult.textContent = '1.00x';
+    hudAlt.textContent  = '0 km';
+    hudStake.textContent = String(ST.stake);
+    setThrustButtonMode('lobby');
+    setupParallax();
+    rebuildLadder();
+    hidePanel();
+    lastT = 0;
+    requestAnimationFrame(loop);
+  }
+
+  function setThrustButtonMode(mode) {
+    thrustBtn.classList.remove('cashout', 'disabled', 'held');
+    if (mode === 'lobby') {
+      thrustBtn.textContent = 'HOLD TO LAUNCH';
+    } else if (mode === 'flight') {
+      thrustBtn.classList.add('cashout');
+      thrustBtn.textContent = 'CASH OUT';
+    } else if (mode === 'disabled') {
+      thrustBtn.classList.add('disabled');
+      thrustBtn.textContent = 'WAIT…';
+    }
+  }
+
+  function setupParallax() {
+    ST.parallax = { far: [], mid: [], near: [] };
+    for (let i = 0; i < 60; i++) {
+      ST.parallax.far.push({
+        x: Math.random() * vw(),
+        y: Math.random() * vh() * 4,
+        r: 0.5 + Math.random() * 0.7,
+        tw: 0.3 + Math.random() * 0.7,
+      });
+    }
+    for (let i = 0; i < 30; i++) {
+      ST.parallax.mid.push({
+        x: Math.random() * vw(),
+        y: Math.random() * vh() * 4,
+        r: 0.7 + Math.random() * 1.0,
+        tw: 0.3 + Math.random() * 0.7,
+      });
+    }
+    for (let i = 0; i < 14; i++) {
+      ST.parallax.near.push({
+        x: Math.random() * vw(),
+        y: Math.random() * vh() * 4,
+        r: 1.0 + Math.random() * 1.4,
+        tw: 0.4 + Math.random() * 0.6,
+      });
+    }
+  }
+
+  function rebuildLadder() {
+    ladder.innerHTML = '';
+    const tiers = [
+      { km: 100,  lbl: 'STRATO',  mult: '1.5x' },
+      { km: 400,  lbl: 'ORBIT',   mult: '3.0x' },
+      { km: 800,  lbl: 'MOON',    mult: '5.0x' },
+      { km: 1800, lbl: 'MARS',    mult: '10.0x'},
+      { km: 3600, lbl: 'DEEP',    mult: '19.0x'},
+    ];
+    for (const t of tiers) {
+      const el = document.createElement('div');
+      el.className = 'ladder-tick';
+      el.style.bottom = (t.km / MAX_ALT_KM * 100) + '%';
+      el.innerHTML = `<div class="lbl">${t.lbl}</div><div class="mult">${t.mult}</div>`;
+      ladder.appendChild(el);
+    }
+  }
+
+  // ── Input ─────────────────────────────────────────────────
+  function pressDown(e) {
+    e.preventDefault?.();
+    if (ST.phase === PHASE_FUELING) {
+      if (ST.holdStartT) return;
+      ST.holdStartT = performance.now();
+      thrustBtn.classList.add('held');
+      sndIgnite();
+      rumbleStart();
+    } else if (ST.phase === PHASE_FLIGHT) {
+      cashOut();
+    }
+  }
+  function pressUp(e) {
+    e?.preventDefault?.();
+    if (ST.phase === PHASE_FUELING && ST.holdStartT) {
+      const held = Math.min(MAX_THRUST_MS, performance.now() - ST.holdStartT);
+      ST.thrustMs = held;
+      ST.holdStartT = 0;
+      thrustBtn.classList.remove('held');
+      rumbleStop();
+      launchRocket();
+    }
+  }
+  thrustBtn.addEventListener('pointerdown', pressDown);
+  thrustBtn.addEventListener('pointerup',   pressUp);
+  thrustBtn.addEventListener('pointercancel', pressUp);
+  thrustBtn.addEventListener('pointerleave', (e) => { if (ST.phase === PHASE_FUELING && ST.holdStartT) pressUp(e); });
+  thrustBtn.addEventListener('touchstart',  pressDown, { passive: false });
+  thrustBtn.addEventListener('touchend',    pressUp,   { passive: false });
+  thrustBtn.addEventListener('touchcancel', pressUp,   { passive: false });
+  // Stop the panel buttons from leaking taps.
+  ['btn-primary','btn-exit'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    el.addEventListener('touchstart',  (e) => e.stopPropagation());
+  });
+
+  // ── Launch / cashout / outcomes ───────────────────────────
+  function launchRocket() {
+    if (ST.thrustMs < MIN_THRUST_MS) {
+      // Fizzle — refund (server will refund stake on /end).
+      finishWithThrust(ST.thrustMs, null);
+      return;
+    }
+    ST.phase = PHASE_FLIGHT;
+    ST.flightStartT = performance.now();
+    ST.cashoutAtMs = null;
+    ST.altKm = 0;
+    ST.velKms = (ST.thrustMs - MIN_THRUST_MS) * THRUST_TO_VEL;
+    setThrustButtonMode('flight');
+    addShake(7, 380);
+    sndIgnite();
+  }
+
+  function cashOut() {
+    if (ST.phase !== PHASE_FLIGHT || ST.cashoutAtMs != null) return;
+    ST.cashoutAtMs = performance.now() - ST.flightStartT;
+    setThrustButtonMode('disabled');
+    sndCash();
+    addShake(5, 240);
+    finishWithThrust(ST.thrustMs, ST.cashoutAtMs);
+  }
+
+  async function finishWithThrust(thrustMs, cashoutAtMs) {
+    if (ST.ended) return;
+    ST.ended = true;
+    let resp = null;
+    try {
+      const r = await fetch(`${API}/litlaunch/end`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: ST.sessionId,
+          token:     ST.token,
+          thrustMs:  Math.round(thrustMs || 0),
+          cashoutAtMs: cashoutAtMs == null ? null : Math.round(cashoutAtMs),
+        }),
+      });
+      resp = await r.json();
+      if (!r.ok || resp.error) showErr(resp?.error || 'end_failed');
+    } catch {
+      showErr('Network error');
+    }
+    handleVerdict(resp);
+  }
+
+  function handleVerdict(resp) {
+    const outcome = resp?.outcome || (ST.cashoutAtMs != null ? 'cashout' : 'crash');
+    const altKm   = Number(resp?.altitudeKm || 0);
+    const mult    = Number(resp?.multiplier || 1);
+    const awarded = Number(resp?.awarded || 0);
+    const perfect = !!resp?.perfect;
+    const stake   = Number(resp?.stake || ST.stake);
+
+    if (outcome === 'cashout') {
+      // Snap visuals to server's altitude / multiplier.
+      ST.altKm = altKm; ST.multiplier = mult;
+      hudMult.textContent = mult.toFixed(2) + 'x';
+      hudAlt.textContent  = altKm.toLocaleString() + ' km';
+      multMega.textContent = mult.toFixed(2) + 'x';
+      if (perfect) { sndPerfect(); showBanner('PERFECT LAUNCH'); addShake(10, 480); }
+      explosion(false);
+      setTimeout(() => endPanel(resp), 900);
+    } else if (outcome === 'crash') {
+      // Server reports the rocket exploded at the hidden ceiling.
+      ST.altKm = altKm;
+      multMega.classList.add('danger');
+      multMega.textContent = 'BOOM';
+      sndCrash(); addShake(14, 700);
+      explosion(true);
+      setTimeout(() => endPanel(resp), 1100);
+    } else if (outcome === 'fellback') {
+      multMega.classList.add('danger');
+      multMega.textContent = 'FELL';
+      sndCrash(); addShake(8, 500);
+      explosion(true);
+      setTimeout(() => endPanel(resp), 1000);
+    } else {
+      // fizzle
+      multMega.textContent = 'FIZZLE';
+      setTimeout(() => endPanel(resp), 700);
+    }
+  }
+
+  function explosion(big) {
+    const x = ST.rocketX;
+    const y = ST.rocketY;
+    const n = big ? 36 : 18;
+    const speed = big ? 320 : 200;
+    for (let i = 0; i < n; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const sp = 80 + Math.random() * speed;
+      ST.sparks.push({
+        x, y,
+        vx: Math.cos(ang) * sp,
+        vy: Math.sin(ang) * sp,
+        life: 0.5 + Math.random() * (big ? 0.7 : 0.4),
+        maxLife: big ? 1.2 : 0.9,
+        size: 2 + Math.random() * (big ? 4 : 3),
+        hue: big ? (10 + Math.random() * 30) : (40 + Math.random() * 60),
+      });
+    }
+  }
+
+  function endPanel(resp) {
+    ST.phase = PHASE_END;
+    setThrustButtonMode('disabled');
+    const outcome = resp?.outcome || 'crash';
+    const altKm   = Number(resp?.altitudeKm || 0);
+    const mult    = Number(resp?.multiplier || 1);
+    const awarded = Number(resp?.awarded || 0);
+    const perfect = !!resp?.perfect;
+    const stake   = Number(resp?.stake || ST.stake);
+    const profit  = awarded - stake;
+    const bestM   = Number(resp?.bestMultiplier || 0);
+    const bestA   = Number(resp?.bestAltitudeKm || 0);
+    const txUrl   = resp?.explorerUrl;
+    const crashAlt = Number(resp?.crashAltKm || 0);
+
+    let bigClass = 'gold';
+    let bigText  = `${mult.toFixed(2)}x`;
+    if (outcome === 'cashout') bigClass = profit >= 0 ? 'green' : 'gold';
+    if (outcome === 'crash' || outcome === 'fellback') { bigClass = 'red'; bigText = 'CRASH'; }
+    if (outcome === 'fizzle') { bigClass = 'gold'; bigText = 'FIZZLE'; }
+
+    const titleText = outcome === 'cashout' ? (perfect ? 'PERFECT LAUNCH' : 'CASHED OUT')
+                    : outcome === 'crash'   ? 'EXPLODED'
+                    : outcome === 'fellback'? 'FELL BACK'
+                    : 'FIZZLE';
+
+    const body = `
+      <div class="panel-big ${bigClass}">${bigText}</div>
+      <div style="font-size:10px;letter-spacing:0.2em;color:#666;text-transform:uppercase;margin-bottom:14px">
+        ${outcome === 'cashout' ? `+${awarded} PTS · ${altKm.toLocaleString()} km` :
+          outcome === 'crash'   ? `Hidden ceiling at ${crashAlt.toLocaleString()} km` :
+          outcome === 'fellback'? `Peaked at ${altKm.toLocaleString()} km` :
+                                 `Held only ${ST.thrustMs}ms — refund issued`}
+      </div>
+      <div class="panel-stat-row"><span class="lbl">Stake</span><span class="val">${stake} PTS</span></div>
+      <div class="panel-stat-row"><span class="lbl">Banked</span><span class="val" style="color:${profit >= 0 ? '#5be0a4' : '#ff8a8a'}">${profit >= 0 ? '+' : ''}${profit} PTS</span></div>
+      <div class="panel-stat-row"><span class="lbl">Multiplier</span><span class="val">${mult.toFixed(2)}x</span></div>
+      <div class="panel-stat-row"><span class="lbl">Best</span><span class="val">${bestM.toFixed(2)}x · ${bestA.toLocaleString()} km</span></div>
+      ${txUrl ? `<div class="panel-stat-row"><span class="lbl">Tx</span><a class="val" style="color:#5be0a4;text-decoration:underline" href="${txUrl}" target="_blank" rel="noreferrer">${(resp.txHash || '').slice(0,10)}…</a></div>` : ''}
+    `;
+
+    postParent({
+      type: 'litdex:litlaunch:end',
+      reason: outcome,
+      multiplier: mult,
+      altitudeKm: altKm,
+      awarded,
+      stake,
+      profit,
+      perfect,
+      txInfo: txUrl ? { txHash: resp.txHash, explorerUrl: txUrl } : null,
+    });
+
+    panelTitle.textContent = titleText;
+    panelSub.textContent   = perfect ? 'Sweet-spot release · bonus +0.5x'
+                                     : (outcome === 'fizzle' ? 'Stake refunded' : 'Session ended');
+    panelBody.innerHTML    = body;
+
+    fetchStats().then((stats) => {
+      const left = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 0;
+      const balance = stats ? Number(stats.pointsBalance ?? 0) : 0;
+      ST.gamesLeft = left;
+      const noGames = left <= 0 || balance < ENTRY_COST;
+      btnPrimary.disabled    = noGames;
+      btnPrimary.textContent = left <= 0 ? 'NO GAMES LEFT'
+                              : balance < ENTRY_COST ? 'NOT ENOUGH PTS'
+                              : `PLAY · ${ENTRY_COST} PTS`;
+      btnPrimary.onclick     = noGames ? () => {} : startGame;
+    });
+
+    panel.classList.remove('hidden');
+  }
+
+  // ── Loop ──────────────────────────────────────────────────
+  let lastT = 0;
+  function loop(t) {
+    if (!t) t = performance.now();
+    if (!lastT) lastT = t;
+    const dt = Math.min(0.05, (t - lastT) / 1000);
+    lastT = t;
+
+    update(dt);
+    drawStage();
+    applyShake();
+
+    if (ST.phase === PHASE_FUELING || ST.phase === PHASE_FLIGHT || ST.sparks.length > 0) {
+      requestAnimationFrame(loop);
+    }
+  }
+
+  function update(dt) {
+    // Phase-specific updates.
+    if (ST.phase === PHASE_FUELING) {
+      if (ST.holdStartT) {
+        const held = Math.min(MAX_THRUST_MS, performance.now() - ST.holdStartT);
+        const pct = Math.min(100, (held / MAX_THRUST_MS) * 100);
+        fuelFill.style.width = pct + '%';
+        fuelPct.textContent = pct.toFixed(0) + '%';
+        if (Math.random() < 0.4) sndTick(Math.floor(pct / 10));
+        // Auto-release if user holds past max — prevents "did the
+        // game freeze?" feel; release at the cap.
+        if (held >= MAX_THRUST_MS) {
+          ST.thrustMs = MAX_THRUST_MS;
+          ST.holdStartT = 0;
+          rumbleStop();
+          launchRocket();
+        }
+      }
+    } else if (ST.phase === PHASE_FLIGHT) {
+      // Mirror server physics for live readout.
+      const tSec = (performance.now() - ST.flightStartT) / 1000;
+      const v0 = (ST.thrustMs - MIN_THRUST_MS) * THRUST_TO_VEL;
+      ST.altKm = Math.max(0, v0 * tSec - 0.5 * G * tSec * tSec);
+      ST.velKms = v0 - G * tSec;
+      ST.multiplier = multiplierAt(ST.altKm);
+
+      // HUD updates.
+      hudMult.textContent = ST.multiplier.toFixed(2) + 'x';
+      hudAlt.textContent  = Math.round(ST.altKm).toLocaleString() + ' km';
+      multMega.textContent = ST.multiplier.toFixed(2) + 'x';
+      if (ST.multiplier > 10) multMega.classList.add('danger');
+      else                    multMega.classList.remove('danger');
+
+      // Trail emission while ascending.
+      if (ST.velKms > 0) {
+        ST.trail.push({
+          x: ST.rocketX + (Math.random() - 0.5) * 6,
+          y: ST.rocketY + 22,
+          life: 0.6, maxLife: 0.6,
+          size: 4 + Math.random() * 4,
+          hue: 25 + Math.random() * 30,
+          vx: (Math.random() - 0.5) * 30,
+          vy: 90 + Math.random() * 60,
+        });
+      }
+
+      // If velocity goes negative, treat as fellback regardless and
+      // settle locally (server already knows). But avoid double-end.
+      if (ST.velKms < 0 && !ST.ended) {
+        finishWithThrust(ST.thrustMs, null);
+      }
+    }
+
+    // Trail/sparks always update.
+    const aliveTrail = [];
+    for (const p of ST.trail) {
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.size *= (1 - dt * 1.4);
+      if (p.life > 0 && p.size > 0.5) aliveTrail.push(p);
+    }
+    ST.trail = aliveTrail;
+
+    const aliveSparks = [];
+    for (const p of ST.sparks) {
+      p.vy += 240 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life > 0) aliveSparks.push(p);
+    }
+    ST.sparks = aliveSparks;
+
+    // Camera follow: keep rocket at ~58% of viewport in flight.
+    const idealRocketScreenY = vh() * 0.58;
+    // World-y position of the rocket = vh() - groundOffset - altPx
+    const PX_PER_KM = vh() / 320;       // 320km fills one screen
+    const altPx = ST.altKm * PX_PER_KM;
+    const desiredCameraY = altPx > vh() * 0.42 ? altPx - vh() * 0.42 : 0;
+    ST.cameraY += (desiredCameraY - ST.cameraY) * Math.min(1, dt * 5.5);
+  }
+
+  function applyShake() {
+    if (ST.shakeAmp > 0) {
+      ST.shakeAmp = Math.max(0, ST.shakeAmp - ST.shakeDecay * 0.016);
+      const a = ST.shakeAmp;
+      const dx = (Math.random() - 0.5) * 2 * a;
+      const dy = (Math.random() - 0.5) * 2 * a;
+      shakeHost.style.transform = `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px)`;
+    } else {
+      shakeHost.style.transform = '';
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────
+  function drawStage() {
+    const W = vw(), H = vh();
+    stage.clearRect(0, 0, W, H);
+
+    // Parallax stars (3 layers).
+    drawStars(ST.parallax.far, 0.15);
+    drawStars(ST.parallax.mid, 0.4);
+    drawStars(ST.parallax.near, 0.9);
+
+    // Earth disk at bottom (only visible when low altitude).
+    drawEarth();
+    drawMoon();
+    drawMars();
+
+    // Trail (under rocket).
+    for (const p of ST.trail) drawTrailParticle(p);
+
+    // Rocket.
+    drawRocket();
+
+    // Sparks (over everything).
+    for (const p of ST.sparks) drawSparkPx(p);
+  }
+
+  function drawStars(layer, parallaxFactor) {
+    const W = vw(), H = vh();
+    const off = ST.cameraY * parallaxFactor;
+    stage.fillStyle = '#ffffff';
+    for (const s of layer) {
+      let y = (s.y - off) % (H * 4);
+      if (y < 0) y += H * 4;
+      // Wrap into 0..H window (vertical scroll illusion)
+      const yScreen = (y % H);
+      const tw = 0.4 + 0.6 * Math.abs(Math.sin(performance.now() * 0.001 * s.tw + s.x));
+      stage.globalAlpha = 0.4 + tw * 0.6;
+      stage.beginPath();
+      stage.arc(s.x, yScreen, s.r, 0, Math.PI * 2);
+      stage.fill();
+    }
+    stage.globalAlpha = 1;
+  }
+
+  function drawEarth() {
+    const W = vw(), H = vh();
+    // Earth visible until ~120km altitude.
+    if (ST.altKm > 220) return;
+    const earthRadius = vw() * 1.6;
+    const earthY = H + earthRadius - 80 + ST.cameraY * 0.05;
+    const grd = stage.createRadialGradient(W / 2, earthY - earthRadius * 0.4, earthRadius * 0.1,
+                                           W / 2, earthY, earthRadius);
+    grd.addColorStop(0, '#5be0a4');
+    grd.addColorStop(0.4, '#2a8a64');
+    grd.addColorStop(0.85, '#0d3a47');
+    grd.addColorStop(1, '#04141d');
+    stage.fillStyle = grd;
+    stage.beginPath();
+    stage.arc(W / 2, earthY, earthRadius, 0, Math.PI * 2);
+    stage.fill();
+
+    // Atmospheric glow ring
+    const ringGrd = stage.createRadialGradient(W / 2, earthY, earthRadius * 0.95,
+                                               W / 2, earthY, earthRadius * 1.15);
+    ringGrd.addColorStop(0, 'rgba(94,200,255,0.4)');
+    ringGrd.addColorStop(1, 'rgba(94,200,255,0)');
+    stage.fillStyle = ringGrd;
+    stage.beginPath();
+    stage.arc(W / 2, earthY, earthRadius * 1.15, 0, Math.PI * 2);
+    stage.fill();
+  }
+
+  function drawMoon() {
+    if (ST.altKm < 250) return;
+    const W = vw(), H = vh();
+    const screenT = Math.min(1, (ST.altKm - 250) / 600);
+    const radius = 60 + 30 * screenT;
+    const x = W * 0.78;
+    // Approach from above-screen down to center as we ascend.
+    const y = H * 0.35 - (1 - screenT) * H * 0.5;
+    const grd = stage.createRadialGradient(x - radius * 0.3, y - radius * 0.3, radius * 0.2, x, y, radius);
+    grd.addColorStop(0, '#fff8d8');
+    grd.addColorStop(0.6, '#c9c2a8');
+    grd.addColorStop(1, '#41382a');
+    stage.fillStyle = grd;
+    stage.beginPath();
+    stage.arc(x, y, radius, 0, Math.PI * 2);
+    stage.fill();
+    // Crater specks
+    stage.fillStyle = 'rgba(60,50,30,0.4)';
+    [[-12, -6, 4], [10, 8, 6], [-6, 14, 3]].forEach(([dx, dy, r]) => {
+      stage.beginPath();
+      stage.arc(x + dx, y + dy, r, 0, Math.PI * 2);
+      stage.fill();
+    });
+  }
+
+  function drawMars() {
+    if (ST.altKm < 1500) return;
+    const W = vw(), H = vh();
+    const screenT = Math.min(1, (ST.altKm - 1500) / 1200);
+    const radius = 40 + 26 * screenT;
+    const x = W * 0.22;
+    const y = H * 0.25 - (1 - screenT) * H * 0.4;
+    const grd = stage.createRadialGradient(x - radius * 0.3, y - radius * 0.3, radius * 0.2, x, y, radius);
+    grd.addColorStop(0, '#ffae8a');
+    grd.addColorStop(0.7, '#c0552a');
+    grd.addColorStop(1, '#3d1408');
+    stage.fillStyle = grd;
+    stage.beginPath();
+    stage.arc(x, y, radius, 0, Math.PI * 2);
+    stage.fill();
+  }
+
+  function drawTrailParticle(p) {
+    const a = Math.max(0, p.life / p.maxLife);
+    stage.save();
+    stage.globalAlpha = a;
+    stage.fillStyle = `hsl(${p.hue}, 95%, 60%)`;
+    stage.shadowColor = `hsl(${p.hue}, 95%, 65%)`;
+    stage.shadowBlur = 12;
+    stage.beginPath();
+    stage.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    stage.fill();
+    stage.restore();
+  }
+
+  function drawSparkPx(p) {
+    const a = Math.max(0, p.life / p.maxLife);
+    stage.save();
+    stage.globalAlpha = a;
+    stage.fillStyle = `hsl(${p.hue}, 95%, 60%)`;
+    stage.shadowColor = `hsl(${p.hue}, 95%, 60%)`;
+    stage.shadowBlur = 10;
+    stage.beginPath();
+    stage.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    stage.fill();
+    stage.restore();
+  }
+
+  function drawRocket() {
+    const W = vw(), H = vh();
+    const PX_PER_KM = H / 320;
+    const baseY = H - 90;
+    const screenY = ST.phase === PHASE_LOBBY
+      ? baseY
+      : Math.max(H * 0.42, baseY - ST.altKm * PX_PER_KM + ST.cameraY);
+    const x = W / 2;
+    ST.rocketX = x; ST.rocketY = screenY;
+
+    // Launchpad (fading away at altitude).
+    if (ST.altKm < 120) {
+      const padOpacity = 1 - (ST.altKm / 120);
+      stage.save();
+      stage.globalAlpha = padOpacity;
+      stage.fillStyle = 'rgba(160,180,200,0.7)';
+      stage.fillRect(x - 36, baseY + 38, 72, 6);
+      stage.fillStyle = 'rgba(120,140,160,0.6)';
+      stage.fillRect(x - 28, baseY + 44, 56, 12);
+      // Small support struts on either side.
+      stage.strokeStyle = 'rgba(180,200,220,0.5)';
+      stage.lineWidth = 2;
+      stage.beginPath();
+      stage.moveTo(x - 24, baseY + 38);
+      stage.lineTo(x - 30, baseY + 18);
+      stage.moveTo(x + 24, baseY + 38);
+      stage.lineTo(x + 30, baseY + 18);
+      stage.stroke();
+      stage.restore();
+    }
+
+    // Rocket body.
+    stage.save();
+    stage.translate(x, screenY);
+    // Slight wobble during fueling.
+    if (ST.phase === PHASE_FUELING && ST.holdStartT) {
+      stage.rotate((Math.random() - 0.5) * 0.04);
+    }
+    // Body (capsule).
+    const grd = stage.createLinearGradient(-12, 0, 12, 0);
+    grd.addColorStop(0, '#7c95b8');
+    grd.addColorStop(0.5, '#e6edf6');
+    grd.addColorStop(1, '#7c95b8');
+    stage.fillStyle = grd;
+    roundRect(stage, -12, -28, 24, 56, 6);
+    stage.fill();
+    // Window (triangular nose).
+    stage.fillStyle = '#5be0a4';
+    stage.beginPath();
+    stage.arc(0, -10, 5, 0, Math.PI * 2);
+    stage.fill();
+    stage.fillStyle = 'rgba(255,255,255,0.55)';
+    stage.beginPath();
+    stage.arc(-1.5, -11.5, 2, 0, Math.PI * 2);
+    stage.fill();
+    // Fins.
+    stage.fillStyle = '#ff7a45';
+    stage.beginPath();
+    stage.moveTo(-12, 16); stage.lineTo(-22, 28); stage.lineTo(-12, 28); stage.closePath();
+    stage.fill();
+    stage.beginPath();
+    stage.moveTo(12, 16); stage.lineTo(22, 28); stage.lineTo(12, 28); stage.closePath();
+    stage.fill();
+    // Nose cone outline.
+    stage.fillStyle = '#ff7a45';
+    stage.beginPath();
+    stage.moveTo(-12, -28); stage.lineTo(0, -42); stage.lineTo(12, -28); stage.closePath();
+    stage.fill();
+    // Engine glow when thrusting/flying.
+    if (ST.phase === PHASE_FLIGHT && ST.velKms > 0) {
+      const glowGrd = stage.createRadialGradient(0, 32, 4, 0, 32, 28);
+      glowGrd.addColorStop(0, 'rgba(255,240,180,1)');
+      glowGrd.addColorStop(0.4, 'rgba(255,140,40,0.8)');
+      glowGrd.addColorStop(1, 'rgba(255,80,20,0)');
+      stage.fillStyle = glowGrd;
+      stage.beginPath();
+      stage.arc(0, 32, 28, 0, Math.PI * 2);
+      stage.fill();
+    }
+    stage.restore();
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y); c.quadraticCurveTo(x + w, y, x + w, y + r);
+    c.lineTo(x + w, y + h - r); c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    c.lineTo(x + r, y + h); c.quadraticCurveTo(x, y + h, x, y + h - r);
+    c.lineTo(x, y + r); c.quadraticCurveTo(x, y, x + r, y);
+    c.closePath();
+  }
+
+  // Sweet-spot indicator on fuel bar (cosmetic only — actual sweet
+  // is server-seed jittered ±400ms, indicator shows the typical
+  // window so players have a visual aim point).
+  (function paintSweet() {
+    const SWEET_BASE_PCT = (1700 / MAX_THRUST_MS) * 100; // ~56.7%
+    const SWEET_HALF_PCT = (180 / MAX_THRUST_MS) * 100;
+    fuelSweet.style.setProperty('--sweet-mid', SWEET_BASE_PCT.toFixed(1));
+    fuelSweet.style.setProperty('--sweet-w', SWEET_HALF_PCT.toFixed(1));
+  })();
+
+  // ── Boot ──────────────────────────────────────────────────
+  (async () => {
+    if (!wallet) {
+      showPanel(
+        'LIT LAUNCH',
+        'Wallet missing',
+        '<div style="color:#ef4956;font-family:JetBrains Mono,monospace;font-size:11px">Open this game from the LitDeX games page.</div>',
+        'CLOSE',
+        () => postParent({ type: 'litdex:litlaunch:exit' })
+      );
+      return;
+    }
+    setupParallax();
+    rebuildLadder();
+    drawStage();
+    await showLobby();
+  })();
+})();
+</script>
+</body>
+</html>

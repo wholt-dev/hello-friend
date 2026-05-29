@@ -90,7 +90,7 @@ db.exec(`
 // ── Config ────────────────────────────────────────────────────
 const DAILY_LIMIT          = 5;
 const MOVES_PER_GAME       = 30;
-const MAX_CHARGES_PER_GAME = 10;
+const MAX_SCORE_DECI       = 500;     // sanity cap (~50 PTS / game max)
 const COLS                 = 7;
 const ROWS                 = 8;
 const COLORS               = 5;
@@ -98,13 +98,12 @@ const MIN_MOVE_GAP_MS      = 200;
 const MAX_GAME_DURATION_MS = 10 * 60 * 1000;
 const SESSION_TTL_MS       = 15 * 60 * 1000;
 
-// Charge math: each cleared gem = 1%. 4-match adds +5% flat bonus.
-// 5+match adds +10% flat. Cascade depth multiplier: depth d adds
-// ×(1 + 0.5 × d) to that cascade's gain. Capped at ×3.
-const PER_GEM_PCT   = 1;
-const FOUR_BONUS    = 5;
-const FIVE_BONUS    = 10;
-const CHARGE_PER_PT = 100;   // 100% charge = +1 PT
+// Scoring: every gem cleared = 0.1 PT (1 deci-point).
+// 3-match = 3 cells = 0.3 PT, 4-match = 0.4 PT, 5-match = 0.5 PT,
+// etc. Cascades naturally compound because each cascade step is a
+// separate cleared set. Stored internally as integer deci-points so
+// the on-chain credit is exactly floor(deci / DECI_PER_PT).
+const DECI_PER_PT          = 10;
 
 const PEPPER = process.env.ZKMINER_PEPPER || process.env.PUMPDUMP_PEPPER || 'CHANGE_ME_LONG_RANDOM';
 
@@ -305,86 +304,71 @@ function gravityAndRefill(board, cleared, ctx) {
   }
 }
 
-// Replays the full game from moves[]. Returns { ok, charges, reason }.
+// Replays the full game from moves[]. Returns { ok, score_deci, reason }.
 function replayGame(serverSeed, sessionId, moves, startedAt) {
-  if (!Array.isArray(moves)) return { ok: false, reason: 'moves_not_array', charges: 0 };
-  if (moves.length > MOVES_PER_GAME) return { ok: false, reason: 'too_many_moves', charges: 0 };
+  if (!Array.isArray(moves)) return { ok: false, reason: 'moves_not_array', score_deci: 0 };
+  if (moves.length > MOVES_PER_GAME) return { ok: false, reason: 'too_many_moves', score_deci: 0 };
 
   const init = buildInitialBoard(serverSeed, sessionId);
   const board = init.board;
   const ctx = { seed: serverSeed, sessionId, dropIdx: init.dropIdx };
 
-  let pct = 0;
-  let charges = 0;
+  let scoreDeci = 0;
   let prevT = -Infinity;
 
   for (let i = 0; i < moves.length; i++) {
     const mv = moves[i];
     if (!mv || !Array.isArray(mv.a) || !Array.isArray(mv.b)) {
-      return { ok: false, reason: 'bad_move_shape', charges };
+      return { ok: false, reason: 'bad_move_shape', score_deci: scoreDeci };
     }
     if (!isAdjacent(mv.a, mv.b)) {
-      return { ok: false, reason: 'not_adjacent', charges };
+      return { ok: false, reason: 'not_adjacent', score_deci: scoreDeci };
     }
     const t = Number(mv.t);
     if (!Number.isFinite(t) || t < 0) {
-      return { ok: false, reason: 'bad_time', charges };
+      return { ok: false, reason: 'bad_time', score_deci: scoreDeci };
     }
     if (i > 0 && t - prevT < MIN_MOVE_GAP_MS) {
-      return { ok: false, reason: 'move_too_fast', charges };
+      return { ok: false, reason: 'move_too_fast', score_deci: scoreDeci };
     }
     prevT = t;
 
-    // Apply swap.
     swap(board, mv.a, mv.b);
     let cleared = findMatches(board);
     if (cleared.size === 0) {
-      // Invalid swap — revert. We do NOT count this against the
-      // player's move budget on the client either, but the client
-      // shouldn't have included it in the tape. Treat as cheating.
       swap(board, mv.a, mv.b);
-      return { ok: false, reason: 'no_match', charges };
+      return { ok: false, reason: 'no_match', score_deci: scoreDeci };
     }
 
-    // Cascade loop.
     let depth = 0;
     while (cleared.size > 0) {
-      const cellCount = cleared.size;
-      const longestRun = maxRunInCleared(cleared);
-      let gain = cellCount * PER_GEM_PCT;
-      if (longestRun >= 5)      gain += FIVE_BONUS;
-      else if (longestRun >= 4) gain += FOUR_BONUS;
-      const mult = Math.min(3, 1 + 0.5 * depth);
-      pct += gain * mult;
-
-      while (pct >= CHARGE_PER_PT) {
-        pct -= CHARGE_PER_PT;
-        charges++;
-        if (charges >= MAX_CHARGES_PER_GAME) { pct = 0; break; }
-      }
-      if (charges >= MAX_CHARGES_PER_GAME) break;
+      // Each gem cleared = 1 deci-point (= 0.1 PT). A 3-match adds
+      // 3 deci, a 4-match adds 4, etc. Cascades stack because each
+      // cleared set is its own scoring event.
+      scoreDeci += cleared.size;
+      if (scoreDeci >= MAX_SCORE_DECI) { scoreDeci = MAX_SCORE_DECI; break; }
 
       gravityAndRefill(board, cleared, ctx);
       cleared = findMatches(board);
       depth++;
       if (depth > 60) {
         // Sanity guard against pathological boards.
-        return { ok: false, reason: 'cascade_runaway', charges };
+        return { ok: false, reason: 'cascade_runaway', score_deci: scoreDeci };
       }
     }
 
-    if (charges >= MAX_CHARGES_PER_GAME) break;
+    if (scoreDeci >= MAX_SCORE_DECI) break;
   }
 
   // Bound game duration via final move timestamp.
   if (moves.length > 0) {
     const last = Number(moves[moves.length - 1].t || 0);
     if (last > MAX_GAME_DURATION_MS) {
-      return { ok: false, reason: 'session_too_long', charges };
+      return { ok: false, reason: 'session_too_long', score_deci: scoreDeci };
     }
   }
 
-  return { ok: true, charges: Math.min(charges, MAX_CHARGES_PER_GAME), reason: 'ok' };
+  return { ok: true, score_deci: Math.min(scoreDeci, MAX_SCORE_DECI), reason: 'ok' };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -406,9 +390,11 @@ router.get('/stats/:wallet', async (req, res) => {
     ).get(w, 'reward');
     const lifetimeWon = ledgerRow?.total || 0;
 
+    // Best deci-score over all settled sessions (column reused).
     const bestRow = db.prepare(
-      'SELECT MAX(charges) AS best_charges FROM zkminer_sessions WHERE wallet = ?'
+      'SELECT MAX(charges) AS best_deci FROM zkminer_sessions WHERE wallet = ?'
     ).get(w);
+    const bestDeci = Number(bestRow?.best_deci || 0);
 
     const onChain = await readOnChainPoints(w);
 
@@ -418,9 +404,11 @@ router.get('/stats/:wallet', async (req, res) => {
       gamesLeft:        Math.max(0, DAILY_LIMIT - played),
       dailyLimit:       DAILY_LIMIT,
       movesPerGame:     MOVES_PER_GAME,
-      maxCharges:       MAX_CHARGES_PER_GAME,
-      perChargePts:     1,
-      bestCharges:      bestRow?.best_charges || 0,
+      maxScoreDeci:     MAX_SCORE_DECI,
+      maxScorePts:      MAX_SCORE_DECI / DECI_PER_PT,
+      perGemPts:        0.1,
+      bestScoreDeci:    bestDeci,
+      bestScorePts:     bestDeci / DECI_PER_PT,
       lifetimeWon,
       entryCost:        0,
       cols:             COLS,
@@ -477,8 +465,9 @@ router.post('/start', startLimiter, async (req, res) => {
       rows:            ROWS,
       colors:          COLORS,
       movesPerGame:    MOVES_PER_GAME,
-      maxCharges:      MAX_CHARGES_PER_GAME,
-      perChargePts:    1,
+      maxScoreDeci:    MAX_SCORE_DECI,
+      maxScorePts:     MAX_SCORE_DECI / DECI_PER_PT,
+      perGemPts:       0.1,
       gamesLeft:       Math.max(0, DAILY_LIMIT - (played + 1)),
       dailyLimit:      DAILY_LIMIT,
     });
@@ -512,11 +501,14 @@ router.post('/end', async (req, res) => {
       return res.status(403).json({ error: 'invalid_run', reason: v.reason });
     }
 
-    const awarded = Math.max(0, Math.min(MAX_CHARGES_PER_GAME, v.charges));
+    const scoreDeci = Math.max(0, Math.min(MAX_SCORE_DECI, v.score_deci));
+    const awarded   = Math.floor(scoreDeci / DECI_PER_PT);  // whole PTS only on chain
 
+    // Reuse the existing 'charges' / 'awarded' columns: charges now
+    // stores the deci-score, awarded stores the integer PTS credited.
     db.prepare(
       'UPDATE zkminer_sessions SET settled = 1, charges = ?, awarded = ? WHERE session_id = ?'
-    ).run(v.charges, awarded, sessionId);
+    ).run(scoreDeci, awarded, sessionId);
 
     if (awarded > 0) {
       db.prepare(`
@@ -535,14 +527,17 @@ router.post('/end', async (req, res) => {
     }
 
     const bestRow = db.prepare(
-      'SELECT MAX(charges) AS best_charges FROM zkminer_sessions WHERE wallet = ?'
+      'SELECT MAX(charges) AS best_deci FROM zkminer_sessions WHERE wallet = ?'
     ).get(s.wallet);
+    const bestDeci = Number(bestRow?.best_deci || 0);
 
     res.json({
-      ok:           true,
-      charges:      v.charges,
-      awarded,
-      bestCharges:  bestRow?.best_charges || 0,
+      ok:             true,
+      scoreDeci,
+      scorePts:       scoreDeci / DECI_PER_PT,
+      awarded,                     // whole PTS actually credited on chain
+      bestScoreDeci:  bestDeci,
+      bestScorePts:   bestDeci / DECI_PER_PT,
     });
   } catch (e) {
     console.error('[/zkminer/end]', e.message);
@@ -553,14 +548,19 @@ router.post('/end', async (req, res) => {
 router.get('/leaderboard', (req, res) => {
   try {
     const rows = db.prepare(`
-      SELECT wallet, MAX(charges) AS best_charges
+      SELECT wallet, MAX(charges) AS best_deci
       FROM zkminer_sessions
       WHERE settled = 1
       GROUP BY wallet
-      ORDER BY best_charges DESC
+      ORDER BY best_deci DESC
       LIMIT 25
     `).all();
-    res.json({ leaderboard: rows });
+    res.json({
+      leaderboard: rows.map((r) => ({
+        wallet: r.wallet,
+        best_score: r.best_deci / DECI_PER_PT,
+      })),
+    });
   } catch (e) {
     res.status(500).json({ error: 'leaderboard_failed' });
   }
