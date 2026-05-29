@@ -1214,7 +1214,11 @@
         correct    = !!data.correct;
         nextCandle = data.nextCandle;
         session.nonce = data.nonce;
-        if (data.pot != null) pot = data.pot;       // server is source of truth
+        // Trust server pot on correct or on game over (final wrong).
+        // On non-fatal wrongs the pot stays — only the streak/life
+        // resets. The backend honours the same convention.
+        if (data.pot != null && (correct || data.gameOver)) pot = data.pot;
+        if (data.livesLeft != null) lives = Number(data.livesLeft);
       } catch (err) {
         return endGame('error', 'Network error');
       }
@@ -1256,16 +1260,16 @@
       setTimeout(() => root.classList.remove('shake'), 460);
       // Coin falls off the candle into the void.
       animateCoinFall();
-      updateHud();
       if (lives <= 0) {
+        // Final wrong — pot is gone (server already reset it to 0 with
+        // gameOver:true so the assignment above set pot=0).
+        updateHud();
         await sleep(1100);
         endGame('wrong', null);
         return;
       }
-      // Pot resets but the round continues. Backend already returned
-      // pot: 0; we just keep playing through the next candles.
-      pot = 0;
-      streak = 0;
+      // Non-fatal wrong: pot and streak persist. Lives counter ticks
+      // down, but the player keeps everything they've built.
       updateHud();
       await sleep(900);
       placeCoinOnLastCandle();
