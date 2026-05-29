@@ -423,7 +423,7 @@
   // ── Game state ────────────────────────────────────────────
   const ST = {
     sessionId: null, token: null,
-    maxStacks: 20, perPt: 1, gamesLeft: 0,
+    maxStacks: 100, perPt: 1, gamesLeft: 0,
 
     blocks: [],          // settled tower (bottom -> top)
     slider: null,        // moving block above the tower top
@@ -512,7 +512,7 @@
     const left = stats ? Math.max(0, Number(stats.gamesLeft || 0)) : 5;
     ST.gamesLeft = left;
     const best = stats ? Number(stats.bestHeight || 0) : 0;
-    const cap  = stats ? Number(stats.maxPerGame || 20) : 20;
+    const cap  = stats ? Number(stats.maxPerGame || 100) : 100;
 
     const noGames = left <= 0;
     const body = `
@@ -554,7 +554,7 @@
       }
       ST.sessionId = data.sessionId;
       ST.token     = data.token;
-      ST.maxStacks = Number(data.maxStacks || 20);
+      ST.maxStacks = Number(data.maxStacks || 100);
       ST.perPt     = Number(data.perCorrectPts || 1);
       ST.gamesLeft = Number(data.gamesLeft || 0);
       initRun();
@@ -1140,8 +1140,11 @@
       );
       return;
     }
+    // Always show the in-iframe lobby — the player MUST tap PLAY
+    // before the round starts. Auto-start is intentionally disabled
+    // so the parent's "START" only opens the play surface, then the
+    // iframe lobby PLAY mints the session.
     await showLobby();
-    if (auto) startGame();
   })();
 })();
 </script>

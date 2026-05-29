@@ -83,9 +83,9 @@ db.exec(`
 
 // ── Config ────────────────────────────────────────────────────
 const DAILY_LIMIT          = 5;
-const MAX_STACKS_PER_GAME  = 20;     // hard cap on per-game reward
+const MAX_STACKS_PER_GAME  = 100;    // hard cap on per-game reward
 const MIN_TAP_GAP_MS       = 220;    // human floor between taps
-const MAX_GAME_DURATION_MS = 5 * 60 * 1000;
+const MAX_GAME_DURATION_MS = 10 * 60 * 1000;
 const SESSION_TTL_MS       = 10 * 60 * 1000;
 const PEPPER = process.env.LITTOWER_PEPPER || process.env.PUMPDUMP_PEPPER || 'CHANGE_ME_LONG_RANDOM';
 

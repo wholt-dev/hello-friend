@@ -7,7 +7,7 @@ LitDEX hosts skill-based mini-games that mint points and zkLTC. Today there's on
 | Game | Status | How to earn |
 | --- | --- | --- |
 | [Math Slash](./math-slash) | Currently paused (will restart with X post) | Score-based points + manual claim |
-| Lit Tower | Live | +1 PT per correct stack (free, 5 games/day, cap 20) |
+| Lit Tower | Live | +1 PT per correct stack (free, 5 games/day, cap 100) |
 | Pump or Dump | Live | Pot streak game · 10 PTS entry · cash out anytime |
 
 ## Coming soon
@@ -31,7 +31,7 @@ Idempotency is guaranteed by the questId encoding the date + wallet suffix.
 | Game | Cap |
 | --- | --- |
 | Math Slash | 5 games / day |
-| Lit Tower | 5 games / day (cap 20 stacks/game) |
+| Lit Tower | 5 games / day (cap 100 stacks/game) |
 | Pump or Dump | 15 games / day |
 | Coin Catch | TBD |
 

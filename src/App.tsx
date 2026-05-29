@@ -4756,7 +4756,7 @@ const LitTowerPage = ({ onBack }: { onBack: () => void }) => {
   const handlePlayAgain = () => {
     setGameOver(null);
     setErrMsg('');
-    setAutoStart(true);
+    setAutoStart(false);
     setIframeKey((k) => k + 1);
     fetchStats();
   };
@@ -4789,14 +4789,14 @@ const LitTowerPage = ({ onBack }: { onBack: () => void }) => {
   const balance    = Math.max(0, Number(stats?.pointsBalance ?? 0));
   const gamesLeft  = Math.max(0, Number(stats?.gamesLeft ?? Math.max(0, DAILY_LIMIT - Number(stats?.gamesPlayed ?? 0))));
   const bestHeight = Number(stats?.bestHeight ?? 0);
-  const maxPerGame = Number(stats?.maxPerGame ?? 20);
+  const maxPerGame = Number(stats?.maxPerGame ?? 100);
 
   const startGame = async () => {
     if (!lowerAddr || starting) return;
     if (gamesLeft <= 0) { setErrMsg('Daily limit reached. Resets at 00:00 IST.'); return; }
     setErrMsg('');
     setGameOver(null);
-    setAutoStart(true);
+    setAutoStart(false); // iframe shows its own PLAY button — no auto-start
     setStarting(true);
     setPlaying(true);
     try {
@@ -4882,14 +4882,14 @@ const LitTowerPage = ({ onBack }: { onBack: () => void }) => {
                   onClick={handleExitGame}
                   aria-label="Exit game"
                   className="lt-exit-btn font-mono text-[11px] uppercase bg-brand-surface-2 text-brand-text-primary border border-brand-border"
-                  style={{ position: 'fixed', top: 16, right: 16, zIndex: 999999, borderRadius: 8, padding: '8px 12px' }}
+                  style={{ position: 'fixed', bottom: 16, left: 16, zIndex: 999999, borderRadius: 8, padding: '8px 12px' }}
                 >
                   EXIT
                 </button>
               )}
               <iframe
                 key={iframeKey}
-                src={`/games/lit-tower.html?wallet=${lowerAddr}${autoStart ? '&autostart=1' : ''}`}
+                src={`/games/lit-tower.html?wallet=${lowerAddr}`}
                 title="Lit Tower"
                 style={{ border: 'none', position: 'absolute', inset: 0, width: '100%', height: '100%' }}
                 allow="autoplay; fullscreen"
