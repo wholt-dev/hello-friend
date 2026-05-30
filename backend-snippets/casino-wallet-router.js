@@ -48,6 +48,9 @@ module.exports = function createRouter({ db, txq }) {
 
   const router = express.Router();
   router.use(corsMiddleware);
+  // Self-contained JSON body parsing so this router works regardless of
+  // where it is mounted relative to the global express.json() middleware.
+  router.use(express.json());
 
   router.get('/balance/:wallet', (req, res) => {
     try {
