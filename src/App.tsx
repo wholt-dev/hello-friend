@@ -3665,6 +3665,152 @@ const WeeklyLeaderboard = ({ className = '' }: { className?: string }) => {
   );
 };
 
+const CASINO_API = 'https://game.test-hub.xyz';
+const CASINO_STAKE_MULTIPLE = 5;
+
+const CasinoWalletBadge = ({ wallet, onOpen }: { wallet: string; onOpen: () => void }) => {
+  const [balance, setBalance] = useState<number | null>(null);
+  useEffect(() => {
+    if (!wallet) { setBalance(null); return; }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await fetch(`${CASINO_API}/casino/balance/${wallet}`);
+        if (r.ok) {
+          const d = await r.json();
+          if (!cancelled) setBalance(Number(d?.balance ?? 0));
+        }
+      } catch { /* ignore — endpoint might not be deployed yet */ }
+    };
+    load();
+    const t = setInterval(load, 15000);
+    const handler = () => load();
+    window.addEventListener('litdex:casino-wallet:refresh', handler);
+    return () => { cancelled = true; clearInterval(t); window.removeEventListener('litdex:casino-wallet:refresh', handler); };
+  }, [wallet]);
+  return (
+    <button
+      onClick={onOpen}
+      className="inline-flex items-center gap-3 px-4 py-2 rounded-xl bg-[#0a0a0a] border border-[#1f1f1f] hover:border-white/30 text-white font-mono text-[11px] font-bold uppercase tracking-widest transition-colors"
+    >
+      <span className="text-white/55">Casino Balance</span>
+      <span className="text-[#5be0a4]">{balance == null ? '—' : balance.toLocaleString()} PTS</span>
+      <span className="text-white/30">·</span>
+      <span className="text-white">Deposit / Withdraw</span>
+    </button>
+  );
+};
+
+const CasinoWalletModal = ({ open, onClose, wallet }: { open: boolean; onClose: () => void; wallet: string }) => {
+  const [tab, setTab] = useState<'deposit'|'withdraw'>('deposit');
+  const [amount, setAmount] = useState<string>('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [info, setInfo] = useState<{ balance: number; totalDeposited: number; totalWithdrawn: number } | null>(null);
+
+  useEffect(() => {
+    if (!open || !wallet) return;
+    setErr(''); setAmount('');
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${CASINO_API}/casino/balance/${wallet}`);
+        if (r.ok) {
+          const d = await r.json();
+          if (!cancelled) setInfo({ balance: Number(d?.balance ?? 0), totalDeposited: Number(d?.totalDeposited ?? 0), totalWithdrawn: Number(d?.totalWithdrawn ?? 0) });
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [open, wallet, busy]);
+
+  const submit = async () => {
+    if (!wallet) return;
+    const n = Number(amount);
+    if (!Number.isFinite(n) || n <= 0) { setErr('Enter a positive amount'); return; }
+    if (n % CASINO_STAKE_MULTIPLE !== 0) { setErr(`Must be a multiple of ${CASINO_STAKE_MULTIPLE}`); return; }
+    setErr(''); setBusy(true);
+    try {
+      const r = await fetch(`${CASINO_API}/casino/${tab}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet, amount: n }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) { setErr(d?.error || `${tab}_failed`); }
+      else {
+        setAmount('');
+        try { window.dispatchEvent(new Event('litdex:casino-wallet:refresh')); } catch {}
+      }
+    } catch { setErr('Network error'); }
+    setBusy(false);
+  };
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[200000] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-brand-surface border border-brand-border rounded-2xl p-6 w-full max-w-[420px] font-mono text-brand-text-primary">
+        <div className="text-center mb-4">
+          <div className="text-2xl font-bold tracking-tighter text-brand-text-primary">Casino Wallet</div>
+          <div className="text-[10px] uppercase tracking-widest text-brand-text-muted mt-1">Deposit once · play freely · withdraw any time</div>
+        </div>
+        {info && (
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            <div className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2 text-center">
+              <div className="text-[8px] uppercase tracking-widest text-brand-text-muted">Balance</div>
+              <div className="text-[#5be0a4] font-bold text-sm">{info.balance.toLocaleString()}</div>
+            </div>
+            <div className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2 text-center">
+              <div className="text-[8px] uppercase tracking-widest text-brand-text-muted">Deposited</div>
+              <div className="text-brand-text-primary text-sm">{info.totalDeposited.toLocaleString()}</div>
+            </div>
+            <div className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2 text-center">
+              <div className="text-[8px] uppercase tracking-widest text-brand-text-muted">Withdrawn</div>
+              <div className="text-brand-text-primary text-sm">{info.totalWithdrawn.toLocaleString()}</div>
+            </div>
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-1.5 mb-4">
+          {(['deposit', 'withdraw'] as const).map((t) => (
+            <button key={t} onClick={() => { setTab(t); setErr(''); setAmount(''); }} className={`py-2 rounded-lg text-[10px] uppercase tracking-widest font-bold transition-colors ${tab === t ? 'bg-white text-black' : 'bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-muted hover:text-brand-text-primary'}`}>{t}</button>
+          ))}
+        </div>
+        <div>
+          <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">
+            Amount · multiple of {CASINO_STAKE_MULTIPLE}
+          </div>
+          <input
+            type="number"
+            min={CASINO_STAKE_MULTIPLE}
+            step={CASINO_STAKE_MULTIPLE}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder={`e.g. ${CASINO_STAKE_MULTIPLE * 20}`}
+            className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5 text-[14px] text-brand-text-primary placeholder:text-brand-text-muted/50 outline-none focus:border-white/30"
+          />
+          <div className="grid grid-cols-4 gap-1.5 mt-2">
+            {[50, 100, 500, 1000].map((p) => (
+              <button key={p} onClick={() => setAmount(String(p))} className="py-1.5 rounded-md text-[10px] font-bold bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-muted hover:text-brand-text-primary">{p}</button>
+            ))}
+          </div>
+        </div>
+        <div className="text-[10px] text-brand-text-muted mt-3">
+          {tab === 'deposit'
+            ? 'Burns this many points on chain and credits your casino balance. One transaction.'
+            : 'Withdraws from casino balance back to on-chain points. One transaction.'}
+        </div>
+        {err && <div className="mt-3 px-3 py-2 rounded-lg bg-[rgba(239,73,86,0.08)] border border-[rgba(239,73,86,0.3)] text-[#ef4956] text-[11px]">{err}</div>}
+        <div className="flex gap-2 mt-5">
+          <button onClick={submit} disabled={busy || !wallet} className="flex-1 py-3 rounded-lg bg-white text-black font-bold text-[11px] uppercase tracking-widest disabled:opacity-50 hover:bg-white/90 transition-colors">
+            {busy ? 'Processing…' : tab === 'deposit' ? 'Deposit' : 'Withdraw'}
+          </button>
+          <button onClick={onClose} className="flex-1 py-3 rounded-lg bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-primary font-bold text-[11px] uppercase tracking-widest hover:bg-[#1a1a1a] transition-colors">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const REWARD_TIERS = [
   { range: 'Rank 1',     ldex: '1 zkLTC + 10K LDEX', pts: '2,500 PTS' },
   { range: 'Rank 2',     ldex: '10K LDEX',          pts: '1,000 PTS' },
@@ -6844,6 +6990,9 @@ const GamesPage = () => {
   const [sub, setSub] = useState<'lobby' | 'math-slash' | 'pump-dump' | 'lit-tower' | 'zk-miner' | 'lit-launch' | 'block-chain' | 'lit-dice' | 'lit-limbo' | 'lit-mines' | 'lit-plinko' | 'lit-wheel' | 'lit-coinflip'>('lobby');
   const [tab, setTab] = useState<'fun' | 'casino'>('fun');
   const [pfOpen, setPfOpen] = useState(false);
+  const [cwOpen, setCwOpen] = useState(false);
+  const { address } = useAccount();
+  const lowerAddr = address ? address.toLowerCase() : '';
   if (sub === 'math-slash') return <MathSlashPage onBack={() => setSub('lobby')} />;
   if (sub === 'pump-dump')  return <PumpDumpPage  onBack={() => setSub('lobby')} />;
   if (sub === 'lit-tower')  return <LitTowerPage  onBack={() => setSub('lobby')} />;
@@ -6860,22 +7009,26 @@ const GamesPage = () => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-12 max-w-6xl mx-auto px-4">
       <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
         <h1 className="text-3xl font-bold tracking-tighter text-white">Games</h1>
-        <div className="inline-flex bg-[#0a0a0a] border border-[#1f1f1f] rounded-xl p-1 font-mono">
-          <button
-            onClick={() => setTab('fun')}
-            className={`px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors ${tab === 'fun' ? 'bg-white text-black' : 'text-white/55 hover:text-white'}`}
-          >Fun</button>
-          <button
-            onClick={() => setTab('casino')}
-            className={`px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors ${tab === 'casino' ? 'bg-white text-black' : 'text-white/55 hover:text-white'}`}
-          >Casino</button>
-          <button
-            onClick={() => setPfOpen(true)}
-            className="px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors text-white/55 hover:text-white border-l border-white/10 ml-1"
-          >Provably Fair</button>
+        <div className="flex flex-wrap items-center gap-3">
+          {lowerAddr && tab === 'casino' && <CasinoWalletBadge wallet={lowerAddr} onOpen={() => setCwOpen(true)} />}
+          <div className="inline-flex bg-[#0a0a0a] border border-[#1f1f1f] rounded-xl p-1 font-mono">
+            <button
+              onClick={() => setTab('fun')}
+              className={`px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors ${tab === 'fun' ? 'bg-white text-black' : 'text-white/55 hover:text-white'}`}
+            >Fun</button>
+            <button
+              onClick={() => setTab('casino')}
+              className={`px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors ${tab === 'casino' ? 'bg-white text-black' : 'text-white/55 hover:text-white'}`}
+            >Casino</button>
+            <button
+              onClick={() => setPfOpen(true)}
+              className="px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors text-white/55 hover:text-white border-l border-white/10 ml-1"
+            >Provably Fair</button>
+          </div>
         </div>
       </div>
       <ProvablyFairModal open={pfOpen} onClose={() => setPfOpen(false)} />
+      <CasinoWalletModal open={cwOpen} onClose={() => setCwOpen(false)} wallet={lowerAddr} />
       <div className="grid grid-cols-1 gap-6 items-start">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {tab === 'casino' ? (

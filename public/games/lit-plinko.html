@@ -333,6 +333,8 @@
       cell.textContent = label;
     }
   }
+
+  function drawBoard() {
     const W = stageCanvas.clientWidth, H = stageCanvas.clientHeight;
     if (!W || !H) return;
     ctx2d.clearRect(0,0,W,H);
