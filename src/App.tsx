@@ -4557,6 +4557,7 @@ const PumpDumpPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
+            <GameLeaderboard title="Pump or Dump · Top Pots" endpoint={`${SIMPLE_API}/pumpdump/leaderboard`} scoreField="best_pot" scoreLabel="Best Pot" />
           </div>
         )}
 
@@ -4850,6 +4851,7 @@ const LitTowerPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
+            <GameLeaderboard title="Lit Tower · Top Heights" endpoint={`${SIMPLE_API}/littower/leaderboard`} scoreField="best_height" scoreLabel="Best Height" />
           </div>
         )}
 
@@ -5135,6 +5137,7 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
+            <GameLeaderboard title="ZK Miner · Top Scores" endpoint={`${SIMPLE_API}/zkminer/leaderboard`} scoreField="best_score" scoreLabel="Best Score" scoreFormat={(v) => `${Number(v||0).toFixed(1)} PTS`} />
           </div>
         )}
 
@@ -5418,6 +5421,7 @@ const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
+            <GameLeaderboard title="Lit Launch · Top Coins" endpoint={`${SIMPLE_API}/litlaunch/leaderboard`} scoreField="best_score" scoreLabel="Coins" />
           </div>
         )}
 
@@ -5704,6 +5708,7 @@ const BlockChainPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
+            <GameLeaderboard title="Block Chain · Top Tiles" endpoint={`${SIMPLE_API}/blockchain/leaderboard`} scoreField="best_tile" scoreLabel="Best Tile" />
           </div>
         )}
 
@@ -5919,6 +5924,7 @@ const LitDicePage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
+            <GameLeaderboard title="Lit Dice · Top Multipliers" endpoint={`${SIMPLE_API}/litdice/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} />
           </div>
         )}
         <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
@@ -6046,6 +6052,7 @@ const LitLimboPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
+            <GameLeaderboard title="Lit Limbo · Top Crashes" endpoint={`${SIMPLE_API}/litlimbo/leaderboard`} scoreField="best_roll" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} />
           </div>
         )}
         <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
@@ -6173,6 +6180,7 @@ const LitMinesPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
+            <GameLeaderboard title="Lit Mines · Top Multipliers" endpoint={`${SIMPLE_API}/litmines/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} />
           </div>
         )}
         <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
@@ -6268,6 +6276,7 @@ const LitPlinkoPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
+            <GameLeaderboard title="Lit Plinko · Top Multipliers" endpoint={`${SIMPLE_API}/litplinko/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} />
           </div>
         )}
         <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
@@ -6358,6 +6367,7 @@ const LitWheelPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
+            <GameLeaderboard title="Lit Wheel · Top Multipliers" endpoint={`${SIMPLE_API}/litwheel/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} />
           </div>
         )}
         <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
@@ -6448,6 +6458,7 @@ const LitCoinFlipPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
+            <GameLeaderboard title="Lit Coin Flip · Top Streaks" endpoint={`${SIMPLE_API}/litcoinflip/leaderboard`} scoreField="best_streak" scoreLabel="Best Streak" scoreFormat={(v) => `×${Number(v||0)}`} />
           </div>
         )}
         <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
@@ -6473,9 +6484,223 @@ const LitCoinFlipPage = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
+const GameLeaderboard = ({ title, endpoint, scoreField, scoreLabel, scoreFormat, className = '' }: {
+  title: string;
+  endpoint: string;
+  scoreField: string;
+  scoreLabel: string;
+  scoreFormat?: (v: any) => string;
+  className?: string;
+}) => {
+  const [entries, setEntries] = useState<any[] | null>(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await fetch(endpoint);
+        if (r.ok) {
+          const d = await r.json();
+          if (!cancelled) {
+            setEntries(Array.isArray(d) ? d : (d?.leaderboard || d?.entries || []));
+            setError(false);
+          }
+        } else { if (!cancelled) setError(true); }
+      } catch { if (!cancelled) setError(true); }
+    };
+    load();
+    const t = setInterval(load, 60000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [endpoint]);
+  const mask = (a: string) => a ? `${a.slice(0, 6)}...${a.slice(-4)}` : '';
+  const fmt = scoreFormat || ((v: any) => String(v ?? 0));
+  return (
+    <div className={`p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border ${className}`}>
+      <div className="text-[11px] uppercase text-brand-text-primary mb-3">{title}</div>
+      {error || entries === null ? (
+        <div className="text-brand-text-muted text-xs">{error ? 'Leaderboard not available yet' : 'Loading…'}</div>
+      ) : entries.length === 0 ? (
+        <div className="text-brand-text-muted text-xs">No entries yet · be the first</div>
+      ) : (
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="text-brand-text-muted"><th className="text-left font-normal">#</th><th className="text-left font-normal">Wallet</th><th className="text-right font-normal">{scoreLabel}</th></tr>
+          </thead>
+          <tbody>
+            {entries.slice(0, 20).map((e: any, i: number) => {
+              const c = i === 0 ? 'text-brand-text-primary font-bold' : 'text-brand-text-muted';
+              const w = e.wallet || e.walletAddress || e.address || '';
+              const displayWallet = w.includes('...') ? w : mask(w);
+              return (
+                <tr key={i} className={c}>
+                  <td className="py-1">{i + 1}</td>
+                  <td className="py-1">{displayWallet}</td>
+                  <td className="py-1 text-right">{fmt(e[scoreField])}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+};
+
+const ProvablyFairModal = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
+  const [game, setGame] = useState<'dice'|'limbo'|'mines'|'plinko'|'wheel'|'coinflip'>('dice');
+  const [seedHash, setSeedHash] = useState('');
+  const [serverSeed, setServerSeed] = useState('');
+  const [roundId, setRoundId] = useState('');
+  const [clientSeed, setClientSeed] = useState('');
+  const [risk, setRisk] = useState<'low'|'medium'|'high'>('low');
+  const [side, setSide] = useState<'heads'|'tails'>('heads');
+  const [streak, setStreak] = useState(1);
+  const [bombs, setBombs] = useState(3);
+  const [result, setResult] = useState<{ won: boolean; details: string; subline?: string; flips?: string; mismatch?: boolean } | null>(null);
+  const [scriptReady, setScriptReady] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    if ((window as any).LitDexVerify) { setScriptReady(true); return; }
+    const s = document.createElement('script');
+    s.src = '/games/verify-inline.js';
+    s.onload = () => setScriptReady(true);
+    s.onerror = () => setScriptReady(false);
+    document.head.appendChild(s);
+  }, [open]);
+
+  const reset = () => { setSeedHash(''); setServerSeed(''); setRoundId(''); setClientSeed(''); setResult(null); };
+  useEffect(() => { reset(); }, [game]);
+
+  const run = () => {
+    const v = (window as any).LitDexVerify;
+    if (!v) { setResult({ won: false, details: 'Verifier still loading, retry in a sec', mismatch: true }); return; }
+    const seed = serverSeed.trim().toLowerCase();
+    if (!/^[0-9a-f]+$/.test(seed)) { setResult({ won: false, details: 'Server seed must be hex', mismatch: true }); return; }
+    const wantHash = seedHash.trim().toLowerCase();
+    if (wantHash && v.sha256str(seed) !== wantHash) { setResult({ won: false, details: 'Hash mismatch — sha256(seed) does not match seedHash', mismatch: true }); return; }
+    try {
+      if (game === 'dice') {
+        const roll = v.diceRoll(seed, roundId.trim());
+        setResult({ won: false, details: `Roll: ${roll.toFixed(2)}`, subline: 'Compare against your target & direction' });
+      } else if (game === 'limbo') {
+        const roll = v.limboRoll(seed, roundId.trim());
+        setResult({ won: false, details: `Crash: ${roll.toFixed(2)}x`, subline: 'Compare against your target multiplier' });
+      } else if (game === 'mines') {
+        const arr = v.minesBombs(seed, roundId.trim(), bombs);
+        setResult({ won: false, details: `Bombs at: [${arr.join(', ')}]`, subline: `${bombs} bombs of 25 cells` });
+      } else if (game === 'plinko') {
+        const { slot } = v.plinkoOutcome(seed, clientSeed.trim(), risk);
+        const mult = (v.PLINKO[risk] || [])[slot] || 0;
+        const won = mult > 1;
+        setResult({ won, details: `Slot ${slot} · ${mult.toFixed(2)}x`, subline: `Risk: ${risk.toUpperCase()}` });
+      } else if (game === 'wheel') {
+        const seg = v.wheelSegment(seed, clientSeed.trim(), risk);
+        const mult = (v.WHEEL[risk] || [])[seg] || 0;
+        const won = mult > 0;
+        setResult({ won, details: `Segment ${seg} · ${mult.toFixed(2)}x`, subline: `Risk: ${risk.toUpperCase()}` });
+      } else if (game === 'coinflip') {
+        const flips = v.coinflipFlips(seed, clientSeed.trim(), side, streak);
+        const won = flips.every((f: string) => f === side);
+        setResult({ won, details: won ? 'All flips matched your side' : 'A flip went against you', subline: `Picked ${side.toUpperCase()} · streak ×${streak}`, flips: flips.map((f: string) => f === 'heads' ? 'H' : 'T').join(' · ') });
+      }
+    } catch (err: any) { setResult({ won: false, details: 'Verify failed: ' + (err?.message || 'unknown'), mismatch: true }); }
+  };
+
+  if (!open) return null;
+  const needsRound = game === 'dice' || game === 'limbo' || game === 'mines';
+  const needsClient = game === 'plinko' || game === 'wheel' || game === 'coinflip';
+  return (
+    <div className="fixed inset-0 z-[200000] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-[#0a0e1a] border border-[#1f2638] rounded-2xl p-6 w-[92%] max-w-[480px] font-mono text-white">
+        <div className="text-center mb-4">
+          <div className="text-2xl tracking-[3px]" style={{ fontFamily: 'Bangers, cursive' }}>PROVABLY FAIR</div>
+          <div className="text-[10px] uppercase tracking-widest text-white/55 mt-1">Verify any past round on chain</div>
+        </div>
+        <div className="grid grid-cols-3 gap-1 mb-4">
+          {(['dice','limbo','mines','plinko','wheel','coinflip'] as const).map((g) => (
+            <button key={g} onClick={() => setGame(g)} className={`py-2 rounded-md text-[10px] uppercase tracking-widest font-bold ${game === g ? 'bg-white text-black' : 'bg-white/5 text-white/55 hover:text-white'}`}>{g}</button>
+          ))}
+        </div>
+        <div className="space-y-3">
+          <div>
+            <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Seed Hash · committed before bet</div>
+            <input value={seedHash} onChange={(e) => setSeedHash(e.target.value)} placeholder="64 hex chars (optional but recommended)" className="w-full bg-[#080e1c] border border-white/10 rounded-md px-3 py-2 text-[11px] text-white placeholder:text-white/25 outline-none focus:border-white/30" />
+          </div>
+          <div>
+            <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Server Seed · revealed after bet</div>
+            <input value={serverSeed} onChange={(e) => setServerSeed(e.target.value)} placeholder="64 hex chars" className="w-full bg-[#080e1c] border border-white/10 rounded-md px-3 py-2 text-[11px] text-white placeholder:text-white/25 outline-none focus:border-white/30" />
+          </div>
+          {needsRound && (
+            <div>
+              <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Round ID</div>
+              <input value={roundId} onChange={(e) => setRoundId(e.target.value)} placeholder="UUID from your round" className="w-full bg-[#080e1c] border border-white/10 rounded-md px-3 py-2 text-[11px] text-white placeholder:text-white/25 outline-none focus:border-white/30" />
+            </div>
+          )}
+          {needsClient && (
+            <div>
+              <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Client Seed</div>
+              <input value={clientSeed} onChange={(e) => setClientSeed(e.target.value)} placeholder="from commit modal" className="w-full bg-[#080e1c] border border-white/10 rounded-md px-3 py-2 text-[11px] text-white placeholder:text-white/25 outline-none focus:border-white/30" />
+            </div>
+          )}
+          {(game === 'plinko' || game === 'wheel') && (
+            <div>
+              <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Risk</div>
+              <div className="grid grid-cols-3 gap-1">
+                {(['low','medium','high'] as const).map((r) => (
+                  <button key={r} onClick={() => setRisk(r)} className={`py-1.5 rounded-md text-[9px] uppercase tracking-widest font-bold ${risk === r ? 'bg-white text-black' : 'bg-white/5 text-white/55 hover:text-white'}`}>{r}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          {game === 'mines' && (
+            <div>
+              <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Bombs</div>
+              <input type="number" min={1} max={24} value={bombs} onChange={(e) => setBombs(Math.max(1, Math.min(24, Number(e.target.value)||3)))} className="w-full bg-[#080e1c] border border-white/10 rounded-md px-3 py-2 text-[11px] text-white outline-none focus:border-white/30" />
+            </div>
+          )}
+          {game === 'coinflip' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Side</div>
+                <div className="grid grid-cols-2 gap-1">
+                  {(['heads','tails'] as const).map((s) => (
+                    <button key={s} onClick={() => setSide(s)} className={`py-1.5 rounded-md text-[9px] uppercase tracking-widest font-bold ${side === s ? 'bg-white text-black' : 'bg-white/5 text-white/55 hover:text-white'}`}>{s}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Streak</div>
+                <input type="number" min={1} max={5} value={streak} onChange={(e) => setStreak(Math.max(1, Math.min(5, Number(e.target.value)||1)))} className="w-full bg-[#080e1c] border border-white/10 rounded-md px-3 py-2 text-[11px] text-white outline-none focus:border-white/30" />
+              </div>
+            </div>
+          )}
+        </div>
+        {result && (
+          <div className="mt-4 p-4 rounded-md text-center" style={{ background: result.mismatch ? 'rgba(239,73,86,0.08)' : (result.won ? 'rgba(91,224,164,0.08)' : 'rgba(255,138,140,0.06)'), border: result.mismatch ? '1px solid rgba(239,73,86,0.4)' : (result.won ? '1px solid rgba(91,224,164,0.4)' : '1px solid rgba(255,138,140,0.3)') }}>
+            <div className="text-5xl mb-2">{result.mismatch ? '⚠️' : (result.won ? '😄' : '😢')}</div>
+            {!result.mismatch && (game === 'plinko' || game === 'wheel' || game === 'coinflip') && (
+              <div className={`text-xl tracking-[3px] mb-1 ${result.won ? 'text-[#5be0a4]' : 'text-[#ff8a8a]'}`} style={{ fontFamily: 'Bangers, cursive' }}>{result.won ? 'YOU WON' : 'YOU LOST'}</div>
+            )}
+            <div className="text-[12px] text-white/85 font-bold">{result.details}</div>
+            {result.subline && <div className="text-[10px] text-white/55 mt-1">{result.subline}</div>}
+            {result.flips && <div className="text-[10px] text-white/70 mt-1">Flips: <b>{result.flips}</b></div>}
+            {!result.mismatch && seedHash && <div className="text-[10px] text-[#5be0a4] mt-2">✓ Hash verified</div>}
+          </div>
+        )}
+        <div className="flex gap-2 mt-5">
+          <button onClick={run} disabled={!scriptReady} className="flex-1 py-3 rounded-md bg-white text-black font-bold text-[11px] uppercase tracking-widest disabled:opacity-50">Verify</button>
+          <button onClick={onClose} className="flex-1 py-3 rounded-md bg-white/5 border border-white/10 text-white font-bold text-[11px] uppercase tracking-widest">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const GamesPage = () => {
   const [sub, setSub] = useState<'lobby' | 'math-slash' | 'pump-dump' | 'lit-tower' | 'zk-miner' | 'lit-launch' | 'block-chain' | 'lit-dice' | 'lit-limbo' | 'lit-mines' | 'lit-plinko' | 'lit-wheel' | 'lit-coinflip'>('lobby');
   const [tab, setTab] = useState<'fun' | 'casino'>('fun');
+  const [pfOpen, setPfOpen] = useState(false);
   if (sub === 'math-slash') return <MathSlashPage onBack={() => setSub('lobby')} />;
   if (sub === 'pump-dump')  return <PumpDumpPage  onBack={() => setSub('lobby')} />;
   if (sub === 'lit-tower')  return <LitTowerPage  onBack={() => setSub('lobby')} />;
@@ -6501,9 +6726,15 @@ const GamesPage = () => {
             onClick={() => setTab('casino')}
             className={`px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors ${tab === 'casino' ? 'bg-white text-black' : 'text-white/55 hover:text-white'}`}
           >Casino</button>
+          <button
+            onClick={() => setPfOpen(true)}
+            className="px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors text-[#e6b8ff] hover:bg-white/5"
+            style={{ background: 'linear-gradient(180deg, rgba(196,102,255,0.15), rgba(106,45,153,0.25))', border: '1px solid rgba(196,102,255,0.35)' }}
+          >Provably Fair</button>
         </div>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
+      <ProvablyFairModal open={pfOpen} onClose={() => setPfOpen(false)} />
+      <div className="grid grid-cols-1 gap-6 items-start">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {tab === 'casino' ? (
             <>
@@ -6846,7 +7077,6 @@ const GamesPage = () => {
           </>
           )}
         </div>
-        <WeeklyLeaderboard />
       </div>
     </motion.div>
   );

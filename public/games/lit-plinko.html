@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Lit Plinko — LitDeX</title>
+<script src="/games/verify-inline.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka+One&family=JetBrains+Mono:wght@400;700&display=swap');
   *{margin:0;padding:0;box-sizing:border-box}
@@ -13,7 +14,14 @@
   .pill{flex:1;background:linear-gradient(180deg,rgba(15,25,45,0.95),rgba(5,10,20,0.92));border:1px solid rgba(140,180,255,0.18);border-radius:12px;padding:7px 10px 8px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.16em;color:#aac6ee;text-transform:uppercase;text-align:center;backdrop-filter:blur(6px)}
   .pill .v{display:block;color:#fff;font-weight:700;font-size:16px;margin-top:3px;letter-spacing:0.5px}
   .pill.bal .v{color:#5be0a4}.pill.mult .v{color:#ffe97a;font-size:18px}.pill.games .v{color:#aac6ee}
-  #stage-canvas{position:absolute;left:0;top:80px;right:0;bottom:140px;z-index:3;width:100%;height:auto}
+  #stage-canvas{position:absolute;left:0;top:80px;right:0;bottom:200px;z-index:3;width:100%;height:auto}
+  #slots-row{position:absolute;left:12px;right:12px;bottom:152px;z-index:4;display:grid;grid-template-columns:repeat(13,1fr);gap:3px;height:42px}
+  .slot-cell{display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid rgba(255,255,255,0.18);font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;color:#fff;letter-spacing:0.04em}
+  .slot-cell.tier-low{background:rgba(255,138,140,0.22)}
+  .slot-cell.tier-mid{background:rgba(140,180,255,0.25)}
+  .slot-cell.tier-good{background:linear-gradient(180deg,rgba(91,224,164,0.55),rgba(31,156,102,0.4));color:#04241a;border-color:rgba(91,224,164,0.6)}
+  .slot-cell.tier-best{background:linear-gradient(180deg,rgba(255,213,90,0.7),rgba(201,139,22,0.5));color:#5a3a0a;border-color:rgba(255,213,90,0.7)}
+  .slot-cell.lit{transform:scale(1.08);box-shadow:0 0 18px rgba(255,255,255,0.45);outline:2px solid #fff}
   #risk-row{position:absolute;left:12px;right:12px;bottom:84px;z-index:5;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .risk-btn{min-height:42px;border-radius:10px;border:1px solid rgba(140,180,255,0.22);background:rgba(15,25,45,0.85);color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.1em;cursor:pointer;-webkit-tap-highlight-color:transparent}
   .risk-btn.on{box-shadow:0 3px 0 rgba(0,0,0,0.3)}
@@ -51,6 +59,7 @@
     <div class="pill games">GAMES<span class="v" id="hud-games">0/20</span></div>
   </div>
   <canvas id="stage-canvas"></canvas>
+  <div id="slots-row"></div>
   <div id="risk-row">
     <button class="risk-btn on" data-r="low">LOW</button>
     <button class="risk-btn"     data-r="medium">MEDIUM</button>
@@ -91,13 +100,37 @@
       <div class="panel-btns"><button class="panel-btn primary" id="commit-proceed">START PLAYING</button></div>
     </div>
   </div>
+
+  <div id="verify-modal" class="hidden" style="position:absolute;inset:0;z-index:36;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.88);backdrop-filter:blur(6px);transition:opacity 0.3s ease">
+    <div class="panel-card" style="max-width:420px">
+      <div class="panel-title">VERIFIER</div>
+      <div class="panel-sub">Paste two values · see the result</div>
+      <div style="text-align:left">
+        <div class="fair-row"><span class="lbl">Seed Hash · committed before bet</span>
+          <input type="text" id="vfy-hash" placeholder="64 hex chars" style="width:100%;background:rgba(8,14,28,0.85);border:1px solid rgba(140,180,255,0.18);border-radius:6px;padding:8px;color:#fff;font-family:'JetBrains Mono',monospace;font-size:10px"/>
+        </div>
+        <div class="fair-row"><span class="lbl">Server Seed · revealed after bet</span>
+          <input type="text" id="vfy-seed" placeholder="64 hex chars" style="width:100%;background:rgba(8,14,28,0.85);border:1px solid rgba(140,180,255,0.18);border-radius:6px;padding:8px;color:#fff;font-family:'JetBrains Mono',monospace;font-size:10px"/>
+        </div>
+        <div id="vfy-result" style="margin-top:12px;display:none"></div>
+      </div>
+      <div class="panel-btns" style="display:flex;gap:8px"><button class="panel-btn primary" id="vfy-run" style="flex:1">VERIFY</button><button class="panel-btn" id="vfy-close" style="flex:1">CLOSE</button></div>
+    </div>
+  </div>
   <style>
-    #commit-modal.hidden { opacity: 0; pointer-events: none; }
+    #commit-modal.hidden, #verify-modal.hidden { opacity: 0; pointer-events: none; }
     .copy-row { display: flex; align-items: stretch; gap: 6px; margin-bottom: 6px; }
     .copy-row .val { flex: 1; }
     .copy-btn { background: linear-gradient(180deg, #ffd166, #c98b16); color: #5a3a0a; border: none; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; padding: 0 12px; cursor: pointer; flex-shrink: 0; -webkit-tap-highlight-color: transparent; }
     .copy-btn.copied { background: linear-gradient(180deg, #5be0a4, #1f9c66); color: #04241a; }
     .panel-btn.verify { background: linear-gradient(180deg, rgba(196,102,255,0.3), rgba(106,45,153,0.5)); border-color: rgba(196,102,255,0.5); color: #e6b8ff; }
+    .vfy-emoji { font-size: 64px; line-height: 1; margin: 12px auto 8px; text-align: center; }
+    .vfy-banner { font-family:'Bangers',cursive; font-size: 24px; letter-spacing: 3px; text-align:center; margin-bottom: 6px; }
+    .vfy-banner.win { color: #5be0a4; text-shadow: 0 0 18px rgba(91,224,164,0.5); }
+    .vfy-banner.loss { color: #ff8a8a; text-shadow: 0 0 18px rgba(255,138,140,0.5); }
+    .vfy-banner.fail { color: #ff8a8a; }
+    .vfy-line { font-family:'JetBrains Mono',monospace; font-size: 11px; color: rgba(255,255,255,0.7); text-align:center; margin: 2px 0; }
+    .vfy-line b { color:#fff; }
   </style>
   <div id="err-banner"><span id="err-msg"></span></div>
 </div>
@@ -172,21 +205,40 @@
 
   function showErr(m){errMsg.textContent=m||'error';errBanner.classList.add('visible');setTimeout(()=>errBanner.classList.remove('visible'),2400);}
 
-  riskBtns.forEach((el) => { el.onclick = () => { if (ST.busy) return; ST.risk = el.dataset.r; riskBtns.forEach((b) => b.classList.toggle('on', b === el)); drawBoard(); }; });
+  riskBtns.forEach((el) => { el.onclick = () => { if (ST.busy) return; ST.risk = el.dataset.r; riskBtns.forEach((b) => b.classList.toggle('on', b === el)); drawBoard(); paintSlotsHtml(); }; });
   btnX.onclick = () => postParent({ type: 'litdex:litplinko:exit' });
   openFair.onclick = () => showFairness();
   fairClose.onclick = () => fairness.classList.add('hidden');
   document.getElementById('open-verifier').onclick = () => {
+    fairness.classList.add('hidden');
+    document.getElementById('vfy-hash').value = '';
+    document.getElementById('vfy-seed').value = '';
+    document.getElementById('vfy-result').style.display = 'none';
+    document.getElementById('verify-modal').classList.remove('hidden');
+  };
+  document.getElementById('vfy-close').onclick = () => document.getElementById('verify-modal').classList.add('hidden');
+  document.getElementById('vfy-run').onclick = () => {
+    const hash = document.getElementById('vfy-hash').value.trim().toLowerCase();
+    const seed = document.getElementById('vfy-seed').value.trim().toLowerCase();
+    const out = document.getElementById('vfy-result');
+    out.style.display = 'block';
+    if (!seed.match(/^[0-9a-f]+$/)) { out.innerHTML = '<div class="vfy-banner fail">⚠ INVALID</div><div class="vfy-line">Server seed must be hex</div>'; return; }
     const r = ST.lastResult || {};
-    const params = new URLSearchParams({
-      g: 'plinko',
-      seedHash: r.seedHash || ST.seedHash || '',
-      serverSeed: r.serverSeed || '',
-      roundId: ST.roundId || '',
-      clientSeed: r.clientSeed || ST.clientSeed || '',
-      risk: ST.risk || 'low',
-    });
-    window.open(`/games/verify.html?${params.toString()}`, '_blank');
+    const clientSeed = r.clientSeed || ST.clientSeed;
+    const risk = (r.risk || ST.risk || 'low').toLowerCase();
+    if (!clientSeed) { out.innerHTML = '<div class="vfy-banner fail">⚠ NO ROUND</div><div class="vfy-line">Play a round first to use this verifier inline</div>'; return; }
+    const computed = LitDexVerify.sha256str(seed);
+    if (hash && computed !== hash) { out.innerHTML = `<div class="vfy-banner fail">✗ HASH MISMATCH</div><div class="vfy-line">sha256(seed) does NOT equal seedHash</div>`; return; }
+    const { slot } = LitDexVerify.plinkoOutcome(seed, clientSeed, risk);
+    const mult = (LitDexVerify.PLINKO[risk] || [])[slot] || 0;
+    const won = mult > 1;
+    const emoji = won ? '😄' : '😢';
+    out.innerHTML = `
+      <div class="vfy-emoji">${emoji}</div>
+      <div class="vfy-banner ${won ? 'win' : 'loss'}">${won ? 'YOU WON' : 'YOU LOST'}</div>
+      <div class="vfy-line">Slot: <b>${slot}</b> · Risk: <b>${risk.toUpperCase()}</b> · Multiplier: <b>${mult.toFixed(2)}x</b></div>
+      ${hash ? '<div class="vfy-line" style="color:#5be0a4">✓ Hash verified</div>' : ''}
+    `;
   };
 
   async function fetchStats() { if (!wallet) return null; try { const r = await fetch(`${API}/litplinko/stats/${wallet}`); if (!r.ok) return null; return await r.json(); } catch { return null; } }
@@ -201,6 +253,7 @@
     hudBal.textContent = String(bal);
     hudGames.textContent = `${DAILY-left}/${DAILY}`;
     drawBoard();
+    paintSlotsHtml();
     const noG = left <= 0, lowB = bal < STAKE;
     pTitle.textContent = 'LIT PLINKO';
     pSub.textContent = noG ? 'Daily limit reached' : (lowB ? `Need ${STAKE} PTS` : 'Drop a ball through 12 rows · 13 slots · provably fair');
@@ -233,6 +286,7 @@
       panel.classList.add('hidden');
       ST.ball = null;     // no ball before drop
       drawBoard();
+      paintSlotsHtml();
       showCommitModal();
       fetchStats().then((s) => { if (s) hudBal.textContent = String(s.pointsBalance || 0); });
     } catch { showErr('Network error'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; }
@@ -247,6 +301,7 @@
       if (!r.ok || d.error) { showErr(d?.error || 'drop_failed'); ST.busy = false; dropBtn.disabled = false; riskBtns.forEach((b) => b.disabled = false); return; }
       ST.serverSeed = d.serverSeed;
       await animateBall(d.path, d.slot);
+      paintSlotsHtml(d.slot);
       hudMult.textContent = `${d.multiplier.toFixed(2)}x`;
       if (d.multiplier > 1) sndWin(); else if (d.multiplier > 0) sndPeg(); else sndLoss();
       // Hold the ball-in-slot result on screen so the player can read it.
@@ -255,11 +310,32 @@
   };
 
   // ── Render board ──────────────────────────────────────────
-  function drawBoard() {
+  function paintSlotsHtml(landedSlot) {
+    const row = document.getElementById('slots-row');
+    if (!row) return;
+    const tbl = ST.tables ? ST.tables[ST.risk] : null;
+    if (!tbl) { row.innerHTML = ''; return; }
+    const cells = row.children;
+    const need = SLOTS;
+    while (row.children.length < need) row.appendChild(document.createElement('div'));
+    while (row.children.length > need) row.removeChild(row.lastChild);
+    for (let i = 0; i < need; i++) {
+      const m = tbl[i] / 100;
+      const cell = row.children[i];
+      cell.className = 'slot-cell';
+      if (m >= 5) cell.classList.add('tier-best');
+      else if (m >= 1.5) cell.classList.add('tier-good');
+      else if (m >= 0.5) cell.classList.add('tier-mid');
+      else cell.classList.add('tier-low');
+      if (i === landedSlot) cell.classList.add('lit');
+      const label = m === 0 ? '0' : (m >= 10 ? `${m.toFixed(0)}x` : `${m.toFixed(m >= 1 ? 1 : 1)}x`);
+      cell.textContent = label;
+    }
+  }
     const W = stageCanvas.clientWidth, H = stageCanvas.clientHeight;
     if (!W || !H) return;
     ctx2d.clearRect(0,0,W,H);
-    const padX = 20, padTop = 20, padBot = 90;     // extra room for slots row
+    const padX = 20, padTop = 20, padBot = 20;     // slots are now in HTML below canvas
     const drawW = W - padX * 2, drawH = H - padTop - padBot;
     const rowGap = drawH / (ROWS + 1);
     const colGap = drawW / (SLOTS + 1);
@@ -283,38 +359,7 @@
         ctx2d.fill();
       }
     }
-    // Slots
-    const slotW = drawW / SLOTS;
-    const slotY = padTop + drawH + 8;
-    const slotH = padBot - 16;
-    const tbl = ST.tables ? ST.tables[ST.risk] : null;
-    for (let s = 0; s < SLOTS; s++) {
-      const x = padX + s * slotW;
-      const mult = tbl ? (tbl[s] / 100) : 1;
-      const intensity = Math.min(1, mult / 30);
-      const color = mult >= 5 ? `rgba(255,213,90,${0.45 + intensity * 0.55})`
-                  : mult >= 1.5 ? `rgba(91,224,164,${0.35 + intensity * 0.55})`
-                  : mult >= 0.5 ? `rgba(140,180,255,0.28)`
-                  : `rgba(255,138,140,0.28)`;
-      ctx2d.fillStyle = color;
-      roundRect(ctx2d, x + 2, slotY, slotW - 4, slotH, 8);
-      ctx2d.fill();
-      ctx2d.strokeStyle = 'rgba(255,255,255,0.18)';
-      ctx2d.lineWidth = 1;
-      ctx2d.stroke();
-      // Multiplier label.
-      ctx2d.fillStyle = '#fff';
-      const fontSize = Math.max(10, Math.min(15, slotW * 0.32));
-      ctx2d.font = `bold ${fontSize}px 'JetBrains Mono', monospace`;
-      ctx2d.textAlign = 'center';
-      ctx2d.textBaseline = 'middle';
-      let label;
-      if (mult === 0) label = '0';
-      else if (mult >= 100) label = `${mult.toFixed(0)}x`;
-      else if (mult >= 10) label = `${mult.toFixed(0)}x`;
-      else label = `${mult.toFixed(1)}x`;
-      ctx2d.fillText(label, x + slotW / 2, slotY + slotH / 2);
-    }
+
     // Ball preview
     if (ST.ball) {
       const scale = ST.ball.scale != null ? ST.ball.scale : 1;
@@ -355,7 +400,7 @@
   function animateBall(path, finalSlot) {
     return new Promise((resolve) => {
       const W = stageCanvas.clientWidth, H = stageCanvas.clientHeight;
-      const padX = 20, padTop = 20, padBot = 90;
+      const padX = 20, padTop = 20, padBot = 20;
       const drawW = W - padX * 2, drawH = H - padTop - padBot;
       const rowGap = drawH / (ROWS + 1);
       const colGap = drawW / (SLOTS + 1);
@@ -372,20 +417,18 @@
         const x = padX + drawW / 2 + (col / 2) * colGap;
         wp.push({ x, y });
       }
-      // Settle into the slot center.
+      // Settle into the slot center (now at the bottom of the canvas
+      // since the HTML slot strip is BELOW the canvas).
       const slotW = drawW / SLOTS;
       const finalX = padX + finalSlot * slotW + slotW / 2;
-      const finalY = padTop + drawH + 16;
+      const finalY = H - 18;
       wp.push({ x: finalX, y: finalY });
-      const slotH = padBot - 16;
-      wp.push({ x: finalX, y: padTop + drawH + 8 + slotH * 0.5 });
 
       // Slow + smooth: 220ms drop-in, 200ms per peg, 280ms slot settle.
       const segDur = [];
       for (let i = 0; i < wp.length - 1; i++) {
         if (i === 0)                       segDur.push(220);
         else if (i === wp.length - 2)      segDur.push(280);
-        else if (i === wp.length - 3)      segDur.push(240);
         else                                segDur.push(200);
       }
       const totalDur = segDur.reduce((a, b) => a + b, 0);
@@ -409,18 +452,14 @@
         const segT = (elapsed - acc) / segDur[segIdx];
         const a = wp[segIdx], b = wp[segIdx + 1];
 
-        // Ease-in-out cosine for X (smooth side-to-side).
         const easeX = 0.5 - 0.5 * Math.cos(segT * Math.PI);
-        // Quadratic for Y to mimic gravity (slow start, fast end of fall).
         const easeY = segT * segT;
         let bx = a.x + (b.x - a.x) * easeX;
         let by = a.y + (b.y - a.y) * easeY;
 
-        // Tiny upward arc on peg-bounce segments.
         const archUp = Math.max(0, Math.sin(segT * Math.PI)) * Math.min(rowGap * 0.22, 11);
         if (segIdx > 0 && segIdx < wp.length - 2) by -= archUp;
 
-        // Squash on impact (start of segment).
         const settle = segT < 0.20 ? (1 - segT / 0.20) * 0.20 : 0;
         const scale = 1 - settle;
 
