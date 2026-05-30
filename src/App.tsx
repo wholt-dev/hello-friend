@@ -1368,25 +1368,29 @@ const DeployPage = () => {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [totalDeployed, setTotalDeployed] = useState<number | null>(null);
 
-  // Combined daily deploy points: on-chain ERC20 (max 100) + off-chain
-  // NFT/Staking/Vesting/Factory (max 400) = out of 500.
-  const DEPLOY_CAP = 500;
-  const [deployUsed, setDeployUsed] = useState<number>(0);
+  // Per-type daily deploy counters (each capped at 100):
+  //   erc20 -> on-chain deployDaily; nft/staking/vesting/factory -> off-chain.
+  const PER_TYPE_CAP = 100;
+  const [deployCounts, setDeployCounts] = useState<Record<string, number>>({});
   const fetchDeployCounts = React.useCallback(async () => {
-    if (!address) { setDeployUsed(0); return; }
-    let erc20 = 0, offchain = 0;
+    if (!address) { setDeployCounts({}); return; }
+    const next: Record<string, number> = { erc20: 0, nft: 0, staking: 0, vesting: 0, factory: 0 };
     try {
       const p = await readPoints(address);
-      erc20 = Number(p.deployDaily);
+      next.erc20 = Number(p.deployDaily);
     } catch { /* ignore */ }
     try {
       const r = await fetch(`https://api.test-hub.xyz/activity/counts/${address.toLowerCase()}`);
       if (r.ok) {
         const d = await r.json();
-        offchain = Number(d?.deploy?.used ?? 0);
+        const pt = d?.deploy?.perType || {};
+        next.nft = Number(pt.nft ?? 0);
+        next.staking = Number(pt.staking ?? 0);
+        next.vesting = Number(pt.vesting ?? 0);
+        next.factory = Number(pt.tokenfactory ?? 0);
       }
     } catch { /* ignore */ }
-    setDeployUsed(erc20 + offchain);
+    setDeployCounts(next);
   }, [address]);
   useEffect(() => {
     fetchDeployCounts();
@@ -1474,29 +1478,30 @@ const DeployPage = () => {
         </Card>
       </div>
 
-      <div className="flex flex-wrap items-center justify-center gap-2 mb-12">
-        {isConnected && (
-          <span
-            title="Daily deploy points (+5 each, resets daily)"
-            className="italic text-[11px] font-medium text-white/70 tabular-nums px-3 py-1.5 rounded-full border border-white/10 bg-white/5 mr-1"
-          >
-            {Math.min(deployUsed, DEPLOY_CAP)}/{DEPLOY_CAP}
-          </span>
-        )}
+      <div className="flex flex-wrap justify-center gap-2 mb-12">
         {types.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setSelectedType(t.id)}
-            className={cn(
-              "flex items-center gap-2 px-6 py-3 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-widest",
-              selectedType === t.id 
-                ? "bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.15)]" 
-                : "bg-black/20 border-white/5 text-brand-text-muted hover:border-white/10 hover:text-white"
+          <div key={t.id} className="flex flex-col items-center gap-1.5">
+            {isConnected && (
+              <span
+                title={`${t.name} deploys today (+5 each, max ${PER_TYPE_CAP})`}
+                className="italic text-[10px] font-medium text-white/60 tabular-nums px-2 py-0.5 rounded-full border border-white/10 bg-white/5"
+              >
+                {Math.min(deployCounts[t.id] ?? 0, PER_TYPE_CAP)}/{PER_TYPE_CAP}
+              </span>
             )}
-          >
-            <t.icon size={14} />
-            {t.name}
-          </button>
+            <button
+              onClick={() => setSelectedType(t.id)}
+              className={cn(
+                "flex items-center gap-2 px-6 py-3 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-widest",
+                selectedType === t.id 
+                  ? "bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.15)]" 
+                  : "bg-black/20 border-white/5 text-brand-text-muted hover:border-white/10 hover:text-white"
+              )}
+            >
+              <t.icon size={14} />
+              {t.name}
+            </button>
+          </div>
         ))}
       </div>
 
