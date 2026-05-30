@@ -4925,7 +4925,8 @@ const PumpDumpPage = ({ onBack }: { onBack: () => void }) => {
         </div>
       {!playing && (<div className="order-3"><GameLeaderboard title="Pump or Dump · Top Pots" endpoint={`${SIMPLE_API}/pumpdump/leaderboard`} scoreField="best_pot" scoreLabel="Best Pot" /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/pumpdump/global`} />}
+      </motion.div>
   );
 };
 
@@ -5211,7 +5212,8 @@ const LitTowerPage = ({ onBack }: { onBack: () => void }) => {
         </div>
       {!playing && (<div className="order-3"><GameLeaderboard title="Lit Tower · Top Heights" endpoint={`${SIMPLE_API}/littower/leaderboard`} scoreField="best_height" scoreLabel="Best Height" /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/littower/global`} />}
+      </motion.div>
   );
 };
 
@@ -5497,7 +5499,8 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
         </div>
       {!playing && (<div className="order-3"><GameLeaderboard title="ZK Miner · Top Scores" endpoint={`${SIMPLE_API}/zkminer/leaderboard`} scoreField="best_score" scoreLabel="Best Score" scoreFormat={(v) => `${Number(v||0).toFixed(1)} PTS`} /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/zkminer/global`} />}
+      </motion.div>
   );
 };
 
@@ -5782,7 +5785,8 @@ const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
         </div>
       {!playing && (<div className="order-3"><GameLeaderboard title="Lit Launch · Top Coins" endpoint={`${SIMPLE_API}/litlaunch/leaderboard`} scoreField="best_score" scoreLabel="Coins" /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/litlaunch/global`} />}
+      </motion.div>
   );
 };
 
@@ -6069,7 +6073,8 @@ const BlockChainPage = ({ onBack }: { onBack: () => void }) => {
         </div>
       {!playing && (<div className="order-3"><GameLeaderboard title="Block Chain · Top Tiles" endpoint={`${SIMPLE_API}/blockchain/leaderboard`} scoreField="best_tile" scoreLabel="Best Tile" /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/blockchain/global`} />}
+      </motion.div>
   );
 };
 
@@ -6197,7 +6202,8 @@ const LitDicePage = ({ onBack }: { onBack: () => void }) => {
         </div>
       {!playing && (<div className="order-3"><GameLeaderboard title="Lit Dice · Top Multipliers" endpoint={`${SIMPLE_API}/litdice/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/litdice/global`} />}
+      </motion.div>
   );
 };
 
@@ -6326,7 +6332,8 @@ const LitLimboPage = ({ onBack }: { onBack: () => void }) => {
         </div>
       {!playing && (<div className="order-3"><GameLeaderboard title="Lit Limbo · Top Crashes" endpoint={`${SIMPLE_API}/litlimbo/leaderboard`} scoreField="best_roll" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/litlimbo/global`} />}
+      </motion.div>
   );
 };
 
@@ -6455,7 +6462,8 @@ const LitMinesPage = ({ onBack }: { onBack: () => void }) => {
         </div>
       {!playing && (<div className="order-3"><GameLeaderboard title="Lit Mines · Top Multipliers" endpoint={`${SIMPLE_API}/litmines/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/litmines/global`} />}
+      </motion.div>
   );
 };
 
@@ -6550,7 +6558,8 @@ const LitPlinkoPage = ({ onBack }: { onBack: () => void }) => {
         </div>
       {!playing && (<div className="order-3"><GameLeaderboard title="Lit Plinko · Top Multipliers" endpoint={`${SIMPLE_API}/litplinko/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/litplinko/global`} />}
+      </motion.div>
   );
 };
 
@@ -6642,7 +6651,8 @@ const LitWheelPage = ({ onBack }: { onBack: () => void }) => {
         </div>
       {!playing && (<div className="order-3"><GameLeaderboard title="Lit Wheel · Top Multipliers" endpoint={`${SIMPLE_API}/litwheel/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/litwheel/global`} />}
+      </motion.div>
   );
 };
 
@@ -6734,7 +6744,48 @@ const LitCoinFlipPage = ({ onBack }: { onBack: () => void }) => {
         </div>
       {!playing && (<div className="order-3"><GameLeaderboard title="Lit Coin Flip · Top Streaks" endpoint={`${SIMPLE_API}/litcoinflip/leaderboard`} scoreField="best_streak" scoreLabel="Best Streak" scoreFormat={(v) => `×${Number(v||0)}`} /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/litcoinflip/global`} />}
+      </motion.div>
+  );
+};
+
+const GameGlobalStats = ({ endpoint, className = '' }: { endpoint: string; className?: string }) => {
+  const [stats, setStats] = useState<{ totalGames: number; uniquePlayers: number; totalPoints: number } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await fetch(endpoint);
+        if (r.ok) {
+          const d = await r.json();
+          if (!cancelled) setStats({
+            totalGames: Number(d?.totalGames ?? 0),
+            uniquePlayers: Number(d?.uniquePlayers ?? 0),
+            totalPoints: Number(d?.totalPoints ?? 0),
+          });
+        }
+      } catch { /* ignore — endpoint may not be deployed yet */ }
+    };
+    load();
+    const t = setInterval(load, 60000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [endpoint]);
+  if (!stats) return null;
+  return (
+    <div className={`mt-6 p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border grid grid-cols-3 gap-4 ${className}`}>
+      <div>
+        <div className="text-[10px] uppercase text-brand-text-muted">Total Games</div>
+        <div className="text-brand-text-primary text-lg font-bold">{stats.totalGames.toLocaleString()}</div>
+      </div>
+      <div>
+        <div className="text-[10px] uppercase text-brand-text-muted">Unique Players</div>
+        <div className="text-brand-text-primary text-lg font-bold">{stats.uniquePlayers.toLocaleString()}</div>
+      </div>
+      <div>
+        <div className="text-[10px] uppercase text-brand-text-muted">Total Points Distributed</div>
+        <div className="text-brand-text-primary text-lg font-bold">{stats.totalPoints.toLocaleString()}</div>
+      </div>
+    </div>
   );
 };
 
