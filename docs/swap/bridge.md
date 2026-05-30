@@ -12,7 +12,7 @@ More routes will roll in as Caldera bridges them on.
 2. Pick the source chain on the left, destination on the right.
 3. Enter the amount.
 4. Click **Approve & Bridge**, sign the approve, then sign the bridge tx.
-5. Wait — the bridge has a checkpoint period (currently ~5 minutes for LiteForge↔BSC).
+5. Wait - the bridge has a checkpoint period (currently ~5 minutes for LiteForge↔BSC).
 6. The success card prints both the source tx and the destination tx hashes once the relayer mints on the other side.
 
 ## What you need on the source chain
@@ -22,11 +22,11 @@ More routes will roll in as Caldera bridges them on.
 | LiteForge | Some zkLTC for gas |
 | BSC | Some BNB for gas |
 
-If you are bridging from BSC and don't have any BNB, ping the team — there are micro-faucets for new wallets.
+If you are bridging from BSC and don't have any BNB, ping the team - there are micro-faucets for new wallets.
 
 ## Anti-bot gate (legacy)
 
-There used to be a "play 5 Math Slash games to unlock bridge" gate. That has been removed — any wallet with a `.lit` domain can use the bridge. The gate moved to the [Faucet](/faucet/) (which now requires NFT + `.lit`).
+There used to be a "play 5 Math Slash games to unlock bridge" gate. That has been removed - any wallet with a `.lit` domain can use the bridge. The gate moved to the [Faucet](/faucet/) (which now requires NFT + `.lit`).
 
 ## Failed bridge?
 

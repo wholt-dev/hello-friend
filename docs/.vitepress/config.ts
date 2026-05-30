@@ -127,6 +127,8 @@ export default defineConfig({
           items: [
             { text: 'Games Overview', link: '/games/' },
             { text: 'Math Slash', link: '/games/math-slash' },
+            { text: 'Casino Games', link: '/games/casino' },
+            { text: 'Provably Fair', link: '/games/provably-fair' },
           ],
         },
         {

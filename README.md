@@ -42,7 +42,7 @@ LitDEX is a fully on-chain ecosystem built on the LiteForge testnet. Most chains
 - 🏆 **Points System** : every meaningful action earns points (swap, deploy, message, check-in, register a name, complete socials).
 - 🎁 **Genesis NFTs** : three rarity tiers (LitShard, LitCore, LitGod) that pay daily yield in zkLTC, USDC, and LDEX.
 - 📨 **Messenger** : public broadcasts and direct messages, on-chain, with `.lit` reverse-resolution.
-- 🎮 **Games** : Math Slash 3D arcade game with a weekly leaderboard.
+- 🎮 **Games** : 12 games - 6 skill arcades (Math Slash, Lit Tower, ZK Miner, Lit Launch, Block Chain, Pump or Dump) + 6 provably-fair casino games (Lit Dice, Limbo, Mines, Plinko, Wheel, Coin Flip), each with its own weekly-rewarded leaderboard.
 - 💧 **Faucet** : 0.01 zkLTC + 10 points every 24h, NFT + `.lit` domain gated to keep bots out.
 
 Everything lives on LiteForge. There is no centralized database for friends, listings, or messages : the dApp reads directly from on-chain contracts.
@@ -171,7 +171,7 @@ Three tiers, all minted by spending points. Each NFT pays daily zkLTC, USDC, and
 | --- | --- | --- | --- |
 | LitShard | 1,000 pts | 0.0001 zkLTC + 10 USDC + 2 LDEX | 9,999 |
 | LitCore | 5,000 pts | 0.0005 zkLTC + 50 USDC + 10 LDEX | 4,999 |
-| LitGod | 25,000 pts | 0.005 zkLTC + 500 USDC + 100 LDEX | 999 |
+| LitGod | 10,000 pts | 0.005 zkLTC + 500 USDC + 100 LDEX | 999 |
 
 ### 5. Faucet v2 : bot-proof
 
@@ -186,9 +186,49 @@ Bots can't economically clear those bars; real users meet them organically by da
 
 LiteForge ↔ Sepolia ETH, run by a polling relayer (`litdex-bridge`). Lock-mint pattern with checkpoint-style finality.
 
-### 7. Math Slash : skill-based earning
+### 7. Games : 12 games, 6 of them provably-fair
 
-A 3D arcade game where players slash equations. Score-based points credit on chain via a manual claim flow that batches all unclaimed sessions into one `recordQuestFor` call. Anti-bot filters (score velocity, min duration, blacklist) keep the leaderboard fair.
+Two categories, one shared points economy:
+
+**Skill arcades** (free to play, 5 games/day each): Math Slash (3D equation
+slasher), Lit Tower (block stacker), ZK Miner (match-3), Lit Launch (dodge +
+catch), Block Chain (2048), Pump or Dump (candle-prediction pot). Score-based
+points credit on chain; anti-bot filters (score velocity, min duration,
+blacklist) keep the boards fair.
+
+**Provably-fair casino** (5 PTS stake, 20 rounds/day each): Lit Dice, Lit
+Limbo, Lit Mines, Lit Plinko, Lit Wheel, Lit Coin Flip. Every round uses a
+**commit-reveal** scheme:
+
+```
+1. Server commits seedHash = sha256(serverSeed)   (shown BEFORE you bet)
+2. You bet
+3. Server reveals serverSeed                       (shown AFTER the round)
+4. You verify sha256(serverSeed) == seedHash, then replay the outcome
+```
+
+The outcome is derived from `HMAC-SHA256(serverSeed, message)` and is
+**verifiable client-side** - no trust required. An in-app verifier (and a
+**Provably Fair** tab) lets anyone reconstruct any past round from the
+published seeds. The verifier is pure JS (`public/games/verify-inline.js`),
+no library, no network.
+
+**Casino balance**: players deposit points (multiples of 5, max 2/day) into an
+off-chain balance once, then play instantly with no per-round transaction, and
+withdraw back to on-chain points any time. This keeps gameplay snappy and
+avoids nonce contention under load.
+
+**Leaderboards & rewards**: each of the 12 games has its own top-20 board.
+Every Sunday 23:59 IST the top 20 are paid from a dedicated, pre-funded rewards
+wallet:
+
+| Rank | Reward |
+| --- | --- |
+| 1 | 1 zkLTC + 10,000 LDEX + 2,500 PTS |
+| 2 | 10,000 LDEX + 1,000 PTS |
+| 3 | 5,000 LDEX + 500 PTS |
+| 4-10 | 3,000 LDEX + 300 PTS |
+| 11-20 | 1,000 LDEX + 100 PTS |
 
 ---
 
@@ -297,7 +337,7 @@ Sections covered:
 - NFTs (overview, tiers, mint + claim)
 - Messenger (overview, on-chain mechanics)
 - Socials & Quests
-- Games (Math Slash)
+- Games (overview, Math Slash, Casino games, Provably Fair)
 - Faucet
 - FAQ + Troubleshooting + Contracts reference
 
@@ -324,6 +364,10 @@ Sections covered:
 - [x] Daily check-in with streak bonuses
 - [x] Hub: private chat, global feed, marketplace, profile, `.lit` registration
 - [x] Math Slash arcade game
+- [x] 5 more skill arcades (Lit Tower, ZK Miner, Lit Launch, Block Chain, Pump or Dump)
+- [x] 6 provably-fair casino games (Dice, Limbo, Mines, Plinko, Wheel, Coin Flip)
+- [x] Off-chain casino balance (deposit/withdraw) + in-app provably-fair verifier
+- [x] Per-game weekly leaderboards with dedicated-wallet zkLTC + LDEX + PTS rewards
 - [x] Bot-proof faucet (NFT + `.lit` domain gate)
 - [x] Messenger with daily caps
 - [x] Weekly leaderboard with zkLTC bonuses

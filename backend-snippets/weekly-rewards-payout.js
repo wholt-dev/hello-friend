@@ -42,14 +42,22 @@ const SERVER_DIR = process.cwd();
 const LDEX_ADDR   = process.env.LDEX_ADDR   || '0xBAaba603e6298fbb76325a6B0d47Cd57154ca641';
 const POINTS_ADDR = process.env.POINTS_ADDR || '0x526B0629C81d3314929dB8166372F792F3da3419';
 
-// Earliest date (IST) on which a real distribution may run. The first
-// reward week is Mon 1 Jun 2026 → Sun 7 Jun 2026, so the first payout
-// fires Sunday 7 Jun 2026 23:59 IST. Any --execute run before this date
-// is blocked (so a cron firing on Sun 31 May 2026 does NOT pay out the
-// current week). Override with REWARDS_FIRST_PAYOUT=YYYY-MM-DD.
-const FIRST_PAYOUT = process.env.REWARDS_FIRST_PAYOUT || '2026-06-07';
+// Earliest date (IST) on which a real distribution may run, PER GAME.
+//   - Math Slash is an ongoing game → starts THIS week (Sun 31 May 2026).
+//   - All the newer games start from the first full week (Sun 7 Jun 2026).
+// Override the global floor with REWARDS_FIRST_PAYOUT=YYYY-MM-DD.
+const DEFAULT_FIRST_PAYOUT = process.env.REWARDS_FIRST_PAYOUT || '2026-06-07';
+const MATHSLASH_FIRST_PAYOUT = '2026-05-31';
 function istDateStr() {
   return new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+// IST Monday (week start) as YYYY-MM-DD — matches server.js getWeekStart().
+function weekStartIST() {
+  const now = new Date(Date.now() + 19800000);
+  const day = now.getUTCDay();
+  const diff = day === 0 ? 6 : day - 1;
+  now.setUTCDate(now.getUTCDate() - diff);
+  return now.toISOString().slice(0, 10);
 }
 
 // Per-rank reward tiers.
@@ -68,19 +76,23 @@ function tierFor(rank) {
 const SHARED_DB = process.env.GAMES_DB || 'simple_game.db';
 
 const GAMES = [
-  { id: 'litdice',     sql: "SELECT wallet FROM litdice_rounds WHERE settled=1 AND won=1 GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
-  { id: 'litlimbo',    sql: "SELECT wallet FROM litlimbo_rounds WHERE settled=1 AND won=1 GROUP BY wallet ORDER BY MAX(rolled_x100) DESC LIMIT 20" },
-  { id: 'litmines',    sql: "SELECT wallet FROM litmines_rounds WHERE settled=1 AND outcome='cashout' GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
-  { id: 'litplinko',   sql: "SELECT wallet FROM litplinko_rounds WHERE settled=1 GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
-  { id: 'litwheel',    sql: "SELECT wallet FROM litwheel_rounds WHERE settled=1 GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
-  { id: 'litcoinflip', sql: "SELECT wallet FROM litcoin_rounds WHERE settled=1 AND won=1 GROUP BY wallet ORDER BY MAX(streak) DESC LIMIT 20" },
-  { id: 'pumpdump',    sql: "SELECT wallet FROM pumpdump_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(pot) DESC LIMIT 20" },
-  { id: 'littower',    sql: "SELECT wallet FROM littower_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(height) DESC LIMIT 20" },
-  { id: 'zkminer',     sql: "SELECT wallet FROM zkminer_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(charges) DESC LIMIT 20" },
-  { id: 'litlaunch',   sql: "SELECT wallet FROM litlaunch_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(awarded) DESC LIMIT 20" },
-  { id: 'blockchain',  sql: "SELECT wallet FROM blockchain_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(highest_tile) DESC LIMIT 20" },
-  // Math Slash leaderboard (shares the same DB).
-  { id: 'mathslash',   sql: "SELECT wallet FROM simple_scores GROUP BY wallet ORDER BY MAX(total_score) DESC LIMIT 20", optional: true },
+  { id: 'litdice',     firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM litdice_rounds WHERE settled=1 AND won=1 GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
+  { id: 'litlimbo',    firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM litlimbo_rounds WHERE settled=1 AND won=1 GROUP BY wallet ORDER BY MAX(rolled_x100) DESC LIMIT 20" },
+  { id: 'litmines',    firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM litmines_rounds WHERE settled=1 AND outcome='cashout' GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
+  { id: 'litplinko',   firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM litplinko_rounds WHERE settled=1 GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
+  { id: 'litwheel',    firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM litwheel_rounds WHERE settled=1 GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
+  { id: 'litcoinflip', firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM litcoin_rounds WHERE settled=1 AND won=1 GROUP BY wallet ORDER BY MAX(streak) DESC LIMIT 20" },
+  { id: 'pumpdump',    firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM pumpdump_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(pot) DESC LIMIT 20" },
+  { id: 'littower',    firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM littower_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(height) DESC LIMIT 20" },
+  { id: 'zkminer',     firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM zkminer_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(charges) DESC LIMIT 20" },
+  { id: 'litlaunch',   firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM litlaunch_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(awarded) DESC LIMIT 20" },
+  { id: 'blockchain',  firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM blockchain_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(highest_tile) DESC LIMIT 20" },
+  // Math Slash — ongoing game, starts THIS week. Lives in the shared
+  // simple_game.db. Mirrors EXACTLY the in-app /simple/leaderboard query
+  // (game_rewards, id > 72254 = current season) so the wallets that see
+  // themselves on the leaderboard are the ones that get paid.
+  { id: 'mathslash',   firstPayout: MATHSLASH_FIRST_PAYOUT, optional: true,
+    sql: "SELECT wallet, SUM(score) AS total_score FROM game_rewards WHERE id > 72254 GROUP BY wallet ORDER BY total_score DESC LIMIT 20" },
 ];
 
 // ISO week key like 2026-W22 (UTC) so we never double-pay the same week.
@@ -140,18 +152,31 @@ const recordPaid = (rec) =>
   console.log(`  zkLTC: ${bal.zkltc}`);
   console.log(`  LDEX:  ${bal.ldex} (decimals ${bal.ldexDecimals})\n`);
 
-  // Build the plan from the single shared games DB.
+  // Build the plan. Most games live in the shared simple_game.db; a few
+  // (Math Slash) live in their own DB and declare `db` explicitly.
+  const today = istDateStr();
+  const msWeek = weekStartIST();
   const plan = [];
   let needZkltc = 0, needLdex = 0, needPts = 0;
-  const gdb = openDb(SHARED_DB);
-  if (!gdb) {
-    console.error(`Could not open shared games DB: ${path.join(SERVER_DIR, SHARED_DB)}`);
-    process.exit(1);
+  const dbCache = {};
+  function dbFor(file) {
+    if (!(file in dbCache)) dbCache[file] = openDb(file);
+    return dbCache[file];
   }
   for (const g of GAMES) {
+    // Per-game start-date guard: skip games whose first payout date
+    // hasn't arrived yet (Math Slash = this week, others = 7 Jun).
+    if (EXECUTE && today < g.firstPayout) {
+      console.log(`[wait] ${g.id} — first payout ${g.firstPayout}, today ${today}`);
+      continue;
+    }
+    const gdb = dbFor(g.db || SHARED_DB);
+    if (!gdb) { if (!g.optional) console.log(`[skip] ${g.id} — db ${g.db || SHARED_DB} not found`); continue; }
     let rows = [];
-    try { rows = gdb.prepare(g.sql).all(); }
-    catch (e) { if (!g.optional) console.log(`[skip] ${g.id} — ${e.message}`); continue; }
+    try {
+      const stmt = gdb.prepare(g.sql);
+      rows = g.sql.includes('@week') ? stmt.all({ week: msWeek }) : stmt.all();
+    } catch (e) { if (!g.optional) console.log(`[skip] ${g.id} — ${e.message}`); continue; }
     rows.forEach((row, i) => {
       const rank = i + 1;
       const t = tierFor(rank);
@@ -162,7 +187,7 @@ const recordPaid = (rec) =>
       needZkltc += t.zkltc; needLdex += t.ldex; needPts += t.pts;
     });
   }
-  gdb.close();
+  Object.values(dbCache).forEach((d) => { try { d && d.close(); } catch {} });
 
   console.log(`Plan: ${plan.length} payouts across ${new Set(plan.map((p) => p.game)).size} games`);
   console.log(`  Total zkLTC needed: ${needZkltc}`);
@@ -179,12 +204,8 @@ const recordPaid = (rec) =>
     process.exit(0);
   }
 
-  // Hard guard: do not distribute before the first scheduled payout date.
-  // This protects against a cron that fires on an earlier Sunday.
-  const today = istDateStr();
-  if (today < FIRST_PAYOUT) {
-    console.log(`\n⏳ Today (${today} IST) is before the first payout date (${FIRST_PAYOUT}).`);
-    console.log('   No rewards distributed. The first payout runs on/after that date.');
+  if (plan.length === 0) {
+    console.log('\nNothing to distribute right now (no eligible games / players this run).');
     process.exit(0);
   }
 

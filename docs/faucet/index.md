@@ -42,11 +42,11 @@ Both together unlock the faucet's daily 0.01 zkLTC + 10 pts. Over a week that's 
 
 ## Manual top-up for new wallets
 
-If you're brand new and have zero zkLTC, the team has manual top-up tooling. Ping the [Telegram group](https://t.me/litdex_discussion) with your address — usually within a few hours.
+If you're brand new and have zero zkLTC, the team has manual top-up tooling. Ping the [Telegram group](https://t.me/litdex_discussion) with your address - usually within a few hours.
 
 ## Why the gating?
 
-Earlier the faucet only required a 24-hour cooldown. Bots farmed it heavily — fresh wallets created daily, claimed once, abandoned. The NFT + `.lit` requirement raises the bar enough that bots can't profit (the setup costs more than they could ever extract).
+Earlier the faucet only required a 24-hour cooldown. Bots farmed it heavily - fresh wallets created daily, claimed once, abandoned. The NFT + `.lit` requirement raises the bar enough that bots can't profit (the setup costs more than they could ever extract).
 
 Real users have these by their second day on the platform anyway.
 

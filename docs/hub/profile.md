@@ -4,9 +4,9 @@ The profile page is the public-facing card for any `.lit` user. From your own pr
 
 ## Sections
 
-- **Identity card** — avatar (auto-generated from name), bio, owned names, primary name selector
-- **Transfer history** — every zkLTC transfer to/from this wallet, scoped per wallet so swapping accounts shows the new wallet's history only
-- **Activity feed** — recent posts, recent messages, recent market actions (read directly from chain)
+- **Identity card** - avatar (auto-generated from name), bio, owned names, primary name selector
+- **Transfer history** - every zkLTC transfer to/from this wallet, scoped per wallet so swapping accounts shows the new wallet's history only
+- **Activity feed** - recent posts, recent messages, recent market actions (read directly from chain)
 
 ## Set bio
 
@@ -30,6 +30,6 @@ If you own multiple `.lit` names, pick one as primary:
 
 ## Privacy
 
-Bios are public — visible to anyone. Owned names are public. Transfer history is public on chain (anyone with your wallet address can see it on the explorer), but the profile only shows transfers that involve `.lit` names or known dApp interactions to keep the feed readable.
+Bios are public - visible to anyone. Owned names are public. Transfer history is public on chain (anyone with your wallet address can see it on the explorer), but the profile only shows transfers that involve `.lit` names or known dApp interactions to keep the feed readable.
 
-> The profile page is also the entry point for marketplace actions on your names — there's a "List for sale" button next to each owned name.
+> The profile page is also the entry point for marketplace actions on your names - there's a "List for sale" button next to each owned name.

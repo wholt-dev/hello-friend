@@ -18,7 +18,7 @@ Time-bound names expire after their term unless renewed. **Forever** names never
 
 ## How do points convert to zkLTC?
 
-Currently game points (Math Slash) credit on-chain via `recordQuestFor`. zkLTC conversion is **paused** while the team retunes the system. Points are not lost — they sit in your `total` and will convert when the rate is finalized.
+Currently game points (Math Slash) credit on-chain via `recordQuestFor`. zkLTC conversion is **paused** while the team retunes the system. Points are not lost - they sit in your `total` and will convert when the rate is finalized.
 
 ## Why did my message land but I got 0 points?
 
@@ -26,11 +26,11 @@ You hit the daily 10-message cap. After 10 messages today, points stop crediting
 
 ## Can I run multiple wallets?
 
-Yes — but each wallet needs its own NFT and `.lit` for faucet eligibility. The dApp scopes everything per wallet so swapping accounts is clean.
+Yes - but each wallet needs its own NFT and `.lit` for faucet eligibility. The dApp scopes everything per wallet so swapping accounts is clean.
 
 ## Why does my dashboard show stale points?
 
-Hard refresh (Ctrl+Shift+R / Cmd+Shift+R) and reconnect the wallet. The dashboard reads `getPoints()` directly from chain — if the chain is up to date, the cache should refresh on reload.
+Hard refresh (Ctrl+Shift+R / Cmd+Shift+R) and reconnect the wallet. The dashboard reads `getPoints()` directly from chain - if the chain is up to date, the cache should refresh on reload.
 
 ## How do I list my `.lit` name for sale?
 
@@ -40,9 +40,9 @@ Go to Hub → .lit Market → **List a name**. First time, you sign an operator 
 
 Partially:
 
-- `https://api.test-hub.xyz/points/:wallet` — read points
-- `https://hub.test-hub.xyz/hub/names/owned/:wallet` — owned `.lit` names
-- `https://api.test-hub.xyz/faucet/eligibility/:wallet` — faucet eligibility
+- `https://api.test-hub.xyz/points/:wallet` - read points
+- `https://hub.test-hub.xyz/hub/names/owned/:wallet` - owned `.lit` names
+- `https://api.test-hub.xyz/faucet/eligibility/:wallet` - faucet eligibility
 
 Full API docs are pending.
 

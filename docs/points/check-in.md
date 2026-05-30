@@ -6,7 +6,7 @@ Free 10 points every day, plus streak bonuses.
 
 1. Open the **Points** page.
 2. Click the **Daily Check-in** card (top right of the dashboard).
-3. Sign the transaction — `DailyCheckin.checkin()`.
+3. Sign the transaction - `DailyCheckin.checkin()`.
 
 You earn:
 
@@ -36,7 +36,7 @@ The exact payout is computed inside the contract and shown in the success card.
 
 - It is the highest points-per-second action in the dApp (10 pts for 1 click).
 - LDEX accumulates passively.
-- Streak bonuses compound — long-term users dominate the leaderboard.
+- Streak bonuses compound - long-term users dominate the leaderboard.
 - Day 1 of a new streak gets the zkLTC kicker.
 
-> Set a phone reminder for 23:55 IST so you never break a streak. The reset window is precise — checking in at 00:01 IST gets you the new day's bonus.
+> Set a phone reminder for 23:55 IST so you never break a streak. The reset window is precise - checking in at 00:01 IST gets you the new day's bonus.

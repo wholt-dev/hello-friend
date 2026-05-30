@@ -23,8 +23,8 @@ The LitDEX dApp prompts to add the network the first time you sign a transaction
 After your first faucet claim:
 
 - **Try a swap** so the router cache warms up and your wallet shows balances.
-- **Mint a Genesis NFT** if you have enough points — it unlocks daily passive rewards.
+- **Mint a Genesis NFT** if you have enough points - it unlocks daily passive rewards.
 - **Send a message** in the [Hub](/hub/) global feed to start your on-chain reputation.
-- **Complete socials** — follow @LitDeXApp on X and join the Telegram for free points.
+- **Complete socials** - follow @LitDeXApp on X and join the Telegram for free points.
 
 > A wallet that has held a LitDEX NFT and a `.lit` domain unlocks the faucet, daily rewards, and points multipliers.

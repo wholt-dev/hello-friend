@@ -5,9 +5,9 @@ LitDEX has a 3-tier Genesis NFT collection. Each tier costs points to mint and p
 ## Why hold?
 
 - **Daily passive yield** in three tokens.
-- **Faucet eligibility** — holding any LitDEX NFT is half of the faucet's eligibility check.
-- **Status** — the NFT shows on your profile and global feed posts.
-- **Future utility** — leaderboard multipliers, governance weight, and exclusive drops are planned.
+- **Faucet eligibility** - holding any LitDEX NFT is half of the faucet's eligibility check.
+- **Status** - the NFT shows on your profile and global feed posts.
+- **Future utility** - leaderboard multipliers, governance weight, and exclusive drops are planned.
 
 ## The tiers
 
@@ -15,9 +15,9 @@ LitDEX has a 3-tier Genesis NFT collection. Each tier costs points to mint and p
 | --- | --- | --- | --- |
 | LitShard (Common) | 1,000 pts | 9,999 | 0.0001 zkLTC + 10 USDC + 2 LDEX |
 | LitCore (Rare) | 5,000 pts | 4,999 | 0.0005 zkLTC + 50 USDC + 10 LDEX |
-| LitGod (Legendary) | 25,000 pts | 999 | 0.005 zkLTC + 500 USDC + 100 LDEX |
+| LitGod (Legendary) | 10,000 pts | 999 | 0.005 zkLTC + 500 USDC + 100 LDEX |
 
-LitGod is intentionally scarce — only ~1,000 will ever exist.
+LitGod is intentionally scarce - only ~1,000 will ever exist.
 
 ## How to mint
 
@@ -34,7 +34,7 @@ Once you own an NFT:
 2. Click **Claim Daily Rewards** (or per-tier claim if you hold multiple tiers).
 3. Sign. The yield since your last claim transfers to your wallet.
 
-The contract tracks `lastClaimDay` per (user, nftType). You can claim once per day per tier. Skipping days is fine — the yield does not compound, it just lands as a single payout for whatever days have passed since your last claim.
+The contract tracks `lastClaimDay` per (user, nftType). You can claim once per day per tier. Skipping days is fine - the yield does not compound, it just lands as a single payout for whatever days have passed since your last claim.
 
 ## Multiple of the same tier
 

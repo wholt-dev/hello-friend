@@ -9,7 +9,7 @@ All LitDEX contracts on the LiteForge chain (4441). Verified on the [explorer](h
 | `PointsSystem` | `0x526B0629C81d3314929dB8166372F792F3da3419` |
 | `DailyCheckin` | `0xDdE6F0ee964A9fdF71CDB2cBDF1e5E44263d3825` |
 | `LitDeXNFT` | `0x59df2d661eb6F5fb97a694E1D2e4D17e2A7b7D15` |
-| `LitDeXDeployer` | (see app — auto-routed) |
+| `LitDeXDeployer` | (see app - auto-routed) |
 
 ## Hub
 

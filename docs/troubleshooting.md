@@ -2,7 +2,7 @@
 
 ## "Switch to LiteForge" banner won't go away
 
-Your wallet is on the wrong chain. Click the banner — the dApp triggers `wallet_switchEthereumChain` to chain ID 4441. If the wallet doesn't have LiteForge yet, it'll prompt to add it.
+Your wallet is on the wrong chain. Click the banner - the dApp triggers `wallet_switchEthereumChain` to chain ID 4441. If the wallet doesn't have LiteForge yet, it'll prompt to add it.
 
 If switching fails, [add LiteForge manually](/getting-started/wallet#add-liteforge-manually).
 
@@ -10,9 +10,9 @@ If switching fails, [add LiteForge manually](/getting-started/wallet#add-litefor
 
 Open the [LiteForge explorer](https://liteforge.explorer.caldera.xyz) and paste your tx hash:
 
-- **Failed** — increase gas slightly and resend.
-- **Confirmed but UI didn't update** — hard refresh the dApp (Ctrl+Shift+R).
-- **Not found** — the tx never reached the RPC. Try sending again.
+- **Failed** - increase gas slightly and resend.
+- **Confirmed but UI didn't update** - hard refresh the dApp (Ctrl+Shift+R).
+- **Not found** - the tx never reached the RPC. Try sending again.
 
 If MetaMask shows ghost pending, go to Settings → Advanced → Reset Activity.
 
@@ -57,7 +57,7 @@ Math Slash uses an iframe. If it doesn't load:
 
 Points credit after the registration tx confirms. If 5 minutes have passed and your `total` hasn't updated:
 
-- check the tx on the explorer — confirmed?
+- check the tx on the explorer - confirmed?
 - if confirmed, the relayer might be rate-limited. Wait 10 more minutes.
 - still nothing? Paste the tx hash in [Telegram](https://t.me/litdex_discussion) and we'll requeue.
 
@@ -71,7 +71,7 @@ Token balances are read live from chain. If the dApp shows stale numbers:
 
 ## I want to disconnect / change wallets
 
-Top-right wallet pill → **Disconnect**. Then connect a different account from MetaMask. The dApp clears all per-wallet state automatically — no leftover history from the previous wallet.
+Top-right wallet pill → **Disconnect**. Then connect a different account from MetaMask. The dApp clears all per-wallet state automatically - no leftover history from the previous wallet.
 
 ## Anything else
 

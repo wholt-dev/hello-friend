@@ -34,7 +34,7 @@ Detailed look at each Genesis tier, who they're for, and how the math plays out 
 
 | Field | Value |
 | --- | --- |
-| Mint cost | 25,000 pts |
+| Mint cost | 10,000 pts |
 | Max supply | 999 |
 | Daily zkLTC | 0.005 |
 | Daily USDC | 500 |
@@ -53,10 +53,10 @@ Detailed look at each Genesis tier, who they're for, and how the math plays out 
 | Cost ÷ daily LDEX | 500 pts | 500 pts | 250 pts |
 | Scarcity | 9,999 | 4,999 | 999 |
 
-LitGod is the most efficient yield-per-point but the hardest to acquire because of the 25,000 pts cost.
+LitGod is the most efficient yield-per-point but the hardest to acquire because of the 10,000 pts cost.
 
 ## Mint progress
 
 The NFTs page shows live mint progress per tier (`current / max`). LitGods are expected to sell out first.
 
-> Plan your mint. Saving 25,000 points takes weeks of consistent activity. Many users mint a LitShard early to unlock the faucet, then stack pts toward a LitCore or LitGod.
+> Plan your mint. Saving 10,000 points takes weeks of consistent activity. Many users mint a LitShard early to unlock the faucet, then stack pts toward a LitCore or LitGod.

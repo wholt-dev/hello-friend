@@ -1,6 +1,6 @@
 # Private Chat
 
-DM another `.lit` user. Friend-locked — you can only DM wallets that are in your friends list.
+DM another `.lit` user. Friend-locked - you can only DM wallets that are in your friends list.
 
 ## Add a friend
 
@@ -31,7 +31,7 @@ You can send zkLTC with an attached note using the green "$" button next to the 
 
 ## Privacy
 
-- Messages are public on chain — anyone with the contract address can read them by tx history.
+- Messages are public on chain - anyone with the contract address can read them by tx history.
 - Names and addresses are public.
 - The dApp does not encrypt content; it stores the raw text via the indexer + the contentHash on chain.
 - For sensitive info, use external E2E channels (Signal, etc).

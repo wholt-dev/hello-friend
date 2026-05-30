@@ -11,7 +11,7 @@ To prevent bot abuse, a claim requires **both** of the following:
 - ✅ Hold at least one LitDEX NFT (`LitShard`, `LitCore`, or `LitGod`)
 - ✅ Own at least one `.lit` domain on the LiteForge registry
 
-If either is missing, the claim button shows **"NFT + .lit Domain Required"** and the modal lists which check failed. The on-chain transaction never even attempts to fire — eligibility is enforced by the backend before sending.
+If either is missing, the claim button shows **"NFT + .lit Domain Required"** and the modal lists which check failed. The on-chain transaction never even attempts to fire - eligibility is enforced by the backend before sending.
 
 ## How to claim
 
@@ -29,7 +29,7 @@ The cooldown timer counts down from 24 hours. Try again after that.
 | LitDEX NFT | Buy with points from the [NFTs page](/nfts/). LitShard costs 1,000 pts and is the easiest tier to reach. |
 | `.lit` domain | Register on the [Hub Buy page](/hub/lit-domain). 1 year is 0.05 zkLTC. |
 
-If you are completely new and have zero zkLTC, ping the team in [Telegram](https://t.me/litdex_discussion) — manual top-ups are available for new wallets.
+If you are completely new and have zero zkLTC, ping the team in [Telegram](https://t.me/litdex_discussion) - manual top-ups are available for new wallets.
 
 ## Why the gating?
 
