@@ -1,0 +1,18 @@
+// Add this BEFORE the final closing brace `}` of LitMarketplace.sol
+// (i.e. before line 152). It introduces a seller-side rejectBid that
+// refunds the bidder's locked zkLTC.
+
+    event BidRejected(string name, address indexed seller, address indexed bidder, uint256 amount);
+
+    function rejectBid(string memory name, address bidder) external {
+        (address nameOwner, , , ) = registry.names(name);
+        require(nameOwner == msg.sender, "Not your name");
+        require(hasBid[name][bidder], "No bid from this address");
+        uint256 idx = bidIndex[name][bidder];
+        Bid storage b = bids[name][idx];
+        require(b.active, "Bid not active");
+        b.active = false;
+        hasBid[name][bidder] = false;
+        payable(bidder).transfer(b.amount);
+        emit BidRejected(name, msg.sender, bidder, b.amount);
+    }

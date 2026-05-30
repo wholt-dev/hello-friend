@@ -3665,6 +3665,253 @@ const WeeklyLeaderboard = ({ className = '' }: { className?: string }) => {
   );
 };
 
+const CASINO_API = 'https://game.test-hub.xyz';
+const CASINO_STAKE_MULTIPLE = 5;
+// 6 casino games × 20 daily plays × 5 PTS stake = 600 PTS for a full
+// daily session. Round up to the next multiple of 50 for a cleaner
+// UX recommendation.
+const CASINO_DAILY_RECOMMENDED = 600;
+const CASINO_GAMES_BREAKDOWN = '6 casino games · 20 plays/day · 5 PTS stake';
+
+const CasinoWalletBadge = ({ wallet, onOpen }: { wallet: string; onOpen: () => void }) => {
+  const [balance, setBalance] = useState<number | null>(null);
+  useEffect(() => {
+    if (!wallet) { setBalance(null); return; }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await fetch(`${CASINO_API}/casino/balance/${wallet}`);
+        if (r.ok) {
+          const d = await r.json();
+          if (!cancelled) setBalance(Number(d?.balance ?? 0));
+        }
+      } catch { /* ignore — endpoint might not be deployed yet */ }
+    };
+    load();
+    const t = setInterval(load, 15000);
+    const handler = () => load();
+    window.addEventListener('litdex:casino-wallet:refresh', handler);
+    return () => { cancelled = true; clearInterval(t); window.removeEventListener('litdex:casino-wallet:refresh', handler); };
+  }, [wallet]);
+  return (
+    <button
+      onClick={onOpen}
+      className="inline-flex items-center gap-3 px-4 py-2 rounded-xl bg-[#0a0a0a] border border-[#1f1f1f] hover:border-white/30 text-white font-mono text-[11px] font-bold uppercase tracking-widest transition-colors"
+    >
+      <span className="text-white/55">Casino Balance</span>
+      <span className="text-[#5be0a4]">{balance == null ? '—' : balance.toLocaleString()} PTS</span>
+      <span className="text-white/30">·</span>
+      <span className="text-white">Deposit / Withdraw</span>
+    </button>
+  );
+};
+
+const CasinoWalletModal = ({ open, onClose, wallet }: { open: boolean; onClose: () => void; wallet: string }) => {
+  const [tab, setTab] = useState<'deposit'|'withdraw'>('deposit');
+  const [amount, setAmount] = useState<string>('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [success, setSuccess] = useState<{ txHash: string; balance: number } | null>(null);
+  const [info, setInfo] = useState<{ balance: number; totalDeposited: number; totalWithdrawn: number; depositsToday?: number; depositsRemaining?: number; dailyDepositCap?: number } | null>(null);
+  const [onChainPts, setOnChainPts] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!open || !wallet) return;
+    setErr(''); setAmount(''); setSuccess(null);
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await fetch(`${CASINO_API}/casino/balance/${wallet}`);
+        if (r.ok) {
+          const d = await r.json();
+          if (!cancelled) setInfo({
+            balance: Number(d?.balance ?? 0),
+            totalDeposited: Number(d?.totalDeposited ?? 0),
+            totalWithdrawn: Number(d?.totalWithdrawn ?? 0),
+            depositsToday: Number(d?.depositsToday ?? 0),
+            depositsRemaining: d?.depositsRemaining != null ? Number(d.depositsRemaining) : undefined,
+            dailyDepositCap: d?.dailyDepositCap != null ? Number(d.dailyDepositCap) : undefined,
+          });
+        }
+      } catch { /* ignore */ }
+      try {
+        const r = await fetch(`https://api.test-hub.xyz/points/${wallet}`);
+        if (r.ok) {
+          const d = await r.json();
+          if (!cancelled) setOnChainPts(Number(d?.total ?? 0));
+        }
+      } catch { /* ignore */ }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [open, wallet, busy]);
+
+  const max = tab === 'deposit' ? (onChainPts ?? 0) : (info?.balance ?? 0);
+  const maxRoundedDown = max - (max % CASINO_STAKE_MULTIPLE);
+
+  const submit = async () => {
+    if (!wallet) { setErr('Connect wallet first'); return; }
+    const n = Number(amount);
+    if (!Number.isFinite(n) || n <= 0) { setErr('Enter a positive amount'); return; }
+    if (n % CASINO_STAKE_MULTIPLE !== 0) { setErr(`Must be a multiple of ${CASINO_STAKE_MULTIPLE}`); return; }
+    if (tab === 'deposit' && onChainPts != null && n > onChainPts) { setErr(`You only have ${onChainPts.toLocaleString()} on-chain pts`); return; }
+    if (tab === 'withdraw' && info && n > info.balance) { setErr(`Casino balance is only ${info.balance.toLocaleString()}`); return; }
+    setErr(''); setBusy(true); setSuccess(null);
+    try {
+      const r = await fetch(`${CASINO_API}/casino/${tab}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet, amount: n }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) {
+        const code = d?.error || `${tab}_failed`;
+        const human: Record<string, string> = {
+          on_chain_burn_failed: 'On-chain burn failed. Server may be busy — try again in a sec.',
+          on_chain_mint_failed: 'On-chain mint failed. Balance restored — try again.',
+          insufficient: 'Casino balance is insufficient.',
+          bad_amount: 'Invalid amount.',
+          must_be_multiple_of_5: 'Amount must be a multiple of 5.',
+          min_deposit_5: 'Minimum deposit is 5 PTS.',
+          min_withdraw_5: 'Minimum withdraw is 5 PTS.',
+          max_deposit_1000000: 'Maximum deposit is 1,000,000 PTS per call.',
+          bad_wallet: 'Wallet address is invalid.',
+          daily_deposit_cap_reached: 'You\'ve hit the daily deposit cap (2/day). Resets at 00:00 IST — think twice next time.',
+        };
+        setErr(human[code] || code);
+      } else {
+        setSuccess({ txHash: d.txHash, balance: d.balance });
+        setAmount('');
+        try { window.dispatchEvent(new Event('litdex:casino-wallet:refresh')); } catch {}
+      }
+    } catch { setErr('Network error — server may be down'); }
+    setBusy(false);
+  };
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[200000] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-brand-surface border border-brand-border rounded-2xl p-6 w-full max-w-[440px] font-mono text-brand-text-primary max-h-[90vh] overflow-y-auto">
+        <div className="text-center mb-4">
+          <div className="text-2xl font-bold tracking-tighter text-brand-text-primary">Casino Wallet</div>
+          <div className="text-[10px] uppercase tracking-widest text-brand-text-muted mt-1">Deposit once · play freely · withdraw any time</div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5">
+            <div className="text-[8px] uppercase tracking-widest text-brand-text-muted mb-0.5">On-Chain Points</div>
+            <div className="text-brand-text-primary font-bold text-sm">{onChainPts == null ? '—' : onChainPts.toLocaleString()}</div>
+          </div>
+          <div className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5">
+            <div className="text-[8px] uppercase tracking-widest text-brand-text-muted mb-0.5">Casino Balance</div>
+            <div className="text-[#5be0a4] font-bold text-sm">{info ? info.balance.toLocaleString() : '—'}</div>
+          </div>
+        </div>
+        {info && (info.totalDeposited > 0 || info.totalWithdrawn > 0) && (
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <div className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-1.5 text-center">
+              <div className="text-[8px] uppercase tracking-widest text-brand-text-muted">Total Deposited</div>
+              <div className="text-brand-text-primary text-xs">{info.totalDeposited.toLocaleString()}</div>
+            </div>
+            <div className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-1.5 text-center">
+              <div className="text-[8px] uppercase tracking-widest text-brand-text-muted">Total Withdrawn</div>
+              <div className="text-brand-text-primary text-xs">{info.totalWithdrawn.toLocaleString()}</div>
+            </div>
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-1.5 mb-4">
+          {(['deposit', 'withdraw'] as const).map((t) => (
+            <button key={t} onClick={() => { setTab(t); setErr(''); setAmount(''); setSuccess(null); }} className={`py-2 rounded-lg text-[10px] uppercase tracking-widest font-bold transition-colors ${tab === t ? 'bg-white text-black' : 'bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-muted hover:text-brand-text-primary'}`}>{t}</button>
+          ))}
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-[9px] uppercase tracking-widest text-brand-text-muted">Amount · multiple of {CASINO_STAKE_MULTIPLE}</div>
+            <div className="text-[9px] text-brand-text-muted">Available: <span className="text-brand-text-primary font-bold">{max.toLocaleString()}</span></div>
+          </div>
+          <input
+            type="number"
+            min={CASINO_STAKE_MULTIPLE}
+            step={CASINO_STAKE_MULTIPLE}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder={`e.g. ${CASINO_STAKE_MULTIPLE * 20}`}
+            className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5 text-[14px] text-brand-text-primary placeholder:text-brand-text-muted/50 outline-none focus:border-white/30"
+          />
+          <div className="grid grid-cols-5 gap-1.5 mt-2">
+            {[50, 100, 500, 1000].map((p) => (
+              <button key={p} disabled={p > max} onClick={() => setAmount(String(p))} className="py-1.5 rounded-md text-[10px] font-bold bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-muted hover:text-brand-text-primary disabled:opacity-30 disabled:cursor-not-allowed">{p}</button>
+            ))}
+            <button disabled={maxRoundedDown <= 0} onClick={() => setAmount(String(maxRoundedDown))} className="py-1.5 rounded-md text-[10px] font-bold bg-white text-black hover:bg-white/90 disabled:opacity-30 disabled:cursor-not-allowed">MAX</button>
+          </div>
+        </div>
+        <div className="text-[10px] text-brand-text-muted mt-3">
+          {tab === 'deposit'
+            ? 'Burns this many points on chain and credits your casino balance. One transaction.'
+            : 'Withdraws from casino balance back to on-chain points. One transaction.'}
+        </div>
+        {tab === 'deposit' && (
+          <div className="mt-3 px-3 py-2 rounded-lg bg-[#0a0a0a] border border-[#1f1f1f] text-[10px] text-brand-text-muted leading-relaxed">
+            <div className="flex items-center justify-between">
+              <span className="text-brand-text-primary font-bold uppercase tracking-widest text-[9px]">Recommended</span>
+              <button onClick={() => setAmount(String(CASINO_DAILY_RECOMMENDED))} className="text-[#5be0a4] underline text-[10px] font-bold">{CASINO_DAILY_RECOMMENDED} PTS</button>
+            </div>
+            <div className="mt-1">{CASINO_GAMES_BREAKDOWN} = <span className="text-brand-text-primary">{CASINO_DAILY_RECOMMENDED} PTS</span> for a full daily session.</div>
+            {info && info.dailyDepositCap != null && (
+              <div className="mt-1.5 pt-1.5 border-t border-white/5">
+                Daily deposits used: <span className="text-brand-text-primary font-bold">{info.depositsToday ?? 0} / {info.dailyDepositCap}</span>
+                {info.depositsRemaining === 0 && <span className="text-[#ff8a8a]"> · cap reached, resets 00:00 IST</span>}
+                <div className="opacity-70 mt-0.5">2 deposits per day — think twice how much you want to deposit.</div>
+              </div>
+            )}
+          </div>
+        )}
+        {err && <div className="mt-3 px-3 py-2 rounded-lg bg-[rgba(239,73,86,0.08)] border border-[rgba(239,73,86,0.3)] text-[#ef4956] text-[11px]">{err}</div>}
+        {success && (
+          <div className="mt-3 px-3 py-2 rounded-lg bg-[rgba(62,207,142,0.08)] border border-[rgba(62,207,142,0.3)] text-[#3ecf8e] text-[11px]">
+            ✓ {tab === 'deposit' ? 'Deposit' : 'Withdraw'} confirmed · new balance: {success.balance.toLocaleString()}
+            {success.txHash && (
+              <a href={`https://liteforge.explorer.caldera.xyz/tx/${success.txHash}`} target="_blank" rel="noreferrer" className="block mt-1 underline">
+                tx {success.txHash.slice(0, 10)}…{success.txHash.slice(-6)}
+              </a>
+            )}
+          </div>
+        )}
+        <div className="flex gap-2 mt-5">
+          <button onClick={submit} disabled={busy || !wallet || (tab === 'deposit' && info?.depositsRemaining === 0)} className="flex-1 py-3 rounded-lg bg-white text-black font-bold text-[11px] uppercase tracking-widest disabled:opacity-50 hover:bg-white/90 transition-colors">
+            {busy ? 'Processing…' : tab === 'deposit'
+              ? (info?.depositsRemaining === 0 ? 'Daily Cap Reached' : 'Deposit')
+              : 'Withdraw'}
+          </button>
+          <button onClick={onClose} className="flex-1 py-3 rounded-lg bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-primary font-bold text-[11px] uppercase tracking-widest hover:bg-[#1a1a1a] transition-colors">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const REWARD_TIERS = [
+  { range: 'Rank 1',     ldex: '1 zkLTC + 10K LDEX', pts: '2,500 PTS' },
+  { range: 'Rank 2',     ldex: '10K LDEX',          pts: '1,000 PTS' },
+  { range: 'Rank 3',     ldex: '5K LDEX',           pts: '500 PTS' },
+  { range: 'Rank 4-10',  ldex: '3K LDEX',           pts: '300 PTS' },
+  { range: 'Rank 11-20', ldex: '1K LDEX',           pts: '100 PTS' },
+];
+
+const RewardTierFooter = () => (
+  <div className="mt-4 pt-3 border-t border-brand-border text-[10px] text-brand-text-muted space-y-0.5">
+    <div className="text-brand-text-primary font-bold mb-1.5">Weekly Rewards · Top 20</div>
+    {REWARD_TIERS.map((t) => (
+      <div key={t.range} className="flex items-center justify-between gap-2">
+        <span>{t.range}</span>
+        <span className="text-right text-brand-text-muted">
+          <span className="text-brand-text-primary">{t.ldex}</span> · {t.pts}
+        </span>
+      </div>
+    ))}
+    <div className="pt-2 opacity-70">Top 20 rewarded every Sunday midnight IST</div>
+  </div>
+);
+
 const ConvertPointsCard = ({ wallet }: { wallet: string }) => {
   const SIMPLE_API = 'https://game.test-hub.xyz';
   const [pending, setPending] = useState<{ gamesPending: number; totalScore: number; pointsAvailable: number } | null>(null);
@@ -4148,6 +4395,7 @@ const MathSlashPage = ({ onBack }: { onBack: () => void }) => {
           </tbody>
         </table>
       )}
+      <RewardTierFooter />
     </div>
   );
 
@@ -4515,7 +4763,7 @@ const PumpDumpPage = ({ onBack }: { onBack: () => void }) => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pump-dump-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
 
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -4675,8 +4923,10 @@ const PumpDumpPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Pump or Dump · Top Pots" endpoint={`${SIMPLE_API}/pumpdump/leaderboard`} scoreField="best_pot" scoreLabel="Best Pot" /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/pumpdump/global`} />}
+      </motion.div>
   );
 };
 
@@ -4812,7 +5062,7 @@ const LitTowerPage = ({ onBack }: { onBack: () => void }) => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-tower-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
 
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -4960,8 +5210,10 @@ const LitTowerPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Tower · Top Heights" endpoint={`${SIMPLE_API}/littower/leaderboard`} scoreField="best_height" scoreLabel="Best Height" /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/littower/global`} />}
+      </motion.div>
   );
 };
 
@@ -5093,7 +5345,7 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="zk-miner-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
 
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -5245,8 +5497,10 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="ZK Miner · Top Scores" endpoint={`${SIMPLE_API}/zkminer/leaderboard`} scoreField="best_score" scoreLabel="Best Score" scoreFormat={(v) => `${Number(v||0).toFixed(1)} PTS`} /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/zkminer/global`} />}
+      </motion.div>
   );
 };
 
@@ -5380,7 +5634,7 @@ const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-launch-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
 
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -5529,8 +5783,10 @@ const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Launch · Top Coins" endpoint={`${SIMPLE_API}/litlaunch/leaderboard`} scoreField="best_score" scoreLabel="Coins" /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/litlaunch/global`} />}
+      </motion.div>
   );
 };
 
@@ -5662,7 +5918,7 @@ const BlockChainPage = ({ onBack }: { onBack: () => void }) => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="block-chain-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
 
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -5815,8 +6071,10 @@ const BlockChainPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Block Chain · Top Tiles" endpoint={`${SIMPLE_API}/blockchain/leaderboard`} scoreField="best_tile" scoreLabel="Best Tile" /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/blockchain/global`} />}
+      </motion.div>
   );
 };
 
@@ -5863,6 +6121,7 @@ const LitDicePage = ({ onBack }: { onBack: () => void }) => {
             link: d?.txInfo?.explorerUrl,
           });
         } catch {}
+        saveFairness({ game: 'dice', seedHash: d.seedHash, serverSeed: d.serverSeed, roundId: d.roundId });
         fetchStats();
       }
     };
@@ -5899,7 +6158,7 @@ const LitDicePage = ({ onBack }: { onBack: () => void }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-dice-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -5941,8 +6200,10 @@ const LitDicePage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Dice · Top Multipliers" endpoint={`${SIMPLE_API}/litdice/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/litdice/global`} />}
+      </motion.div>
   );
 };
 
@@ -5989,6 +6250,7 @@ const LitLimboPage = ({ onBack }: { onBack: () => void }) => {
             link: d?.txInfo?.explorerUrl,
           });
         } catch {}
+        saveFairness({ game: 'limbo', seedHash: d.seedHash, serverSeed: d.serverSeed, roundId: d.roundId });
         fetchStats();
       }
     };
@@ -6025,7 +6287,7 @@ const LitLimboPage = ({ onBack }: { onBack: () => void }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-limbo-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -6068,8 +6330,10 @@ const LitLimboPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Limbo · Top Crashes" endpoint={`${SIMPLE_API}/litlimbo/leaderboard`} scoreField="best_roll" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/litlimbo/global`} />}
+      </motion.div>
   );
 };
 
@@ -6116,6 +6380,7 @@ const LitMinesPage = ({ onBack }: { onBack: () => void }) => {
             link: d?.txInfo?.explorerUrl,
           });
         } catch {}
+        saveFairness({ game: 'mines', seedHash: d.seedHash, serverSeed: d.serverSeed, roundId: d.roundId, bombs: d.bombs });
         fetchStats();
       }
     };
@@ -6152,7 +6417,7 @@ const LitMinesPage = ({ onBack }: { onBack: () => void }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-mines-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -6195,8 +6460,10 @@ const LitMinesPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Mines · Top Multipliers" endpoint={`${SIMPLE_API}/litmines/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/litmines/global`} />}
+      </motion.div>
   );
 };
 
@@ -6224,6 +6491,7 @@ const LitPlinkoPage = ({ onBack }: { onBack: () => void }) => {
       if (d.type === 'litdex:litplinko:exit') { setPlaying(false); try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {} try { (screen.orientation as any)?.unlock?.(); } catch {} fetchStats(); return; }
       if (d.type === 'litdex:litplinko:end') {
         try { addNotif(lowerAddr, { type: 'game', title: d.won ? 'Lit Plinko · Win' : 'Lit Plinko · Loss', message: `${Number(d.multiplier || 0).toFixed(2)}x · ${d.profit >= 0 ? '+' : ''}${d.profit} PTS`, link: d?.txInfo?.explorerUrl }); } catch {}
+        saveFairness({ game: 'plinko', seedHash: d.seedHash, serverSeed: d.serverSeed, clientSeed: d.clientSeed, risk: d.risk });
         fetchStats();
       }
     };
@@ -6247,7 +6515,7 @@ const LitPlinkoPage = ({ onBack }: { onBack: () => void }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-plinko-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -6288,8 +6556,10 @@ const LitPlinkoPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Plinko · Top Multipliers" endpoint={`${SIMPLE_API}/litplinko/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/litplinko/global`} />}
+      </motion.div>
   );
 };
 
@@ -6314,6 +6584,7 @@ const LitWheelPage = ({ onBack }: { onBack: () => void }) => {
       if (d.type === 'litdex:litwheel:exit') { setPlaying(false); try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {} try { (screen.orientation as any)?.unlock?.(); } catch {} fetchStats(); return; }
       if (d.type === 'litdex:litwheel:end') {
         try { addNotif(lowerAddr, { type: 'game', title: d.won ? 'Lit Wheel · Win' : 'Lit Wheel · Loss', message: `${Number(d.multiplier || 0).toFixed(2)}x · ${d.profit >= 0 ? '+' : ''}${d.profit} PTS`, link: d?.txInfo?.explorerUrl }); } catch {}
+        saveFairness({ game: 'wheel', seedHash: d.seedHash, serverSeed: d.serverSeed, clientSeed: d.clientSeed, risk: d.risk });
         fetchStats();
       }
     };
@@ -6337,7 +6608,7 @@ const LitWheelPage = ({ onBack }: { onBack: () => void }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-wheel-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -6378,8 +6649,10 @@ const LitWheelPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Wheel · Top Multipliers" endpoint={`${SIMPLE_API}/litwheel/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/litwheel/global`} />}
+      </motion.div>
   );
 };
 
@@ -6404,6 +6677,7 @@ const LitCoinFlipPage = ({ onBack }: { onBack: () => void }) => {
       if (d.type === 'litdex:litcoinflip:exit') { setPlaying(false); try { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); } catch {} try { (screen.orientation as any)?.unlock?.(); } catch {} fetchStats(); return; }
       if (d.type === 'litdex:litcoinflip:end') {
         try { addNotif(lowerAddr, { type: 'game', title: d.won ? `Lit Coin Flip · Streak ×${d.streak}` : 'Lit Coin Flip · Loss', message: `${Number(d.multiplier || 0).toFixed(2)}x · ${d.profit >= 0 ? '+' : ''}${d.profit} PTS`, link: d?.txInfo?.explorerUrl }); } catch {}
+        saveFairness({ game: 'coinflip', seedHash: d.seedHash, serverSeed: d.serverSeed, clientSeed: d.clientSeed, side: d.side, streak: d.streak });
         fetchStats();
       }
     };
@@ -6427,7 +6701,7 @@ const LitCoinFlipPage = ({ onBack }: { onBack: () => void }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-coin-flip-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -6468,14 +6742,386 @@ const LitCoinFlipPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Coin Flip · Top Streaks" endpoint={`${SIMPLE_API}/litcoinflip/leaderboard`} scoreField="best_streak" scoreLabel="Best Streak" scoreFormat={(v) => `×${Number(v||0)}`} /></div>)}
       </div>
-    </motion.div>
+          {!playing && <GameGlobalStats endpoint={`${SIMPLE_API}/litcoinflip/global`} />}
+      </motion.div>
+  );
+};
+
+const GameGlobalStats = ({ endpoint, className = '' }: { endpoint: string; className?: string }) => {
+  const [stats, setStats] = useState<{ totalGames: number; uniquePlayers: number; totalPoints: number } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await fetch(endpoint);
+        if (r.ok) {
+          const d = await r.json();
+          if (!cancelled) setStats({
+            totalGames: Number(d?.totalGames ?? 0),
+            uniquePlayers: Number(d?.uniquePlayers ?? 0),
+            totalPoints: Number(d?.totalPoints ?? 0),
+          });
+        }
+      } catch { /* ignore — endpoint may not be deployed yet */ }
+    };
+    load();
+    const t = setInterval(load, 60000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [endpoint]);
+  if (!stats) return null;
+  return (
+    <div className={`mt-6 p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border grid grid-cols-3 gap-4 ${className}`}>
+      <div>
+        <div className="text-[10px] uppercase text-brand-text-muted">Total Games</div>
+        <div className="text-brand-text-primary text-lg font-bold">{stats.totalGames.toLocaleString()}</div>
+      </div>
+      <div>
+        <div className="text-[10px] uppercase text-brand-text-muted">Unique Players</div>
+        <div className="text-brand-text-primary text-lg font-bold">{stats.uniquePlayers.toLocaleString()}</div>
+      </div>
+      <div>
+        <div className="text-[10px] uppercase text-brand-text-muted">Total Points Distributed</div>
+        <div className="text-brand-text-primary text-lg font-bold">{stats.totalPoints.toLocaleString()}</div>
+      </div>
+    </div>
+  );
+};
+
+const GameLeaderboard = ({ title, endpoint, scoreField, scoreLabel, scoreFormat, className = '' }: {
+  title: string;
+  endpoint: string;
+  scoreField: string;
+  scoreLabel: string;
+  scoreFormat?: (v: any) => string;
+  className?: string;
+}) => {
+  const [entries, setEntries] = useState<any[] | null>(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await fetch(endpoint);
+        if (r.ok) {
+          const d = await r.json();
+          if (!cancelled) {
+            setEntries(Array.isArray(d) ? d : (d?.leaderboard || d?.entries || []));
+            setError(false);
+          }
+        } else { if (!cancelled) setError(true); }
+      } catch { if (!cancelled) setError(true); }
+    };
+    load();
+    const t = setInterval(load, 60000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [endpoint]);
+  const mask = (a: string) => a ? `${a.slice(0, 6)}...${a.slice(-4)}` : '';
+  const fmt = scoreFormat || ((v: any) => String(v ?? 0));
+  return (
+    <div className={`p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border ${className}`}>
+      <div className="text-[11px] uppercase text-brand-text-primary mb-3">{title}</div>
+      {error || entries === null ? (
+        <div className="text-brand-text-muted text-xs">{error ? 'Leaderboard not available yet' : 'Loading…'}</div>
+      ) : entries.length === 0 ? (
+        <div className="text-brand-text-muted text-xs">No entries yet · be the first</div>
+      ) : (
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="text-brand-text-muted"><th className="text-left font-normal">#</th><th className="text-left font-normal">Wallet</th><th className="text-right font-normal">{scoreLabel}</th></tr>
+          </thead>
+          <tbody>
+            {entries.slice(0, 20).map((e: any, i: number) => {
+              const c = i === 0 ? 'text-brand-text-primary font-bold' : 'text-brand-text-muted';
+              const w = e.wallet || e.walletAddress || e.address || '';
+              const displayWallet = w.includes('...') ? w : mask(w);
+              return (
+                <tr key={i} className={c}>
+                  <td className="py-1">{i + 1}</td>
+                  <td className="py-1">{displayWallet}</td>
+                  <td className="py-1 text-right">{fmt(e[scoreField])}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      <RewardTierFooter />
+    </div>
+  );
+};
+
+const FAIRNESS_KEY = 'litdex_last_fairness_v1';
+type FairnessGame = 'dice'|'limbo'|'mines'|'plinko'|'wheel'|'coinflip';
+type FairnessRecord = {
+  game: FairnessGame;
+  seedHash?: string;
+  serverSeed?: string;
+  roundId?: string;
+  clientSeed?: string;
+  risk?: 'low'|'medium'|'high';
+  side?: 'heads'|'tails';
+  streak?: number;
+  bombs?: number;
+  ts: number;
+};
+const saveFairness = (rec: Omit<FairnessRecord, 'ts'>) => {
+  try {
+    const raw = localStorage.getItem(FAIRNESS_KEY);
+    const map: Record<string, FairnessRecord> = raw ? JSON.parse(raw) : {};
+    map[rec.game] = { ...rec, ts: Date.now() };
+    map.__last = { ...rec, ts: Date.now() };
+    localStorage.setItem(FAIRNESS_KEY, JSON.stringify(map));
+  } catch { /* ignore quota / parse */ }
+};
+const loadFairness = (g?: FairnessGame): FairnessRecord | null => {
+  try {
+    const raw = localStorage.getItem(FAIRNESS_KEY);
+    if (!raw) return null;
+    const map: Record<string, FairnessRecord> = JSON.parse(raw);
+    return (g ? map[g] : map.__last) || null;
+  } catch { return null; }
+};
+
+const ProvablyFairModal = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
+  const [game, setGame] = useState<'dice'|'limbo'|'mines'|'plinko'|'wheel'|'coinflip'>('dice');
+  const [seedHash, setSeedHash] = useState('');
+  const [serverSeed, setServerSeed] = useState('');
+  const [roundId, setRoundId] = useState('');
+  const [clientSeed, setClientSeed] = useState('');
+  const [risk, setRisk] = useState<'low'|'medium'|'high'>('low');
+  const [side, setSide] = useState<'heads'|'tails'>('heads');
+  const [streak, setStreak] = useState(1);
+  const [bombs, setBombs] = useState(3);
+  const [result, setResult] = useState<{ won: boolean; details: string; subline?: string; flips?: string; mismatch?: boolean } | null>(null);
+  const [scriptReady, setScriptReady] = useState<boolean>(typeof window !== 'undefined' && !!(window as any).LitDexVerify);
+
+  // Pre-fill on open with the most recent fairness record from any game.
+  useEffect(() => {
+    if (!open) return;
+    const last = loadFairness();
+    if (last) {
+      setGame(last.game);
+      setSeedHash(last.seedHash || '');
+      setServerSeed(last.serverSeed || '');
+      setRoundId(last.roundId || '');
+      setClientSeed(last.clientSeed || '');
+      if (last.risk) setRisk(last.risk);
+      if (last.side) setSide(last.side);
+      if (last.streak) setStreak(last.streak);
+      if (last.bombs) setBombs(last.bombs);
+    }
+    if ((window as any).LitDexVerify) setScriptReady(true);
+  }, [open]);
+
+  // When user switches game, pre-fill from that game's last record
+  // (without clearing if no record).
+  useEffect(() => {
+    if (!open) return;
+    const rec = loadFairness(game);
+    if (rec) {
+      setSeedHash(rec.seedHash || '');
+      setServerSeed(rec.serverSeed || '');
+      setRoundId(rec.roundId || '');
+      setClientSeed(rec.clientSeed || '');
+      if (rec.risk) setRisk(rec.risk);
+      if (rec.side) setSide(rec.side);
+      if (rec.streak) setStreak(rec.streak);
+      if (rec.bombs) setBombs(rec.bombs);
+      setResult(null);
+    } else {
+      // No record for this game — clear inputs that don't apply.
+      setResult(null);
+    }
+  }, [game, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if ((window as any).LitDexVerify) { setScriptReady(true); return; }
+    // Try existing tag first
+    const existing = document.querySelector('script[data-litdex-verify="1"]') as HTMLScriptElement | null;
+    if (existing) {
+      const checkInterval = setInterval(() => {
+        if ((window as any).LitDexVerify) { setScriptReady(true); clearInterval(checkInterval); }
+      }, 100);
+      return () => clearInterval(checkInterval);
+    }
+    const s = document.createElement('script');
+    s.src = '/games/verify-inline.js';
+    s.dataset.litdexVerify = '1';
+    s.onload = () => setScriptReady(true);
+    s.onerror = () => setScriptReady(false);
+    document.head.appendChild(s);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if ((window as any).LitDexVerify) { setScriptReady(true); return; }
+    // Try existing tag first
+    const existing = document.querySelector('script[data-litdex-verify="1"]') as HTMLScriptElement | null;
+    if (existing) {
+      const checkInterval = setInterval(() => {
+        if ((window as any).LitDexVerify) { setScriptReady(true); clearInterval(checkInterval); }
+      }, 100);
+      return () => clearInterval(checkInterval);
+    }
+    const s = document.createElement('script');
+    s.src = '/games/verify-inline.js';
+    s.dataset.litdexVerify = '1';
+    s.onload = () => setScriptReady(true);
+    s.onerror = () => setScriptReady(false);
+    document.head.appendChild(s);
+  }, [open]);
+
+  const reset = () => { setSeedHash(''); setServerSeed(''); setRoundId(''); setClientSeed(''); setResult(null); };
+
+  const run = () => {
+    const v = (window as any).LitDexVerify;
+    if (!v) {
+      // Try one more time to load synchronously
+      setResult({ won: false, details: 'Loading verifier… try again in a second', mismatch: true });
+      const s = document.createElement('script');
+      s.src = '/games/verify-inline.js';
+      s.onload = () => setScriptReady(true);
+      document.head.appendChild(s);
+      return;
+    }
+    const seed = serverSeed.trim().toLowerCase();
+    if (!/^[0-9a-f]+$/.test(seed)) { setResult({ won: false, details: 'Server seed must be hex', mismatch: true }); return; }
+    const wantHash = seedHash.trim().toLowerCase();
+    if (wantHash && v.sha256str(seed) !== wantHash) { setResult({ won: false, details: 'Hash mismatch — sha256(seed) does not match seedHash', mismatch: true }); return; }
+    try {
+      if (game === 'dice') {
+        if (!roundId.trim()) { setResult({ won: false, details: 'Round ID required for dice', mismatch: true }); return; }
+        const roll = v.diceRoll(seed, roundId.trim());
+        setResult({ won: false, details: `Roll: ${roll.toFixed(2)}`, subline: 'Compare against your target & direction' });
+      } else if (game === 'limbo') {
+        if (!roundId.trim()) { setResult({ won: false, details: 'Round ID required for limbo', mismatch: true }); return; }
+        const roll = v.limboRoll(seed, roundId.trim());
+        setResult({ won: false, details: `Crash: ${roll.toFixed(2)}x`, subline: 'Compare against your target multiplier' });
+      } else if (game === 'mines') {
+        if (!roundId.trim()) { setResult({ won: false, details: 'Round ID required for mines', mismatch: true }); return; }
+        const arr = v.minesBombs(seed, roundId.trim(), bombs);
+        setResult({ won: false, details: `Bombs at: [${arr.join(', ')}]`, subline: `${bombs} bombs of 25 cells` });
+      } else if (game === 'plinko') {
+        if (!clientSeed.trim()) { setResult({ won: false, details: 'Client seed required for plinko', mismatch: true }); return; }
+        const { slot } = v.plinkoOutcome(seed, clientSeed.trim(), risk);
+        const mult = (v.PLINKO[risk] || [])[slot] || 0;
+        const won = mult > 1;
+        setResult({ won, details: `Slot ${slot} · ${mult.toFixed(2)}x`, subline: `Risk: ${risk.toUpperCase()}` });
+      } else if (game === 'wheel') {
+        if (!clientSeed.trim()) { setResult({ won: false, details: 'Client seed required for wheel', mismatch: true }); return; }
+        const seg = v.wheelSegment(seed, clientSeed.trim(), risk);
+        const mult = (v.WHEEL[risk] || [])[seg] || 0;
+        const won = mult > 0;
+        setResult({ won, details: `Segment ${seg} · ${mult.toFixed(2)}x`, subline: `Risk: ${risk.toUpperCase()}` });
+      } else if (game === 'coinflip') {
+        if (!clientSeed.trim()) { setResult({ won: false, details: 'Client seed required for coinflip', mismatch: true }); return; }
+        const flips = v.coinflipFlips(seed, clientSeed.trim(), side, streak);
+        const won = flips.every((f: string) => f === side);
+        setResult({ won, details: won ? 'All flips matched your side' : 'A flip went against you', subline: `Picked ${side.toUpperCase()} · streak ×${streak}`, flips: flips.map((f: string) => f === 'heads' ? 'H' : 'T').join(' · ') });
+      }
+    } catch (err: any) { setResult({ won: false, details: 'Verify failed: ' + (err?.message || 'unknown'), mismatch: true }); }
+  };
+
+  if (!open) return null;
+  const needsRound = game === 'dice' || game === 'limbo' || game === 'mines';
+  const needsClient = game === 'plinko' || game === 'wheel' || game === 'coinflip';
+  return (
+    <div className="fixed inset-0 z-[200000] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-brand-surface border border-brand-border rounded-2xl p-6 w-full max-w-[480px] font-mono text-brand-text-primary max-h-[90vh] overflow-y-auto">
+        <div className="text-center mb-5">
+          <div className="text-2xl font-bold tracking-tighter text-brand-text-primary">Provably Fair</div>
+          <div className="text-[10px] uppercase tracking-widest text-brand-text-muted mt-1">Verify any past round on chain</div>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5 mb-4">
+          {(['dice','limbo','mines','plinko','wheel','coinflip'] as const).map((g) => (
+            <button key={g} onClick={() => setGame(g)} className={`py-2 rounded-lg text-[10px] uppercase tracking-widest font-bold transition-colors ${game === g ? 'bg-white text-black' : 'bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-muted hover:text-brand-text-primary'}`}>{g}</button>
+          ))}
+        </div>
+        <div className="space-y-3">
+          <div>
+            <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Seed Hash · committed before bet</div>
+            <input value={seedHash} onChange={(e) => setSeedHash(e.target.value)} placeholder="64 hex chars (optional but recommended)" className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5 text-[11px] text-brand-text-primary placeholder:text-brand-text-muted/50 outline-none focus:border-white/30" />
+          </div>
+          <div>
+            <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Server Seed · revealed after bet</div>
+            <input value={serverSeed} onChange={(e) => setServerSeed(e.target.value)} placeholder="64 hex chars" className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5 text-[11px] text-brand-text-primary placeholder:text-brand-text-muted/50 outline-none focus:border-white/30" />
+          </div>
+          {needsRound && (
+            <div>
+              <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Round ID</div>
+              <input value={roundId} onChange={(e) => setRoundId(e.target.value)} placeholder="UUID from your round" className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5 text-[11px] text-brand-text-primary placeholder:text-brand-text-muted/50 outline-none focus:border-white/30" />
+            </div>
+          )}
+          {needsClient && (
+            <div>
+              <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Client Seed</div>
+              <input value={clientSeed} onChange={(e) => setClientSeed(e.target.value)} placeholder="from commit modal" className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5 text-[11px] text-brand-text-primary placeholder:text-brand-text-muted/50 outline-none focus:border-white/30" />
+            </div>
+          )}
+          {(game === 'plinko' || game === 'wheel') && (
+            <div>
+              <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Risk</div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(['low','medium','high'] as const).map((r) => (
+                  <button key={r} onClick={() => setRisk(r)} className={`py-2 rounded-lg text-[9px] uppercase tracking-widest font-bold transition-colors ${risk === r ? 'bg-white text-black' : 'bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-muted hover:text-brand-text-primary'}`}>{r}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          {game === 'mines' && (
+            <div>
+              <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Bombs</div>
+              <input type="number" min={1} max={24} value={bombs} onChange={(e) => setBombs(Math.max(1, Math.min(24, Number(e.target.value)||3)))} className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5 text-[11px] text-brand-text-primary outline-none focus:border-white/30" />
+            </div>
+          )}
+          {game === 'coinflip' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Side</div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {(['heads','tails'] as const).map((s) => (
+                    <button key={s} onClick={() => setSide(s)} className={`py-2 rounded-lg text-[9px] uppercase tracking-widest font-bold transition-colors ${side === s ? 'bg-white text-black' : 'bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-muted hover:text-brand-text-primary'}`}>{s}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Streak</div>
+                <input type="number" min={1} max={5} value={streak} onChange={(e) => setStreak(Math.max(1, Math.min(5, Number(e.target.value)||1)))} className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5 text-[11px] text-brand-text-primary outline-none focus:border-white/30" />
+              </div>
+            </div>
+          )}
+        </div>
+        {result && (
+          <div className="mt-4 p-4 rounded-lg text-center" style={{ background: result.mismatch ? 'rgba(239,73,86,0.06)' : (result.won ? 'rgba(62,207,142,0.06)' : 'rgba(239,73,86,0.06)'), border: result.mismatch ? '1px solid rgba(239,73,86,0.3)' : (result.won ? '1px solid rgba(62,207,142,0.3)' : '1px solid rgba(239,73,86,0.25)') }}>
+            <div className="text-5xl mb-2">{result.mismatch ? '⚠️' : (result.won ? '😄' : '😢')}</div>
+            {!result.mismatch && (game === 'plinko' || game === 'wheel' || game === 'coinflip') && (
+              <div className={`text-base font-bold tracking-widest mb-1 ${result.won ? 'text-[#3ecf8e]' : 'text-[#ef4956]'}`}>{result.won ? 'YOU WON' : 'YOU LOST'}</div>
+            )}
+            <div className="text-[12px] text-brand-text-primary font-bold">{result.details}</div>
+            {result.subline && <div className="text-[10px] text-brand-text-muted mt-1">{result.subline}</div>}
+            {result.flips && <div className="text-[10px] text-brand-text-primary mt-1">Flips: <b>{result.flips}</b></div>}
+            {!result.mismatch && seedHash && <div className="text-[10px] text-[#3ecf8e] mt-2">✓ Hash verified</div>}
+          </div>
+        )}
+        <div className="flex gap-2 mt-5">
+          <button onClick={run} className="flex-1 py-3 rounded-lg bg-white text-black font-bold text-[11px] uppercase tracking-widest hover:bg-white/90 transition-colors">{scriptReady ? 'Verify' : 'Loading…'}</button>
+          <button onClick={onClose} className="flex-1 py-3 rounded-lg bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-primary font-bold text-[11px] uppercase tracking-widest hover:bg-[#1a1a1a] transition-colors">Close</button>
+        </div>
+      </div>
+    </div>
   );
 };
 
 const GamesPage = () => {
   const [sub, setSub] = useState<'lobby' | 'math-slash' | 'pump-dump' | 'lit-tower' | 'zk-miner' | 'lit-launch' | 'block-chain' | 'lit-dice' | 'lit-limbo' | 'lit-mines' | 'lit-plinko' | 'lit-wheel' | 'lit-coinflip'>('lobby');
   const [tab, setTab] = useState<'fun' | 'casino'>('fun');
+  const [pfOpen, setPfOpen] = useState(false);
+  const [cwOpen, setCwOpen] = useState(false);
+  const { address } = useAccount();
+  const lowerAddr = address ? address.toLowerCase() : '';
   if (sub === 'math-slash') return <MathSlashPage onBack={() => setSub('lobby')} />;
   if (sub === 'pump-dump')  return <PumpDumpPage  onBack={() => setSub('lobby')} />;
   if (sub === 'lit-tower')  return <LitTowerPage  onBack={() => setSub('lobby')} />;
@@ -6492,18 +7138,27 @@ const GamesPage = () => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-12 max-w-6xl mx-auto px-4">
       <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
         <h1 className="text-3xl font-bold tracking-tighter text-white">Games</h1>
-        <div className="inline-flex bg-[#0a0a0a] border border-[#1f1f1f] rounded-xl p-1 font-mono">
-          <button
-            onClick={() => setTab('fun')}
-            className={`px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors ${tab === 'fun' ? 'bg-white text-black' : 'text-white/55 hover:text-white'}`}
-          >Fun</button>
-          <button
-            onClick={() => setTab('casino')}
-            className={`px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors ${tab === 'casino' ? 'bg-white text-black' : 'text-white/55 hover:text-white'}`}
-          >Casino</button>
+        <div className="flex flex-wrap items-center gap-3">
+          {lowerAddr && tab === 'casino' && <CasinoWalletBadge wallet={lowerAddr} onOpen={() => setCwOpen(true)} />}
+          <div className="inline-flex bg-[#0a0a0a] border border-[#1f1f1f] rounded-xl p-1 font-mono">
+            <button
+              onClick={() => setTab('fun')}
+              className={`px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors ${tab === 'fun' ? 'bg-white text-black' : 'text-white/55 hover:text-white'}`}
+            >Fun</button>
+            <button
+              onClick={() => setTab('casino')}
+              className={`px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors ${tab === 'casino' ? 'bg-white text-black' : 'text-white/55 hover:text-white'}`}
+            >Casino</button>
+            <button
+              onClick={() => setPfOpen(true)}
+              className="px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors text-white/55 hover:text-white border-l border-white/10 ml-1"
+            >Provably Fair</button>
+          </div>
         </div>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
+      <ProvablyFairModal open={pfOpen} onClose={() => setPfOpen(false)} />
+      <CasinoWalletModal open={cwOpen} onClose={() => setCwOpen(false)} wallet={lowerAddr} />
+      <div className="grid grid-cols-1 gap-6 items-start">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {tab === 'casino' ? (
             <>
@@ -6846,7 +7501,6 @@ const GamesPage = () => {
           </>
           )}
         </div>
-        <WeeklyLeaderboard />
       </div>
     </motion.div>
   );

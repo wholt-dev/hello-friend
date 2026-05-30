@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LitDeX 1-Month Stats</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka+One&family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@400;600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a0a;
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    font-family: 'Inter', sans-serif;
+  }
+
+  /* Twitter-card 16:9 ish — 1200×675 export resolution */
+  .card {
+    width: 1200px;
+    height: 675px;
+    position: relative;
+    overflow: hidden;
+    border-radius: 24px;
+    background:
+      radial-gradient(ellipse 60% 40% at 80% 0%, rgba(91,224,164,0.16) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 20% 100%, rgba(196,102,255,0.18) 0%, transparent 60%),
+      radial-gradient(ellipse 80% 50% at 50% 50%, rgba(70,120,200,0.10) 0%, transparent 70%),
+      linear-gradient(135deg, #04060c 0%, #0a1226 50%, #1d3856 100%);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+  }
+  .card::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(120,200,255,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120,200,255,0.05) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+  .card::after {
+    content: '';
+    position: absolute; inset: 0;
+    background-image: repeating-linear-gradient(
+      115deg,
+      transparent 0,
+      transparent 32px,
+      rgba(255,255,255,0.018) 32px,
+      rgba(255,255,255,0.018) 33px
+    );
+    pointer-events: none;
+  }
+
+  /* Header strip */
+  .header {
+    position: absolute;
+    top: 36px;
+    left: 48px; right: 48px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    z-index: 2;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 14px;
+  }
+  .logo {
+    width: 56px; height: 56px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #fff 0%, #cfe6ff 100%);
+    display: flex; align-items: center; justify-content: center;
+    color: #0a0e1a;
+    font-family: 'Bangers', cursive;
+    font-size: 36px;
+    letter-spacing: 1px;
+    box-shadow: 0 6px 20px rgba(140,200,255,0.3), inset 0 -3px 0 rgba(0,0,0,0.15);
+  }
+  .brand-text {
+    display: flex; flex-direction: column;
+  }
+  .brand-name {
+    font-family: 'Bangers', cursive;
+    font-size: 38px;
+    color: #fff;
+    letter-spacing: 4px;
+    line-height: 1;
+    text-shadow: 0 0 24px rgba(140,200,255,0.4);
+  }
+  .brand-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    color: #aac6ee;
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: linear-gradient(180deg, rgba(91,224,164,0.18), rgba(20,80,50,0.30));
+    border: 1px solid rgba(91,224,164,0.4);
+    color: #5be0a4;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .badge::before {
+    content: '';
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #5be0a4;
+    box-shadow: 0 0 12px #5be0a4;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  /* Title block */
+  .title-block {
+    position: absolute;
+    top: 138px;
+    left: 48px; right: 48px;
+    z-index: 2;
+  }
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.4em;
+    color: #ffd166;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .title {
+    font-family: 'Bangers', cursive;
+    font-size: 78px;
+    color: #fff;
+    letter-spacing: 5px;
+    line-height: 1;
+    text-shadow: 0 0 36px rgba(140,200,255,0.45);
+  }
+  .title .accent {
+    background: linear-gradient(90deg, #5be0a4 0%, #ffd166 50%, #c466ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  /* Stats grid */
+  .stats {
+    position: absolute;
+    top: 290px;
+    left: 48px; right: 48px;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .stat {
+    background: linear-gradient(180deg, rgba(15,25,45,0.85), rgba(5,10,20,0.85));
+    border: 1px solid rgba(140,180,255,0.18);
+    border-radius: 16px;
+    padding: 18px 18px 16px;
+    backdrop-filter: blur(6px);
+    position: relative;
+    overflow: hidden;
+  }
+  .stat::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, currentColor, transparent);
+    opacity: 0.6;
+  }
+  .stat .icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    margin-bottom: 10px;
+  }
+  .stat .label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: rgba(255,255,255,0.55);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .stat .value {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 800;
+    font-size: 30px;
+    color: #fff;
+    line-height: 1;
+    letter-spacing: -0.5px;
+  }
+  .stat .value .unit {
+    font-size: 16px;
+    color: rgba(255,255,255,0.5);
+    margin-left: 4px;
+    font-weight: 400;
+  }
+  .stat .sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: rgba(255,255,255,0.45);
+    margin-top: 6px;
+  }
+
+  /* Color variants */
+  .stat.green { color: #5be0a4; }
+  .stat.green .icon { background: rgba(91,224,164,0.18); border: 1px solid rgba(91,224,164,0.4); color: #5be0a4; }
+  .stat.gold { color: #ffd166; }
+  .stat.gold .icon { background: rgba(255,213,90,0.18); border: 1px solid rgba(255,213,90,0.4); color: #ffd166; }
+  .stat.blue { color: #6ed0ff; }
+  .stat.blue .icon { background: rgba(110,208,255,0.18); border: 1px solid rgba(110,208,255,0.4); color: #6ed0ff; }
+  .stat.purple { color: #c466ff; }
+  .stat.purple .icon { background: rgba(196,102,255,0.18); border: 1px solid rgba(196,102,255,0.4); color: #c466ff; }
+  .stat.orange { color: #ff7a45; }
+  .stat.orange .icon { background: rgba(255,122,69,0.18); border: 1px solid rgba(255,122,69,0.4); color: #ff7a45; }
+  .stat.pink { color: #ff8aae; }
+  .stat.pink .icon { background: rgba(255,138,174,0.18); border: 1px solid rgba(255,138,174,0.4); color: #ff8aae; }
+  .stat.cyan { color: #5be0d4; }
+  .stat.cyan .icon { background: rgba(91,224,212,0.18); border: 1px solid rgba(91,224,212,0.4); color: #5be0d4; }
+  .stat.red { color: #ff5a6e; }
+  .stat.red .icon { background: rgba(255,90,110,0.18); border: 1px solid rgba(255,90,110,0.4); color: #ff5a6e; }
+
+  /* Footer */
+  .footer {
+    position: absolute;
+    bottom: 36px;
+    left: 48px; right: 48px;
+    z-index: 2;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .games-strip {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    align-items: center;
+  }
+  .pill {
+    background: rgba(15,25,45,0.85);
+    border: 1px solid rgba(140,180,255,0.22);
+    color: rgba(255,255,255,0.85);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .pill.casino {
+    background: linear-gradient(135deg, rgba(196,102,255,0.16), rgba(255,138,174,0.18));
+    border-color: rgba(196,102,255,0.4);
+    color: #e6b8ff;
+  }
+  .url {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.06em;
+    text-shadow: 0 0 18px rgba(140,200,255,0.4);
+  }
+  .url .month {
+    color: #ffd166;
+    margin-left: 12px;
+    background: rgba(255,213,90,0.14);
+    border: 1px solid rgba(255,213,90,0.4);
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+  }
+
+  /* Decorative orbs */
+  .orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(60px);
+    z-index: 0;
+    pointer-events: none;
+  }
+  .orb-1 {
+    top: -120px; right: -80px;
+    width: 380px; height: 380px;
+    background: radial-gradient(circle, rgba(91,224,164,0.4) 0%, transparent 70%);
+  }
+  .orb-2 {
+    bottom: -100px; left: -100px;
+    width: 320px; height: 320px;
+    background: radial-gradient(circle, rgba(196,102,255,0.35) 0%, transparent 70%);
+  }
+  .orb-3 {
+    top: 40%; left: 50%; transform: translate(-50%, -50%);
+    width: 220px; height: 220px;
+    background: radial-gradient(circle, rgba(255,213,90,0.18) 0%, transparent 70%);
+  }
+
+  .helper {
+    position: fixed;
+    top: 12px; left: 12px;
+    background: #1a1a1a;
+    color: #888;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    max-width: 320px;
+    border: 1px solid #2a2a2a;
+  }
+  .helper b { color: #fff; }
+  .helper kbd {
+    background: #333;
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+  }
+  @media print { .helper { display: none; } body { padding: 0; background: #fff; } .card { box-shadow: none; border-radius: 0; } }
+</style>
+</head>
+<body>
+<div class="helper">
+  <b>How to export this image</b><br>
+  1. Right-click the card → "Save image as..." in Chrome (works for SVG)<br>
+  2. OR press <kbd>F12</kbd> → screenshot the .card element<br>
+  3. OR use <a href="javascript:void(0)" onclick="exportPng()" style="color:#5be0a4">click here to download PNG</a><br>
+  4. Resolution: 1200×675 (Twitter card)
+</div>
+
+<div class="card" id="card">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+
+  <div class="header">
+    <div class="brand">
+      <div class="logo">L</div>
+      <div class="brand-text">
+        <div class="brand-name">LITDEX</div>
+        <div class="brand-sub">Liteforge Testnet · ChainID 4441</div>
+      </div>
+    </div>
+    <div class="badge">1 MONTH LIVE</div>
+  </div>
+
+  <div class="title-block">
+    <div class="eyebrow">By the numbers · 30 days</div>
+    <div class="title">FROM <span class="accent">ZERO</span> TO A FULL L2 ECOSYSTEM</div>
+  </div>
+
+  <div class="stats">
+    <div class="stat green">
+      <div class="icon">🔗</div>
+      <div class="label">Total On-Chain Txns</div>
+      <div class="value">856,100</div>
+      <div class="sub">Across the entire stack</div>
+    </div>
+    <div class="stat gold">
+      <div class="icon">🚀</div>
+      <div class="label">Contracts Deployed</div>
+      <div class="value">299,848</div>
+      <div class="sub">ERC20 · NFT · Staking · Vesting</div>
+    </div>
+    <div class="stat blue">
+      <div class="icon">🔁</div>
+      <div class="label">Swaps</div>
+      <div class="value">272,572</div>
+      <div class="sub">Across 151 trading pairs</div>
+    </div>
+    <div class="stat purple">
+      <div class="icon">✉️</div>
+      <div class="label">Encrypted Messages</div>
+      <div class="value">226,258</div>
+      <div class="sub">Fully on-chain messenger</div>
+    </div>
+
+    <div class="stat orange">
+      <div class="icon">🎮</div>
+      <div class="label">Math Slash Games</div>
+      <div class="value">468,130</div>
+      <div class="sub">119,714 unique players</div>
+    </div>
+    <div class="stat cyan">
+      <div class="icon">⛽</div>
+      <div class="label">Distributor Txns</div>
+      <div class="value">220,818</div>
+      <div class="sub">Single solo-protocol wallet</div>
+    </div>
+    <div class="stat pink">
+      <div class="icon">✅</div>
+      <div class="label">Daily Check-ins</div>
+      <div class="value">30,569</div>
+      <div class="sub">Streak rewards system</div>
+    </div>
+    <div class="stat red">
+      <div class="icon">🎯</div>
+      <div class="label">Games Live</div>
+      <div class="value">12<span class="unit">/12</span></div>
+      <div class="sub">6 fun · 6 provably-fair casino</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="games-strip">
+      <div class="pill">Pump or Dump</div>
+      <div class="pill">Lit Tower</div>
+      <div class="pill">ZK Miner</div>
+      <div class="pill">Lit Launch</div>
+      <div class="pill">Block Chain</div>
+      <div class="pill casino">Lit Dice</div>
+      <div class="pill casino">Lit Mines</div>
+      <div class="pill casino">Lit Plinko</div>
+      <div class="pill casino">Lit Wheel</div>
+      <div class="pill casino">Lit Coin Flip</div>
+    </div>
+    <div class="url">litdex.test-hub.xyz <span class="month">@LiteForgeXYZ</span></div>
+  </div>
+</div>
+
+<script>
+async function exportPng() {
+  // Try the html2canvas CDN
+  if (!window.html2canvas) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+  const card = document.getElementById('card');
+  const canvas = await html2canvas(card, { scale: 2, backgroundColor: null, logging: false });
+  const link = document.createElement('a');
+  link.download = 'litdex-1month-stats.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+</script>
+</body>
+</html>

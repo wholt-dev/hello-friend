@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Lit Wheel — LitDeX</title>
+<script src="/games/verify-inline.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka+One&family=JetBrains+Mono:wght@400;700&display=swap');
   *{margin:0;padding:0;box-sizing:border-box}
@@ -77,9 +78,50 @@
       <div class="panel-title">FAIRNESS</div>
       <div class="panel-sub">Verify any past result</div>
       <div id="fair-body" style="max-height: 60vh; overflow-y: auto;"></div>
-      <div class="panel-btns"><button class="panel-btn primary" id="fair-close">CLOSE</button></div>
+      <div class="panel-btns" style="display:flex;gap:8px"><button class="panel-btn verify" id="open-verifier" style="flex:1">OPEN VERIFIER</button><button class="panel-btn primary" id="fair-close" style="flex:1">CLOSE</button></div>
     </div>
   </div>
+
+  <div id="commit-modal" class="hidden" style="position:absolute;inset:0;z-index:34;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.88);backdrop-filter:blur(6px);transition:opacity 0.3s ease">
+    <div class="panel-card">
+      <div class="panel-title">PROVABLY FAIR</div>
+      <div class="panel-sub">Server commits before you spin · copy and verify later</div>
+      <div id="commit-body" style="text-align: left;"></div>
+      <div class="panel-btns"><button class="panel-btn primary" id="commit-proceed">START PLAYING</button></div>
+    </div>
+  </div>
+
+  <div id="verify-modal" class="hidden" style="position:absolute;inset:0;z-index:36;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.88);backdrop-filter:blur(6px);transition:opacity 0.3s ease">
+    <div class="panel-card" style="max-width:420px">
+      <div class="panel-title">VERIFIER</div>
+      <div class="panel-sub">Paste two values · see the result</div>
+      <div style="text-align:left">
+        <div class="fair-row"><span class="lbl">Seed Hash · committed before bet</span>
+          <input type="text" id="vfy-hash" placeholder="64 hex chars" style="width:100%;background:rgba(8,14,28,0.85);border:1px solid rgba(140,180,255,0.18);border-radius:6px;padding:8px;color:#fff;font-family:'JetBrains Mono',monospace;font-size:10px"/>
+        </div>
+        <div class="fair-row"><span class="lbl">Server Seed · revealed after bet</span>
+          <input type="text" id="vfy-seed" placeholder="64 hex chars" style="width:100%;background:rgba(8,14,28,0.85);border:1px solid rgba(140,180,255,0.18);border-radius:6px;padding:8px;color:#fff;font-family:'JetBrains Mono',monospace;font-size:10px"/>
+        </div>
+        <div id="vfy-result" style="margin-top:12px;display:none"></div>
+      </div>
+      <div class="panel-btns" style="display:flex;gap:8px"><button class="panel-btn primary" id="vfy-run" style="flex:1">VERIFY</button><button class="panel-btn" id="vfy-close" style="flex:1">CLOSE</button></div>
+    </div>
+  </div>
+  <style>
+    #commit-modal.hidden, #verify-modal.hidden { opacity: 0; pointer-events: none; }
+    .copy-row { display: flex; align-items: stretch; gap: 6px; margin-bottom: 6px; }
+    .copy-row .val { flex: 1; }
+    .copy-btn { background: linear-gradient(180deg, #ffd166, #c98b16); color: #5a3a0a; border: none; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; padding: 0 12px; cursor: pointer; flex-shrink: 0; -webkit-tap-highlight-color: transparent; }
+    .copy-btn.copied { background: linear-gradient(180deg, #5be0a4, #1f9c66); color: #04241a; }
+    .panel-btn.verify { background: linear-gradient(180deg, rgba(196,102,255,0.3), rgba(106,45,153,0.5)); border-color: rgba(196,102,255,0.5); color: #e6b8ff; }
+    .vfy-emoji { font-size: 64px; line-height: 1; margin: 12px auto 8px; text-align: center; }
+    .vfy-banner { font-family:'Bangers',cursive; font-size: 24px; letter-spacing: 3px; text-align:center; margin-bottom: 6px; }
+    .vfy-banner.win { color: #5be0a4; text-shadow: 0 0 18px rgba(91,224,164,0.5); }
+    .vfy-banner.loss { color: #ff8a8a; text-shadow: 0 0 18px rgba(255,138,140,0.5); }
+    .vfy-banner.fail { color: #ff8a8a; }
+    .vfy-line { font-family:'JetBrains Mono',monospace; font-size: 11px; color: rgba(255,255,255,0.7); text-align:center; margin: 2px 0; }
+    .vfy-line b { color:#fff; }
+  </style>
   <div id="err-banner"><span id="err-msg"></span></div>
 </div>
 <script>
@@ -121,11 +163,76 @@
 
   const ST = { roundId:null, token:null, seedHash:null, clientSeed:null, serverSeed:null, busy:false, gamesLeft:0, risk:'low', tables:null, angle:0, lastResult:null };
 
+  const commitModal = document.getElementById('commit-modal'), commitBody = document.getElementById('commit-body');
+  document.getElementById('commit-proceed').onclick = () => commitModal.classList.add('hidden');
+
+  function attachCopy() {
+    document.querySelectorAll('.copy-btn').forEach((btn) => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.onclick = async () => {
+        const txt = btn.dataset.copy || '';
+        try { await navigator.clipboard.writeText(txt); }
+        catch { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+        const orig = btn.textContent; btn.textContent = 'COPIED'; btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1400);
+      };
+    });
+  }
+  function showCommitModal() {
+    commitBody.innerHTML = `
+      <div class="fair-row"><span class="lbl">Seed Hash · committed by server</span>
+        <div class="copy-row"><span class="val">${ST.seedHash || '—'}</span><button class="copy-btn" data-copy="${ST.seedHash || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">Round ID</span>
+        <div class="copy-row"><span class="val">${ST.roundId || '—'}</span><button class="copy-btn" data-copy="${ST.roundId || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">Client Seed</span>
+        <div class="copy-row"><span class="val">${ST.clientSeed || '—'}</span><button class="copy-btn" data-copy="${ST.clientSeed || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">How it works</span><span class="val">The server has already chosen the segment the wheel will land on. The seed hash is the cryptographic fingerprint of that choice. After you spin, the server reveals the actual seed so you can verify sha256(seed) matches this hash.</span></div>
+    `;
+    attachCopy();
+    commitModal.classList.remove('hidden');
+  }
+
   function showErr(m){errMsg.textContent=m||'error';errBanner.classList.add('visible');setTimeout(()=>errBanner.classList.remove('visible'),2400);}
   riskBtns.forEach((el) => { el.onclick = () => { if (ST.busy) return; ST.risk = el.dataset.r; riskBtns.forEach((b) => b.classList.toggle('on', b === el)); drawWheel(); }; });
   btnX.onclick = () => postParent({ type: 'litdex:litwheel:exit' });
   openFair.onclick = () => showFairness();
   fairClose.onclick = () => fairness.classList.add('hidden');
+  document.getElementById('open-verifier').onclick = () => {
+    fairness.classList.add('hidden');
+    const r = ST.lastResult || {};
+    document.getElementById('vfy-hash').value = r.seedHash || ST.seedHash || '';
+    document.getElementById('vfy-seed').value = r.serverSeed || '';
+    document.getElementById('vfy-result').style.display = 'none';
+    document.getElementById('verify-modal').classList.remove('hidden');
+  };
+  document.getElementById('vfy-close').onclick = () => document.getElementById('verify-modal').classList.add('hidden');
+  document.getElementById('vfy-run').onclick = () => {
+    const hash = document.getElementById('vfy-hash').value.trim().toLowerCase();
+    const seed = document.getElementById('vfy-seed').value.trim().toLowerCase();
+    const out = document.getElementById('vfy-result');
+    out.style.display = 'block';
+    if (!seed.match(/^[0-9a-f]+$/)) { out.innerHTML = '<div class="vfy-banner fail">⚠ INVALID</div><div class="vfy-line">Server seed must be hex</div>'; return; }
+    const r = ST.lastResult || {};
+    const clientSeed = r.clientSeed || ST.clientSeed;
+    const risk = (r.risk || ST.risk || 'low').toLowerCase();
+    if (!clientSeed) { out.innerHTML = '<div class="vfy-banner fail">⚠ NO ROUND</div><div class="vfy-line">Play a round first to use this verifier inline</div>'; return; }
+    const computed = LitDexVerify.sha256str(seed);
+    if (hash && computed !== hash) { out.innerHTML = `<div class="vfy-banner fail">✗ HASH MISMATCH</div><div class="vfy-line">sha256(seed) does NOT equal seedHash</div>`; return; }
+    const seg = LitDexVerify.wheelSegment(seed, clientSeed, risk);
+    const mult = (LitDexVerify.WHEEL[risk] || [])[seg] || 0;
+    const won = mult > 0;
+    const emoji = won ? '😄' : '😢';
+    out.innerHTML = `
+      <div class="vfy-emoji">${emoji}</div>
+      <div class="vfy-banner ${won ? 'win' : 'loss'}">${won ? 'YOU WON' : 'YOU LOST'}</div>
+      <div class="vfy-line">Segment: <b>${seg}</b> · Risk: <b>${risk.toUpperCase()}</b> · Multiplier: <b>${mult.toFixed(2)}x</b></div>
+      ${hash ? '<div class="vfy-line" style="color:#5be0a4">✓ Hash verified</div>' : ''}
+    `;
+  };
 
   async function fetchStats() { if (!wallet) return null; try { const r = await fetch(`${API}/litwheel/stats/${wallet}`); if (!r.ok) return null; return await r.json(); } catch { return null; } }
 
@@ -164,12 +271,13 @@
       const r = await fetch(`${API}/litwheel/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wallet, clientSeed: cs }) });
       const d = await r.json();
       if (!r.ok || d.error) { showErr(d?.error || 'start_failed'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; return; }
-      ST.roundId = d.roundId; ST.token = d.token; ST.seedHash = d.seedHash; ST.clientSeed = d.clientSeed; ST.serverSeed = null;
+      ST.roundId = d.roundId; ST.token = d.token; ST.seedHash = d.seedHash; ST.clientSeed = d.clientSeed; ST.serverSeed = null; ST.lastResult = null;
       ST.tables = d.tables; ST.gamesLeft = d.gamesLeft;
       hudGames.textContent = `${DAILY-ST.gamesLeft}/${DAILY}`;
       hudMult.textContent = '—';
       panel.classList.add('hidden');
       drawWheel();
+      showCommitModal();
       fetchStats().then((s) => { if (s) hudBal.textContent = String(s.pointsBalance || 0); });
     } catch { showErr('Network error'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; }
   }
@@ -185,7 +293,8 @@
       await animateSpin(d.segment);
       hudMult.textContent = `${d.multiplier.toFixed(2)}x`;
       if (d.multiplier > 1) sndWin(); else if (d.multiplier > 0) sndTick(); else sndLoss();
-      endPanel(d);
+      // Hold the wheel-stopped result on screen so the player can read it.
+      setTimeout(() => endPanel(d), 1500);
     } catch { showErr('Network error'); ST.busy = false; spinBtn.disabled = false; riskBtns.forEach((b) => b.disabled = false); }
   };
 
@@ -280,8 +389,10 @@
       <div class="panel-row"><span class="lbl">Multiplier</span><span class="val">${d.multiplier.toFixed(2)}x</span></div>
       <div class="panel-row"><span class="lbl">Segment</span><span class="val">${d.segment} / ${SEGMENTS - 1}</span></div>
       ${d.explorerUrl ? `<div class="panel-row"><span class="lbl">Tx</span><a class="val" style="color:#5be0a4;text-decoration:underline" href="${d.explorerUrl}" target="_blank" rel="noreferrer">${(d.txHash||'').slice(0,10)}…</a></div>` : ''}
+      <button class="panel-btn verify" style="width:100%;margin-top:14px" id="btn-verify-end">VERIFY FAIRNESS</button>
     `;
-    postParent({ type: 'litdex:litwheel:end', won: d.profit > 0, multiplier: d.multiplier, awarded: d.awarded, profit: d.profit, stake: d.stake, txInfo: d.txHash ? { txHash: d.txHash, explorerUrl: d.explorerUrl } : null });
+    document.getElementById('btn-verify-end').onclick = (e) => { e.stopPropagation(); showFairness(); };
+    postParent({ type: 'litdex:litwheel:end', won: d.profit > 0, multiplier: d.multiplier, awarded: d.awarded, profit: d.profit, stake: d.stake, txInfo: d.txHash ? { txHash: d.txHash, explorerUrl: d.explorerUrl } : null, seedHash: ST.seedHash || d.seedHash, serverSeed: d.serverSeed, roundId: ST.roundId, clientSeed: ST.clientSeed, risk: ST.risk });
     fetchStats().then((s) => {
       const left = s ? Math.max(0, Number(s.gamesLeft||0)) : 0;
       const bal = s ? Number(s.pointsBalance||0) : 0;
@@ -299,17 +410,29 @@
   function showFairness() {
     const r = ST.lastResult;
     fairBody.innerHTML = r ? `
-      <div class="fair-row"><span class="lbl">Seed Hash (committed before round)</span><span class="val">${r.seedHash || ST.seedHash || '—'}</span></div>
-      <div class="fair-row"><span class="lbl">Server Seed (revealed)</span><span class="val">${r.serverSeed || '—'}</span></div>
-      <div class="fair-row"><span class="lbl">Client Seed</span><span class="val">${r.clientSeed || ST.clientSeed || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Seed Hash</span>
+        <div class="copy-row"><span class="val">${r.seedHash || ST.seedHash || '—'}</span><button class="copy-btn" data-copy="${r.seedHash || ST.seedHash || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">Server Seed (revealed)</span>
+        <div class="copy-row"><span class="val">${r.serverSeed || '—'}</span><button class="copy-btn" data-copy="${r.serverSeed || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">Client Seed</span>
+        <div class="copy-row"><span class="val">${r.clientSeed || ST.clientSeed || '—'}</span><button class="copy-btn" data-copy="${r.clientSeed || ST.clientSeed || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">Round ID</span>
+        <div class="copy-row"><span class="val">${ST.roundId || '—'}</span><button class="copy-btn" data-copy="${ST.roundId || ''}">COPY</button></div>
+      </div>
       <div class="fair-row"><span class="lbl">Result</span><span class="val">segment ${r.segment} · ${r.multiplier.toFixed(2)}x</span></div>
-      <div class="fair-row"><span class="lbl">Verify</span><span class="val">sha256(serverSeed) must match seedHash. Then HMAC-SHA256(serverSeed, clientSeed + ":" + risk) → first 32 bits → mod 24 = segment.</span></div>
+      <div class="fair-row"><span class="lbl">Verify formula</span><span class="val">sha256(serverSeed) must equal seedHash. Then HMAC-SHA256(serverSeed, clientSeed + ":" + risk) → first 32 bits → mod 24 = segment.</span></div>
     ` : `
-      <div class="fair-row"><span class="lbl">Seed Hash (committed before round)</span><span class="val">${ST.seedHash || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Seed Hash (committed)</span>
+        <div class="copy-row"><span class="val">${ST.seedHash || '—'}</span><button class="copy-btn" data-copy="${ST.seedHash || ''}">COPY</button></div>
+      </div>
       <div class="fair-row"><span class="lbl">Server Seed</span><span class="val">Hidden — revealed at end of round</span></div>
       <div class="fair-row"><span class="lbl">Client Seed</span><span class="val">${ST.clientSeed || '—'}</span></div>
       <div class="fair-row"><span class="lbl">How it works</span><span class="val">Before you spin, the server commits sha256(serverSeed). After the result, server reveals serverSeed. Anyone can replay the HMAC formula to verify.</span></div>
     `;
+    attachCopy();
     fairness.classList.remove('hidden');
   }
 

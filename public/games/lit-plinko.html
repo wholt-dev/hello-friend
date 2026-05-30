@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Lit Plinko — LitDeX</title>
+<script src="/games/verify-inline.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka+One&family=JetBrains+Mono:wght@400;700&display=swap');
   *{margin:0;padding:0;box-sizing:border-box}
@@ -13,7 +14,14 @@
   .pill{flex:1;background:linear-gradient(180deg,rgba(15,25,45,0.95),rgba(5,10,20,0.92));border:1px solid rgba(140,180,255,0.18);border-radius:12px;padding:7px 10px 8px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.16em;color:#aac6ee;text-transform:uppercase;text-align:center;backdrop-filter:blur(6px)}
   .pill .v{display:block;color:#fff;font-weight:700;font-size:16px;margin-top:3px;letter-spacing:0.5px}
   .pill.bal .v{color:#5be0a4}.pill.mult .v{color:#ffe97a;font-size:18px}.pill.games .v{color:#aac6ee}
-  #stage-canvas{position:absolute;left:0;top:80px;right:0;bottom:170px;z-index:3;width:100%;height:auto}
+  #stage-canvas{position:absolute;left:0;top:80px;right:0;bottom:200px;z-index:3;width:100%;height:auto}
+  #slots-row{position:absolute;left:12px;right:12px;bottom:152px;z-index:4;display:grid;grid-template-columns:repeat(13,1fr);gap:3px;height:42px}
+  .slot-cell{display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid rgba(255,255,255,0.18);font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;color:#fff;letter-spacing:0.04em}
+  .slot-cell.tier-low{background:rgba(255,138,140,0.22)}
+  .slot-cell.tier-mid{background:rgba(140,180,255,0.25)}
+  .slot-cell.tier-good{background:linear-gradient(180deg,rgba(91,224,164,0.55),rgba(31,156,102,0.4));color:#04241a;border-color:rgba(91,224,164,0.6)}
+  .slot-cell.tier-best{background:linear-gradient(180deg,rgba(255,213,90,0.7),rgba(201,139,22,0.5));color:#5a3a0a;border-color:rgba(255,213,90,0.7)}
+  .slot-cell.lit{transform:scale(1.08);box-shadow:0 0 18px rgba(255,255,255,0.45);outline:2px solid #fff}
   #risk-row{position:absolute;left:12px;right:12px;bottom:84px;z-index:5;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .risk-btn{min-height:42px;border-radius:10px;border:1px solid rgba(140,180,255,0.22);background:rgba(15,25,45,0.85);color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.1em;cursor:pointer;-webkit-tap-highlight-color:transparent}
   .risk-btn.on{box-shadow:0 3px 0 rgba(0,0,0,0.3)}
@@ -51,6 +59,7 @@
     <div class="pill games">GAMES<span class="v" id="hud-games">0/20</span></div>
   </div>
   <canvas id="stage-canvas"></canvas>
+  <div id="slots-row"></div>
   <div id="risk-row">
     <button class="risk-btn on" data-r="low">LOW</button>
     <button class="risk-btn"     data-r="medium">MEDIUM</button>
@@ -76,11 +85,53 @@
       <div class="panel-title">FAIRNESS</div>
       <div class="panel-sub">Verify any past result</div>
       <div id="fair-body" style="max-height: 60vh; overflow-y: auto;"></div>
-      <div class="panel-btns">
-        <button class="panel-btn primary" id="fair-close">CLOSE</button>
+      <div class="panel-btns" style="display:flex;gap:8px">
+        <button class="panel-btn verify" id="open-verifier" style="flex:1">OPEN VERIFIER</button>
+        <button class="panel-btn primary" id="fair-close" style="flex:1">CLOSE</button>
       </div>
     </div>
   </div>
+
+  <div id="commit-modal" class="hidden" style="position:absolute;inset:0;z-index:34;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.88);backdrop-filter:blur(6px);transition:opacity 0.3s ease">
+    <div class="panel-card">
+      <div class="panel-title">PROVABLY FAIR</div>
+      <div class="panel-sub">Server commits before you drop · copy and verify later</div>
+      <div id="commit-body" style="text-align: left;"></div>
+      <div class="panel-btns"><button class="panel-btn primary" id="commit-proceed">START PLAYING</button></div>
+    </div>
+  </div>
+
+  <div id="verify-modal" class="hidden" style="position:absolute;inset:0;z-index:36;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.88);backdrop-filter:blur(6px);transition:opacity 0.3s ease">
+    <div class="panel-card" style="max-width:420px">
+      <div class="panel-title">VERIFIER</div>
+      <div class="panel-sub">Paste two values · see the result</div>
+      <div style="text-align:left">
+        <div class="fair-row"><span class="lbl">Seed Hash · committed before bet</span>
+          <input type="text" id="vfy-hash" placeholder="64 hex chars" style="width:100%;background:rgba(8,14,28,0.85);border:1px solid rgba(140,180,255,0.18);border-radius:6px;padding:8px;color:#fff;font-family:'JetBrains Mono',monospace;font-size:10px"/>
+        </div>
+        <div class="fair-row"><span class="lbl">Server Seed · revealed after bet</span>
+          <input type="text" id="vfy-seed" placeholder="64 hex chars" style="width:100%;background:rgba(8,14,28,0.85);border:1px solid rgba(140,180,255,0.18);border-radius:6px;padding:8px;color:#fff;font-family:'JetBrains Mono',monospace;font-size:10px"/>
+        </div>
+        <div id="vfy-result" style="margin-top:12px;display:none"></div>
+      </div>
+      <div class="panel-btns" style="display:flex;gap:8px"><button class="panel-btn primary" id="vfy-run" style="flex:1">VERIFY</button><button class="panel-btn" id="vfy-close" style="flex:1">CLOSE</button></div>
+    </div>
+  </div>
+  <style>
+    #commit-modal.hidden, #verify-modal.hidden { opacity: 0; pointer-events: none; }
+    .copy-row { display: flex; align-items: stretch; gap: 6px; margin-bottom: 6px; }
+    .copy-row .val { flex: 1; }
+    .copy-btn { background: linear-gradient(180deg, #ffd166, #c98b16); color: #5a3a0a; border: none; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; padding: 0 12px; cursor: pointer; flex-shrink: 0; -webkit-tap-highlight-color: transparent; }
+    .copy-btn.copied { background: linear-gradient(180deg, #5be0a4, #1f9c66); color: #04241a; }
+    .panel-btn.verify { background: linear-gradient(180deg, rgba(196,102,255,0.3), rgba(106,45,153,0.5)); border-color: rgba(196,102,255,0.5); color: #e6b8ff; }
+    .vfy-emoji { font-size: 64px; line-height: 1; margin: 12px auto 8px; text-align: center; }
+    .vfy-banner { font-family:'Bangers',cursive; font-size: 24px; letter-spacing: 3px; text-align:center; margin-bottom: 6px; }
+    .vfy-banner.win { color: #5be0a4; text-shadow: 0 0 18px rgba(91,224,164,0.5); }
+    .vfy-banner.loss { color: #ff8a8a; text-shadow: 0 0 18px rgba(255,138,140,0.5); }
+    .vfy-banner.fail { color: #ff8a8a; }
+    .vfy-line { font-family:'JetBrains Mono',monospace; font-size: 11px; color: rgba(255,255,255,0.7); text-align:center; margin: 2px 0; }
+    .vfy-line b { color:#fff; }
+  </style>
   <div id="err-banner"><span id="err-msg"></span></div>
 </div>
 <script>
@@ -119,12 +170,77 @@
 
   const ST = { roundId:null, token:null, seedHash:null, clientSeed:null, serverSeed:null, stake:STAKE, busy:false, gamesLeft:0, risk:'low', tables:null, ball:null, lastResult:null };
 
+  const commitModal = document.getElementById('commit-modal'), commitBody = document.getElementById('commit-body');
+  document.getElementById('commit-proceed').onclick = () => commitModal.classList.add('hidden');
+
+  function attachCopy() {
+    document.querySelectorAll('.copy-btn').forEach((btn) => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.onclick = async () => {
+        const txt = btn.dataset.copy || '';
+        try { await navigator.clipboard.writeText(txt); }
+        catch { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+        const orig = btn.textContent; btn.textContent = 'COPIED'; btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1400);
+      };
+    });
+  }
+  function showCommitModal() {
+    commitBody.innerHTML = `
+      <div class="fair-row"><span class="lbl">Seed Hash · committed by server</span>
+        <div class="copy-row"><span class="val">${ST.seedHash || '—'}</span><button class="copy-btn" data-copy="${ST.seedHash || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">Round ID</span>
+        <div class="copy-row"><span class="val">${ST.roundId || '—'}</span><button class="copy-btn" data-copy="${ST.roundId || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">Client Seed</span>
+        <div class="copy-row"><span class="val">${ST.clientSeed || '—'}</span><button class="copy-btn" data-copy="${ST.clientSeed || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">How it works</span><span class="val">The server has already chosen the path the ball will take. The seed hash is the cryptographic fingerprint of that path. After you drop, the server reveals the actual seed so you can verify sha256(seed) matches this hash.</span></div>
+    `;
+    attachCopy();
+    commitModal.classList.remove('hidden');
+  }
+
   function showErr(m){errMsg.textContent=m||'error';errBanner.classList.add('visible');setTimeout(()=>errBanner.classList.remove('visible'),2400);}
 
-  riskBtns.forEach((el) => { el.onclick = () => { if (ST.busy) return; ST.risk = el.dataset.r; riskBtns.forEach((b) => b.classList.toggle('on', b === el)); drawBoard(); }; });
+  riskBtns.forEach((el) => { el.onclick = () => { if (ST.busy) return; ST.risk = el.dataset.r; riskBtns.forEach((b) => b.classList.toggle('on', b === el)); drawBoard(); paintSlotsHtml(); }; });
   btnX.onclick = () => postParent({ type: 'litdex:litplinko:exit' });
   openFair.onclick = () => showFairness();
   fairClose.onclick = () => fairness.classList.add('hidden');
+  document.getElementById('open-verifier').onclick = () => {
+    fairness.classList.add('hidden');
+    const r = ST.lastResult || {};
+    document.getElementById('vfy-hash').value = r.seedHash || ST.seedHash || '';
+    document.getElementById('vfy-seed').value = r.serverSeed || '';
+    document.getElementById('vfy-result').style.display = 'none';
+    document.getElementById('verify-modal').classList.remove('hidden');
+  };
+  document.getElementById('vfy-close').onclick = () => document.getElementById('verify-modal').classList.add('hidden');
+  document.getElementById('vfy-run').onclick = () => {
+    const hash = document.getElementById('vfy-hash').value.trim().toLowerCase();
+    const seed = document.getElementById('vfy-seed').value.trim().toLowerCase();
+    const out = document.getElementById('vfy-result');
+    out.style.display = 'block';
+    if (!seed.match(/^[0-9a-f]+$/)) { out.innerHTML = '<div class="vfy-banner fail">⚠ INVALID</div><div class="vfy-line">Server seed must be hex</div>'; return; }
+    const r = ST.lastResult || {};
+    const clientSeed = r.clientSeed || ST.clientSeed;
+    const risk = (r.risk || ST.risk || 'low').toLowerCase();
+    if (!clientSeed) { out.innerHTML = '<div class="vfy-banner fail">⚠ NO ROUND</div><div class="vfy-line">Play a round first to use this verifier inline</div>'; return; }
+    const computed = LitDexVerify.sha256str(seed);
+    if (hash && computed !== hash) { out.innerHTML = `<div class="vfy-banner fail">✗ HASH MISMATCH</div><div class="vfy-line">sha256(seed) does NOT equal seedHash</div>`; return; }
+    const { slot } = LitDexVerify.plinkoOutcome(seed, clientSeed, risk);
+    const mult = (LitDexVerify.PLINKO[risk] || [])[slot] || 0;
+    const won = mult > 1;
+    const emoji = won ? '😄' : '😢';
+    out.innerHTML = `
+      <div class="vfy-emoji">${emoji}</div>
+      <div class="vfy-banner ${won ? 'win' : 'loss'}">${won ? 'YOU WON' : 'YOU LOST'}</div>
+      <div class="vfy-line">Slot: <b>${slot}</b> · Risk: <b>${risk.toUpperCase()}</b> · Multiplier: <b>${mult.toFixed(2)}x</b></div>
+      ${hash ? '<div class="vfy-line" style="color:#5be0a4">✓ Hash verified</div>' : ''}
+    `;
+  };
 
   async function fetchStats() { if (!wallet) return null; try { const r = await fetch(`${API}/litplinko/stats/${wallet}`); if (!r.ok) return null; return await r.json(); } catch { return null; } }
 
@@ -138,6 +254,7 @@
     hudBal.textContent = String(bal);
     hudGames.textContent = `${DAILY-left}/${DAILY}`;
     drawBoard();
+    paintSlotsHtml();
     const noG = left <= 0, lowB = bal < STAKE;
     pTitle.textContent = 'LIT PLINKO';
     pSub.textContent = noG ? 'Daily limit reached' : (lowB ? `Need ${STAKE} PTS` : 'Drop a ball through 12 rows · 13 slots · provably fair');
@@ -163,12 +280,15 @@
       const r = await fetch(`${API}/litplinko/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wallet, clientSeed: cs }) });
       const d = await r.json();
       if (!r.ok || d.error) { showErr(d?.error || 'start_failed'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; return; }
-      ST.roundId = d.roundId; ST.token = d.token; ST.seedHash = d.seedHash; ST.clientSeed = d.clientSeed; ST.serverSeed = null;
+      ST.roundId = d.roundId; ST.token = d.token; ST.seedHash = d.seedHash; ST.clientSeed = d.clientSeed; ST.serverSeed = null; ST.lastResult = null;
       ST.tables = d.tables; ST.gamesLeft = d.gamesLeft;
       hudGames.textContent = `${DAILY-ST.gamesLeft}/${DAILY}`;
       hudMult.textContent = '—';
       panel.classList.add('hidden');
+      ST.ball = null;     // no ball before drop
       drawBoard();
+      paintSlotsHtml();
+      showCommitModal();
       fetchStats().then((s) => { if (s) hudBal.textContent = String(s.pointsBalance || 0); });
     } catch { showErr('Network error'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; }
   }
@@ -182,111 +302,172 @@
       if (!r.ok || d.error) { showErr(d?.error || 'drop_failed'); ST.busy = false; dropBtn.disabled = false; riskBtns.forEach((b) => b.disabled = false); return; }
       ST.serverSeed = d.serverSeed;
       await animateBall(d.path, d.slot);
+      paintSlotsHtml(d.slot);
       hudMult.textContent = `${d.multiplier.toFixed(2)}x`;
       if (d.multiplier > 1) sndWin(); else if (d.multiplier > 0) sndPeg(); else sndLoss();
-      endPanel(d);
+      // Hold the ball-in-slot result on screen so the player can read it.
+      setTimeout(() => endPanel(d), 1500);
     } catch { showErr('Network error'); ST.busy = false; dropBtn.disabled = false; riskBtns.forEach((b) => b.disabled = false); }
   };
 
   // ── Render board ──────────────────────────────────────────
+  function paintSlotsHtml(landedSlot) {
+    const row = document.getElementById('slots-row');
+    if (!row) return;
+    const tbl = ST.tables ? ST.tables[ST.risk] : null;
+    if (!tbl) { row.innerHTML = ''; return; }
+    const cells = row.children;
+    const need = SLOTS;
+    while (row.children.length < need) row.appendChild(document.createElement('div'));
+    while (row.children.length > need) row.removeChild(row.lastChild);
+    for (let i = 0; i < need; i++) {
+      const m = tbl[i] / 100;
+      const cell = row.children[i];
+      cell.className = 'slot-cell';
+      if (m >= 5) cell.classList.add('tier-best');
+      else if (m >= 1.5) cell.classList.add('tier-good');
+      else if (m >= 0.5) cell.classList.add('tier-mid');
+      else cell.classList.add('tier-low');
+      if (i === landedSlot) cell.classList.add('lit');
+      const label = m === 0 ? '0' : (m >= 10 ? `${m.toFixed(0)}x` : `${m.toFixed(m >= 1 ? 1 : 1)}x`);
+      cell.textContent = label;
+    }
+  }
+
   function drawBoard() {
     const W = stageCanvas.clientWidth, H = stageCanvas.clientHeight;
     if (!W || !H) return;
     ctx2d.clearRect(0,0,W,H);
-    const padX = 20, padTop = 20, padBot = 60;
+    const padX = 20, padTop = 20, padBot = 20;     // slots are now in HTML below canvas
     const drawW = W - padX * 2, drawH = H - padTop - padBot;
     const rowGap = drawH / (ROWS + 1);
     const colGap = drawW / (SLOTS + 1);
 
-    // Pegs
-    ctx2d.fillStyle = 'rgba(255,255,255,0.85)';
+    // Pegs (with subtle glow)
     for (let r = 0; r < ROWS; r++) {
       const pegs = r + 2;
       const startX = padX + (drawW - (pegs - 1) * colGap) / 2;
       const y = padTop + (r + 1) * rowGap;
       for (let p = 0; p < pegs; p++) {
+        const px = startX + p * colGap;
+        // Outer glow.
+        ctx2d.fillStyle = 'rgba(255,255,255,0.18)';
         ctx2d.beginPath();
-        ctx2d.arc(startX + p * colGap, y, 3, 0, Math.PI * 2);
+        ctx2d.arc(px, y, 4.5, 0, Math.PI * 2);
+        ctx2d.fill();
+        // Solid peg.
+        ctx2d.fillStyle = '#cfe6ff';
+        ctx2d.beginPath();
+        ctx2d.arc(px, y, 3, 0, Math.PI * 2);
         ctx2d.fill();
       }
     }
-    // Slots
-    const slotW = drawW / SLOTS;
-    const slotY = padTop + drawH + 4;
-    const tbl = ST.tables ? ST.tables[ST.risk] : null;
-    for (let s = 0; s < SLOTS; s++) {
-      const x = padX + s * slotW;
-      const mult = tbl ? (tbl[s] / 100) : 1;
-      const intensity = Math.min(1, mult / 30);
-      const color = mult >= 5 ? `rgba(255,213,90,${0.4 + intensity * 0.6})`
-                  : mult >= 1.5 ? `rgba(91,224,164,${0.3 + intensity * 0.6})`
-                  : `rgba(140,180,255,0.18)`;
-      ctx2d.fillStyle = color;
-      roundRect(ctx2d, x + 2, slotY, slotW - 4, padBot - 12, 6);
-      ctx2d.fill();
-      ctx2d.fillStyle = '#fff';
-      ctx2d.font = `bold ${Math.min(13, slotW * 0.4)}px 'JetBrains Mono', monospace`;
-      ctx2d.textAlign = 'center';
-      ctx2d.textBaseline = 'middle';
-      ctx2d.fillText(`${mult.toFixed(mult < 1 ? 1 : (mult >= 100 ? 0 : 1))}x`, x + slotW / 2, slotY + (padBot - 12) / 2);
-    }
+
     // Ball preview
     if (ST.ball) {
+      const scale = ST.ball.scale != null ? ST.ball.scale : 1;
+      // Soft motion trail.
+      ctx2d.save();
+      ctx2d.globalAlpha = 0.35;
       ctx2d.fillStyle = '#ffd76a';
-      ctx2d.shadowColor = '#ffd76a'; ctx2d.shadowBlur = 14;
       ctx2d.beginPath();
-      ctx2d.arc(ST.ball.x, ST.ball.y, 5, 0, Math.PI * 2);
+      ctx2d.arc(ST.ball.x, ST.ball.y - 6, 4, 0, Math.PI * 2);
+      ctx2d.fill();
+      ctx2d.globalAlpha = 0.18;
+      ctx2d.beginPath();
+      ctx2d.arc(ST.ball.x, ST.ball.y - 12, 3, 0, Math.PI * 2);
+      ctx2d.fill();
+      ctx2d.restore();
+      // Main ball with glow.
+      const grd = ctx2d.createRadialGradient(ST.ball.x - 2, ST.ball.y - 2, 1, ST.ball.x, ST.ball.y, 7 * scale);
+      grd.addColorStop(0, '#fff5d2');
+      grd.addColorStop(0.55, '#ffd76a');
+      grd.addColorStop(1, '#a16e10');
+      ctx2d.fillStyle = grd;
+      ctx2d.shadowColor = '#ffd76a'; ctx2d.shadowBlur = 16;
+      ctx2d.beginPath();
+      ctx2d.arc(ST.ball.x, ST.ball.y, 7 * scale, 0, Math.PI * 2);
       ctx2d.fill();
       ctx2d.shadowBlur = 0;
+      // White highlight specular.
+      ctx2d.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx2d.beginPath();
+      ctx2d.arc(ST.ball.x - 2, ST.ball.y - 2, 2 * scale, 0, Math.PI * 2);
+      ctx2d.fill();
     }
   }
   function roundRect(c,x,y,w,h,r){r=Math.max(0,Math.min(r,w/2,h/2));c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.quadraticCurveTo(x+w,y,x+w,y+r);c.lineTo(x+w,y+h-r);c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);c.lineTo(x,y+r);c.quadraticCurveTo(x,y,x+r,y);c.closePath();}
 
   // Animate ball through path. path[i] = -1 (left) or +1 (right) for row i.
+  // Realistic gravity-driven drop with arc bounces between pegs.
   function animateBall(path, finalSlot) {
     return new Promise((resolve) => {
       const W = stageCanvas.clientWidth, H = stageCanvas.clientHeight;
-      const padX = 20, padTop = 20, padBot = 60;
+      const padX = 20, padTop = 20, padBot = 20;
       const drawW = W - padX * 2, drawH = H - padTop - padBot;
       const rowGap = drawH / (ROWS + 1);
       const colGap = drawW / (SLOTS + 1);
 
-      // Path positions per row.
-      const positions = [];
-      // Row 0 has 2 pegs centered. Ball starts above row 0, goes between pegs.
-      let col = 0; // -1 = left of center, +1 = right
+      // Build the list of waypoints the ball passes through.
+      const wp = [];
+      let col = 0;
       const startX = padX + drawW / 2;
-      positions.push({ x: startX, y: padTop });
+      wp.push({ x: startX, y: padTop - 14 });
+      wp.push({ x: startX, y: padTop + rowGap * 0.4 });
       for (let r = 0; r < ROWS; r++) {
         col += path[r];
         const y = padTop + (r + 1) * rowGap + rowGap * 0.5;
         const x = padX + drawW / 2 + (col / 2) * colGap;
-        positions.push({ x, y });
+        wp.push({ x, y });
       }
-      // Final slot center.
+      // Settle into the slot center (now at the bottom of the canvas
+      // since the HTML slot strip is BELOW the canvas).
       const slotW = drawW / SLOTS;
       const finalX = padX + finalSlot * slotW + slotW / 2;
-      const finalY = padTop + drawH + (padBot / 2);
-      positions.push({ x: finalX, y: finalY });
+      const finalY = H - 18;
+      wp.push({ x: finalX, y: finalY });
 
-      let i = 0;
-      const startTime = performance.now();
-      const stepDur = 80;     // ms per peg
+      // Slow + smooth: 220ms drop-in, 200ms per peg, 280ms slot settle.
+      const segDur = [];
+      for (let i = 0; i < wp.length - 1; i++) {
+        if (i === 0)                       segDur.push(220);
+        else if (i === wp.length - 2)      segDur.push(280);
+        else                                segDur.push(200);
+      }
+      const totalDur = segDur.reduce((a, b) => a + b, 0);
+
+      const startT = performance.now();
+      let lastSegIdx = -1;
       function step() {
-        const total = positions.length - 1;
-        const elapsed = performance.now() - startTime;
-        const progress = elapsed / stepDur;
-        const idx = Math.min(total - 1, Math.floor(progress));
-        const t = progress - idx;
-        if (idx >= total) {
-          ST.ball = positions[total];
+        const elapsed = performance.now() - startT;
+        if (elapsed >= totalDur) {
+          ST.ball = { x: wp[wp.length - 1].x, y: wp[wp.length - 1].y, scale: 1 };
           drawBoard();
           resolve();
           return;
         }
-        const a = positions[idx], b = positions[idx + 1];
-        ST.ball = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-        if (i !== idx) { sndPeg(); i = idx; }
+        let acc = 0, segIdx = 0;
+        for (segIdx = 0; segIdx < segDur.length; segIdx++) {
+          if (elapsed < acc + segDur[segIdx]) break;
+          acc += segDur[segIdx];
+        }
+        if (segIdx >= segDur.length) segIdx = segDur.length - 1;
+        const segT = (elapsed - acc) / segDur[segIdx];
+        const a = wp[segIdx], b = wp[segIdx + 1];
+
+        const easeX = 0.5 - 0.5 * Math.cos(segT * Math.PI);
+        const easeY = segT * segT;
+        let bx = a.x + (b.x - a.x) * easeX;
+        let by = a.y + (b.y - a.y) * easeY;
+
+        const archUp = Math.max(0, Math.sin(segT * Math.PI)) * Math.min(rowGap * 0.22, 11);
+        if (segIdx > 0 && segIdx < wp.length - 2) by -= archUp;
+
+        const settle = segT < 0.20 ? (1 - segT / 0.20) * 0.20 : 0;
+        const scale = 1 - settle;
+
+        ST.ball = { x: bx, y: by, scale };
+        if (segIdx !== lastSegIdx) { sndPeg(); lastSegIdx = segIdx; }
         drawBoard();
         requestAnimationFrame(step);
       }
@@ -305,8 +486,10 @@
       <div class="panel-row"><span class="lbl">Multiplier</span><span class="val">${d.multiplier.toFixed(2)}x</span></div>
       <div class="panel-row"><span class="lbl">Slot</span><span class="val">${d.slot} / ${SLOTS - 1}</span></div>
       ${d.explorerUrl ? `<div class="panel-row"><span class="lbl">Tx</span><a class="val" style="color:#5be0a4;text-decoration:underline" href="${d.explorerUrl}" target="_blank" rel="noreferrer">${(d.txHash||'').slice(0,10)}…</a></div>` : ''}
+      <button class="panel-btn verify" style="width:100%;margin-top:14px" id="btn-verify-end">VERIFY FAIRNESS</button>
     `;
-    postParent({ type: 'litdex:litplinko:end', won: d.profit > 0, multiplier: d.multiplier, awarded: d.awarded, profit: d.profit, stake: d.stake, txInfo: d.txHash ? { txHash: d.txHash, explorerUrl: d.explorerUrl } : null });
+    document.getElementById('btn-verify-end').onclick = (e) => { e.stopPropagation(); showFairness(); };
+    postParent({ type: 'litdex:litplinko:end', won: d.profit > 0, multiplier: d.multiplier, awarded: d.awarded, profit: d.profit, stake: d.stake, txInfo: d.txHash ? { txHash: d.txHash, explorerUrl: d.explorerUrl } : null, seedHash: ST.seedHash || d.seedHash, serverSeed: d.serverSeed, roundId: ST.roundId, clientSeed: ST.clientSeed, risk: ST.risk });
     fetchStats().then((s) => {
       const left = s ? Math.max(0, Number(s.gamesLeft||0)) : 0;
       const bal = s ? Number(s.pointsBalance||0) : 0;
@@ -324,17 +507,29 @@
   function showFairness() {
     const r = ST.lastResult;
     fairBody.innerHTML = r ? `
-      <div class="fair-row"><span class="lbl">Seed Hash (committed before round)</span><span class="val">${r.seedHash || ST.seedHash || '—'}</span></div>
-      <div class="fair-row"><span class="lbl">Server Seed (revealed)</span><span class="val">${r.serverSeed || '—'}</span></div>
-      <div class="fair-row"><span class="lbl">Client Seed</span><span class="val">${r.clientSeed || ST.clientSeed || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Seed Hash</span>
+        <div class="copy-row"><span class="val">${r.seedHash || ST.seedHash || '—'}</span><button class="copy-btn" data-copy="${r.seedHash || ST.seedHash || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">Server Seed (revealed)</span>
+        <div class="copy-row"><span class="val">${r.serverSeed || '—'}</span><button class="copy-btn" data-copy="${r.serverSeed || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">Client Seed</span>
+        <div class="copy-row"><span class="val">${r.clientSeed || ST.clientSeed || '—'}</span><button class="copy-btn" data-copy="${r.clientSeed || ST.clientSeed || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">Round ID</span>
+        <div class="copy-row"><span class="val">${ST.roundId || '—'}</span><button class="copy-btn" data-copy="${ST.roundId || ''}">COPY</button></div>
+      </div>
       <div class="fair-row"><span class="lbl">Result</span><span class="val">slot ${r.slot} · ${r.multiplier.toFixed(2)}x</span></div>
-      <div class="fair-row"><span class="lbl">Verify</span><span class="val">sha256(serverSeed) must match seedHash. Then HMAC-SHA256(serverSeed, clientSeed + ":" + risk) → first 32 bits → 12 LSB = path bits → count of 1s = slot.</span></div>
+      <div class="fair-row"><span class="lbl">Verify formula</span><span class="val">sha256(serverSeed) must equal seedHash. Then HMAC-SHA256(serverSeed, clientSeed + ":" + risk) → first 32 bits → 12 LSB = path bits → count of 1 bits = slot.</span></div>
     ` : `
-      <div class="fair-row"><span class="lbl">Seed Hash (committed before round)</span><span class="val">${ST.seedHash || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Seed Hash (committed)</span>
+        <div class="copy-row"><span class="val">${ST.seedHash || '—'}</span><button class="copy-btn" data-copy="${ST.seedHash || ''}">COPY</button></div>
+      </div>
       <div class="fair-row"><span class="lbl">Server Seed</span><span class="val">Hidden — revealed at end of round</span></div>
       <div class="fair-row"><span class="lbl">Client Seed</span><span class="val">${ST.clientSeed || '—'}</span></div>
-      <div class="fair-row"><span class="lbl">How it works</span><span class="val">Before you drop, the server commits sha256(serverSeed). After the result, server reveals serverSeed. Anyone can verify by replaying the HMAC formula.</span></div>
+      <div class="fair-row"><span class="lbl">How it works</span><span class="val">Before you drop, the server commits sha256(serverSeed). After the ball lands, server reveals serverSeed. Anyone can verify by replaying the HMAC formula.</span></div>
     `;
+    attachCopy();
     fairness.classList.remove('hidden');
   }
 

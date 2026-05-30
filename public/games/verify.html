@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LitDeX Casino · Provably Fair Verifier</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka+One&family=JetBrains+Mono:wght@400;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    min-height: 100%; background: #050912; color: #fff;
+    font-family: 'Fredoka One', cursive;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    background:
+      radial-gradient(ellipse 80% 50% at 50% 0%, rgba(120,80,200,0.18) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 100% 100%, rgba(91,224,164,0.14) 0%, transparent 60%),
+      linear-gradient(180deg, #04070d 0%, #0a1226 60%, #0e1d40 100%);
+    background-attachment: fixed;
+    padding: 24px 16px 80px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+  .title {
+    font-family: 'Bangers', cursive;
+    font-size: clamp(36px, 7vw, 56px);
+    letter-spacing: 4px;
+    color: #fff;
+    text-shadow: 0 0 28px rgba(196,102,255,0.45);
+    margin-bottom: 6px;
+  }
+  .sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.18em;
+    color: #aac6ee;
+    text-transform: uppercase;
+  }
+
+  .card {
+    background: linear-gradient(180deg, rgba(15,25,45,0.85), rgba(5,10,20,0.85));
+    border: 1px solid rgba(140,180,255,0.18);
+    border-radius: 16px;
+    padding: 18px 18px 20px;
+    margin-bottom: 16px;
+    backdrop-filter: blur(8px);
+  }
+  .label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: #aac6ee;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    display: block;
+  }
+
+  .game-tabs {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+    margin-bottom: 12px;
+  }
+  @media (min-width: 480px) {
+    .game-tabs { grid-template-columns: repeat(6, 1fr); }
+  }
+  .tab {
+    padding: 10px 4px;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.1em;
+    background: rgba(15,25,45,0.85);
+    border: 1px solid rgba(140,180,255,0.22);
+    color: rgba(255,255,255,0.6);
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  .tab.on {
+    background: linear-gradient(180deg, #c466ff, #6a2d99);
+    border-color: #c466ff;
+    color: #fff;
+    box-shadow: 0 3px 0 rgba(0,0,0,0.3);
+  }
+
+  input[type="text"], textarea {
+    width: 100%;
+    background: rgba(8,14,28,0.85);
+    border: 1px solid rgba(140,180,255,0.18);
+    border-radius: 10px;
+    padding: 12px;
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 12px;
+    resize: vertical;
+    word-break: break-all;
+  }
+  input[type="text"]:focus, textarea:focus {
+    outline: none;
+    border-color: #c466ff;
+    box-shadow: 0 0 0 2px rgba(196,102,255,0.2);
+  }
+  .input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 520px) { .input-row { grid-template-columns: 1fr; gap: 0; } }
+
+  .extra { display: none; }
+  .extra.show { display: block; }
+  .extra-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 480px) { .extra-grid { grid-template-columns: 1fr; gap: 0; } }
+
+  .btn {
+    width: 100%;
+    min-height: 50px;
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(180deg, #c466ff, #6a2d99);
+    color: #fff;
+    font-family: 'Bangers', cursive;
+    font-size: 22px;
+    letter-spacing: 4px;
+    text-shadow: 0 2px 0 rgba(0,0,0,0.4);
+    box-shadow: 0 5px 0 #3a0e60, 0 0 24px rgba(196,102,255,0.4);
+    cursor: pointer;
+  }
+  .btn:active { transform: translateY(2px); box-shadow: 0 3px 0 #3a0e60; }
+
+  .result {
+    display: none;
+    margin-top: 16px;
+    text-align: center;
+  }
+  .result.show { display: block; }
+  .result-banner {
+    font-family: 'Bangers', cursive;
+    font-size: 32px;
+    letter-spacing: 4px;
+    margin-bottom: 12px;
+  }
+  .result-banner.match { color: #5be0a4; text-shadow: 0 0 24px rgba(91,224,164,0.5); }
+  .result-banner.fail  { color: #ff8a8a; text-shadow: 0 0 24px rgba(255,138,140,0.5); }
+  .result-row {
+    display: flex; justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; padding: 8px 0;
+    border-bottom: 1px solid rgba(140,180,255,0.1);
+  }
+  .result-row .lbl { color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 0.1em; }
+  .result-row .val { color: #fff; font-weight: 700; word-break: break-all; max-width: 60%; text-align: right; }
+  .result-row .val.gold { color: #ffd166; }
+  .result-row .val.green { color: #5be0a4; }
+  .result-row .val.red { color: #ff8a8a; }
+
+  .visual {
+    margin: 16px 0;
+    padding: 18px;
+    background: rgba(8,14,28,0.85);
+    border: 1px solid rgba(140,180,255,0.18);
+    border-radius: 12px;
+    text-align: center;
+    min-height: 120px;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 12px;
+  }
+  .visual-big {
+    font-family: 'Bangers', cursive;
+    font-size: clamp(48px, 12vw, 96px);
+    letter-spacing: 4px;
+    line-height: 1;
+  }
+  .visual-big.green { color: #5be0a4; text-shadow: 0 0 28px rgba(91,224,164,0.5); }
+  .visual-big.gold  { color: #ffd166; text-shadow: 0 0 28px rgba(255,213,90,0.55); }
+  .visual-big.purple{ color: #c466ff; text-shadow: 0 0 28px rgba(196,102,255,0.5); }
+  .visual-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #aac6ee;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  #mines-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 6px; max-width: 280px; margin: 0 auto;
+  }
+  .mines-cell {
+    aspect-ratio: 1 / 1;
+    border-radius: 8px;
+    background: linear-gradient(180deg, #2a3450, #131b30);
+    border: 1px solid rgba(140,180,255,0.18);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .mines-cell.bomb { background: linear-gradient(180deg, #ff5a6e, #8a1c30); border-color: #ff5a6e; }
+  .mines-cell.safe { background: linear-gradient(180deg, #5be0a4, #1f9c66); border-color: #5be0a4; }
+  #plinko-svg, #wheel-svg, #coin-svg, #dice-svg, #limbo-svg {
+    width: 100%; max-width: 320px; margin: 0 auto;
+  }
+
+  .err {
+    color: #ff8a8a;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    margin-top: 10px;
+    padding: 10px;
+    background: rgba(255,90,110,0.1);
+    border: 1px solid rgba(255,138,140,0.4);
+    border-radius: 8px;
+  }
+
+  .formula {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    line-height: 1.6;
+    color: rgba(255,255,255,0.6);
+    background: rgba(8,14,28,0.7);
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(140,180,255,0.12);
+    margin-top: 12px;
+  }
+  .formula b { color: #c466ff; }
+
+  .footer {
+    margin-top: 32px;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 0.16em;
+  }
+  .footer a { color: #5be0a4; text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="title">PROVABLY FAIR</div>
+    <div class="sub">LitDeX Casino · Verify any past round</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Pick a game</div>
+    <div class="game-tabs" id="game-tabs">
+      <div class="tab on" data-g="dice">DICE</div>
+      <div class="tab"    data-g="limbo">LIMBO</div>
+      <div class="tab"    data-g="mines">MINES</div>
+      <div class="tab"    data-g="plinko">PLINKO</div>
+      <div class="tab"    data-g="wheel">WHEEL</div>
+      <div class="tab"    data-g="coinflip">COIN FLIP</div>
+    </div>
+
+    <div class="input-row">
+      <div>
+        <label class="label">Seed Hash · committed before bet</label>
+        <input type="text" id="seedHash" placeholder="64 hex chars" autocomplete="off">
+      </div>
+      <div>
+        <label class="label">Server Seed · revealed after bet</label>
+        <input type="text" id="serverSeed" placeholder="64 hex chars" autocomplete="off">
+      </div>
+    </div>
+
+    <label class="label">Round ID</label>
+    <input type="text" id="roundId" placeholder="32 hex chars" autocomplete="off">
+
+    <div class="extra-grid extra" id="extra-clientseed">
+      <div>
+        <label class="label">Client Seed</label>
+        <input type="text" id="clientSeed" placeholder="alphanumeric" autocomplete="off">
+      </div>
+      <div>
+        <label class="label">Risk · for Plinko / Wheel</label>
+        <select id="risk" style="width:100%;background:rgba(8,14,28,0.85);border:1px solid rgba(140,180,255,0.18);border-radius:10px;padding:12px;color:#fff;font-family:'JetBrains Mono',monospace;font-size:12px;margin-bottom:12px;">
+          <option value="low">LOW</option>
+          <option value="medium">MEDIUM</option>
+          <option value="high">HIGH</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="extra-grid extra" id="extra-side">
+      <div>
+        <label class="label">Side · for Coin Flip</label>
+        <select id="side" style="width:100%;background:rgba(8,14,28,0.85);border:1px solid rgba(140,180,255,0.18);border-radius:10px;padding:12px;color:#fff;font-family:'JetBrains Mono',monospace;font-size:12px;margin-bottom:12px;">
+          <option value="heads">HEADS</option>
+          <option value="tails">TAILS</option>
+        </select>
+      </div>
+      <div>
+        <label class="label">Streak · for Coin Flip</label>
+        <input type="number" id="streak" min="1" max="5" value="1">
+      </div>
+    </div>
+
+    <div class="extra" id="extra-bombs">
+      <label class="label">Bombs · for Mines</label>
+      <select id="bombs" style="width:100%;background:rgba(8,14,28,0.85);border:1px solid rgba(140,180,255,0.18);border-radius:10px;padding:12px;color:#fff;font-family:'JetBrains Mono',monospace;font-size:12px;margin-bottom:12px;">
+        <option value="3">3 bombs</option>
+        <option value="5">5 bombs</option>
+        <option value="10">10 bombs</option>
+      </select>
+    </div>
+
+    <button class="btn" id="btn-verify">VERIFY</button>
+    <div class="result" id="result"></div>
+    <div id="formula" class="formula" style="display:none"></div>
+  </div>
+
+  <div class="footer">
+    LitDeX · open source verifier · <a href="/games" target="_blank">back to games</a>
+  </div>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  let game = 'dice';
+
+  // Pre-fill from URL query params (deep-link from in-game verifier).
+  const qp = new URLSearchParams(location.search);
+  if (qp.get('g')) {
+    game = qp.get('g');
+    document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.g === game));
+  }
+  if (qp.get('seedHash'))   $('seedHash').value   = qp.get('seedHash');
+  if (qp.get('serverSeed')) $('serverSeed').value = qp.get('serverSeed');
+  if (qp.get('roundId'))    $('roundId').value    = qp.get('roundId');
+  if (qp.get('clientSeed')) $('clientSeed').value = qp.get('clientSeed');
+  if (qp.get('risk'))       $('risk').value       = qp.get('risk');
+  if (qp.get('side'))       $('side').value       = qp.get('side');
+  if (qp.get('streak'))     $('streak').value     = qp.get('streak');
+  if (qp.get('bombs'))      $('bombs').value      = qp.get('bombs');
+
+  // ── Game tabs ─────────────────────────────────────────────
+  document.querySelectorAll('.tab').forEach((el) => {
+    el.onclick = () => {
+      document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b === el));
+      game = el.dataset.g;
+      refreshExtras();
+    };
+  });
+  function refreshExtras() {
+    const showCS    = ['plinko','wheel','coinflip'].includes(game);
+    const showSide  = game === 'coinflip';
+    const showBombs = game === 'mines';
+    $('extra-clientseed').classList.toggle('show', showCS);
+    $('extra-side').classList.toggle('show', showSide);
+    $('extra-bombs').classList.toggle('show', showBombs);
+    $('result').classList.remove('show');
+    $('formula').style.display = 'none';
+  }
+  refreshExtras();
+
+  // Auto-verify if URL params provided enough data.
+  if (qp.get('serverSeed') && qp.get('roundId')) {
+    setTimeout(() => $('btn-verify').click(), 50);
+  }
+
+  // ── SHA-256 + HMAC-SHA256 (sync) ──────────────────────────
+  function rotr(n, x) { return (x >>> n) | (x << (32 - n)); }
+  const K = [
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+  ];
+  function sha256bytes(bytes) {
+    const lenBits = bytes.length * 8;
+    const padded = new Uint8Array(((bytes.length + 9 + 63) >> 6) << 6);
+    padded.set(bytes); padded[bytes.length] = 0x80;
+    const dv = new DataView(padded.buffer);
+    dv.setUint32(padded.length - 8, Math.floor(lenBits / 0x100000000));
+    dv.setUint32(padded.length - 4, lenBits >>> 0);
+    let h0=0x6a09e667,h1=0xbb67ae85,h2=0x3c6ef372,h3=0xa54ff53a,
+        h4=0x510e527f,h5=0x9b05688c,h6=0x1f83d9ab,h7=0x5be0cd19;
+    const w = new Uint32Array(64);
+    for (let i = 0; i < padded.length; i += 64) {
+      for (let t = 0; t < 16; t++) w[t] = dv.getUint32(i + t * 4);
+      for (let t = 16; t < 64; t++) {
+        const s0 = rotr(7, w[t-15]) ^ rotr(18, w[t-15]) ^ (w[t-15] >>> 3);
+        const s1 = rotr(17, w[t-2]) ^ rotr(19, w[t-2]) ^ (w[t-2] >>> 10);
+        w[t] = (w[t-16] + s0 + w[t-7] + s1) >>> 0;
+      }
+      let a=h0,b=h1,c=h2,d=h3,e=h4,f=h5,g=h6,hh=h7;
+      for (let t = 0; t < 64; t++) {
+        const S1 = rotr(6,e) ^ rotr(11,e) ^ rotr(25,e);
+        const ch = (e & f) ^ (~e & g);
+        const T1 = (hh + S1 + ch + K[t] + w[t]) >>> 0;
+        const S0 = rotr(2,a) ^ rotr(13,a) ^ rotr(22,a);
+        const mj = (a & b) ^ (a & c) ^ (b & c);
+        const T2 = (S0 + mj) >>> 0;
+        hh=g; g=f; f=e; e=(d+T1)>>>0; d=c; c=b; b=a; a=(T1+T2)>>>0;
+      }
+      h0=(h0+a)>>>0; h1=(h1+b)>>>0; h2=(h2+c)>>>0; h3=(h3+d)>>>0;
+      h4=(h4+e)>>>0; h5=(h5+f)>>>0; h6=(h6+g)>>>0; h7=(h7+hh)>>>0;
+    }
+    const out = new Uint8Array(32);
+    const oDv = new DataView(out.buffer);
+    oDv.setUint32(0,h0); oDv.setUint32(4,h1); oDv.setUint32(8,h2); oDv.setUint32(12,h3);
+    oDv.setUint32(16,h4); oDv.setUint32(20,h5); oDv.setUint32(24,h6); oDv.setUint32(28,h7);
+    return out;
+  }
+  function hmac(keyStr, msgStr) {
+    const enc = new TextEncoder();
+    let key = enc.encode(keyStr);
+    if (key.length > 64) key = sha256bytes(key);
+    const padded = new Uint8Array(64); padded.set(key);
+    const oKey = new Uint8Array(64), iKey = new Uint8Array(64);
+    for (let i = 0; i < 64; i++) { oKey[i] = padded[i] ^ 0x5c; iKey[i] = padded[i] ^ 0x36; }
+    const msg = enc.encode(msgStr);
+    const inner = new Uint8Array(iKey.length + msg.length);
+    inner.set(iKey, 0); inner.set(msg, iKey.length);
+    const innerHash = sha256bytes(inner);
+    const outer = new Uint8Array(oKey.length + innerHash.length);
+    outer.set(oKey, 0); outer.set(innerHash, oKey.length);
+    return sha256bytes(outer);
+  }
+  function toHex(bytes) {
+    let s = '';
+    for (let i = 0; i < bytes.length; i++) s += bytes[i].toString(16).padStart(2, '0');
+    return s;
+  }
+  function sha256str(s) { return toHex(sha256bytes(new TextEncoder().encode(s))); }
+
+  // ── Per-game algorithms (mirror server EXACTLY) ───────────
+  function diceRoll(seed, roundId) {
+    const h = toHex(hmac(seed, roundId));
+    const u = parseInt(h.slice(0, 8), 16) >>> 0;
+    return (u % 10000) / 100;
+  }
+  function limboRoll(seed, roundId) {
+    const h = toHex(hmac(seed, roundId));
+    const u = (parseInt(h.slice(0, 8), 16) >>> 0) / 0x100000000;
+    const safe = Math.max(u, 1e-7);
+    const H = (99 / 100) / safe;
+    return Math.min(1000, Math.max(1.0, H));
+  }
+  function minesBombs(seed, roundId, bombs) {
+    const cells = [];
+    for (let i = 0; i < 25; i++) cells.push(i);
+    for (let i = 24; i > 0; i--) {
+      const h = toHex(hmac(seed, `${roundId}:${i}`));
+      const r = (parseInt(h.slice(0, 8), 16) >>> 0) % (i + 1);
+      const t = cells[i]; cells[i] = cells[r]; cells[r] = t;
+    }
+    return cells.slice(0, bombs).sort((a, b) => a - b);
+  }
+  function plinkoOutcome(seed, clientSeed, risk) {
+    const key = `${clientSeed}:${risk}`;
+    const h = toHex(hmac(seed, key));
+    const u = parseInt(h.slice(0, 8), 16) >>> 0;
+    const bits = u & 0xfff;
+    let rights = 0;
+    const path = [];
+    for (let i = 0; i < 12; i++) {
+      const right = ((bits >> i) & 1) === 1;
+      path.push(right ? 1 : -1);
+      if (right) rights++;
+    }
+    return { slot: rights, path, pathBits: bits };
+  }
+  function wheelSegment(seed, clientSeed, risk) {
+    const key = `${clientSeed}:${risk}`;
+    const h = toHex(hmac(seed, key));
+    return (parseInt(h.slice(0, 8), 16) >>> 0) % 24;
+  }
+  function coinflipFlips(seed, clientSeed, side, streak) {
+    const flips = [];
+    for (let i = 0; i < streak; i++) {
+      const h = toHex(hmac(seed, `${clientSeed}:${side}:${streak}:${i}`));
+      flips.push((parseInt(h.slice(0, 2), 16) & 1) ? 'tails' : 'heads');
+    }
+    return flips;
+  }
+
+  // Multiplier tables (mirror backend).
+  const PLINKO_TABLES = {
+    low:    [9.0, 3.0, 1.4, 1.1, 1.0, 0.9, 0.8, 0.9, 1.0, 1.1, 1.4, 3.0, 9.0],
+    medium: [28,  8,   3,   1.6, 1.2, 0.7, 0.3, 0.7, 1.2, 1.6, 3,   8,   28],
+    high:   [130, 30,  6,   2,   0.8, 0.3, 0.1, 0.3, 0.8, 2,   6,   30,  130],
+  };
+  const WHEEL_TABLES = {
+    low:    [1.5,1.2,1.0,1.5,1.2,1.0,2.0,1.2,1.0,1.5,1.2,1.0,2.0,1.2,1.0,1.5,1.2,1.0,1.5,1.2,1.0,2.0,1.2,1.0],
+    medium: [2.0,1.5,0,2.0,1.5,0,3.0,1.5,0,5.0,1.5,0,3.0,1.5,0,2.0,1.5,0,2.0,1.5,0,5.0,1.5,0],
+    high:   [0,0,2.0,0,0,5.0,0,0,0,10,0,0,2.0,0,0,5.0,0,0,0,20,0,0,2.0,0],
+  };
+  function minesMultiplier(safeRevealed, bombs) {
+    if (safeRevealed <= 0) return 1;
+    const safe = 25 - bombs;
+    if (safeRevealed > safe) return 0;
+    function comb(n, k) {
+      if (k < 0 || k > n) return 0;
+      if (k === 0 || k === n) return 1;
+      k = Math.min(k, n - k);
+      let r = 1;
+      for (let i = 1; i <= k; i++) r = (r * (n - k + i)) / i;
+      return r;
+    }
+    return (comb(25, safeRevealed) / comb(safe, safeRevealed)) * 0.97;
+  }
+
+  // ── Verify button ─────────────────────────────────────────
+  $('btn-verify').onclick = () => {
+    const seedHash   = $('seedHash').value.trim().toLowerCase();
+    const serverSeed = $('serverSeed').value.trim().toLowerCase();
+    const roundId    = $('roundId').value.trim().toLowerCase();
+    const clientSeed = $('clientSeed').value.trim();
+    const risk       = $('risk').value;
+    const side       = $('side').value;
+    const streak     = Math.max(1, Math.min(5, parseInt($('streak').value, 10) || 1));
+    const bombs      = parseInt($('bombs').value, 10) || 3;
+
+    const result = $('result');
+    const formula = $('formula');
+    result.innerHTML = '';
+    result.classList.add('show');
+    formula.style.display = 'none';
+
+    if (!serverSeed.match(/^[0-9a-f]+$/)) {
+      result.innerHTML = '<div class="err">Server Seed must be hex (the value the server revealed after your bet)</div>';
+      return;
+    }
+    if (!roundId) {
+      result.innerHTML = '<div class="err">Round ID is required</div>';
+      return;
+    }
+
+    // Step 1: hash check.
+    const computedHash = sha256str(serverSeed);
+    const hashMatches = seedHash ? (computedHash === seedHash) : null;
+
+    let html = '';
+    if (seedHash) {
+      html += `<div class="result-banner ${hashMatches ? 'match' : 'fail'}">${hashMatches ? '✓ HASH MATCHES' : '✗ HASH DOES NOT MATCH'}</div>`;
+    }
+    html += `<div class="result-row"><span class="lbl">Computed sha256(serverSeed)</span><span class="val">${computedHash.slice(0, 16)}…${computedHash.slice(-8)}</span></div>`;
+    if (seedHash) {
+      html += `<div class="result-row"><span class="lbl">Provided seedHash</span><span class="val">${seedHash.slice(0, 16)}…${seedHash.slice(-8)}</span></div>`;
+    }
+
+    // Step 2: replay outcome.
+    let visualHTML = '';
+    let formulaText = '';
+
+    try {
+      if (game === 'dice') {
+        const r = diceRoll(serverSeed, roundId);
+        html += `<div class="result-row"><span class="lbl">Roll</span><span class="val gold">${r.toFixed(2)}</span></div>`;
+        visualHTML = `<div class="visual-big gold">${r.toFixed(2)}</div><div class="visual-sub">Server roll · 0.00–99.99</div>`;
+        formulaText = 'HMAC-SHA256(<b>serverSeed</b>, <b>roundId</b>) → first 32 bits as uint32 → mod 10000 / 100 = roll';
+      }
+      else if (game === 'limbo') {
+        const m = limboRoll(serverSeed, roundId);
+        html += `<div class="result-row"><span class="lbl">Multiplier rolled</span><span class="val gold">${m.toFixed(2)}x</span></div>`;
+        visualHTML = `<div class="visual-big gold">${m.toFixed(2)}x</div><div class="visual-sub">Hidden multiplier</div>`;
+        formulaText = 'HMAC-SHA256(<b>serverSeed</b>, <b>roundId</b>) → first 32 bits / 2³² = u in (0,1) → rolled = 0.99 / max(u, 1e-7), capped 1..1000';
+      }
+      else if (game === 'mines') {
+        const bs = minesBombs(serverSeed, roundId, bombs);
+        html += `<div class="result-row"><span class="lbl">Bombs</span><span class="val red">${bs.join(', ')}</span></div>`;
+        let grid = '<div id="mines-grid">';
+        for (let i = 0; i < 25; i++) {
+          const isBomb = bs.includes(i);
+          grid += `<div class="mines-cell ${isBomb ? 'bomb' : 'safe'}">${isBomb ? '💣' : '💎'}</div>`;
+        }
+        grid += '</div>';
+        visualHTML = grid + `<div class="visual-sub">${bombs} bombs at positions: ${bs.join(', ')}</div>`;
+        formulaText = `Fisher-Yates shuffle [0..24] with HMAC-SHA256(<b>serverSeed</b>, <b>roundId</b>+":"+i) % (i+1) for i = 24..1, take first <b>${bombs}</b> cells as bombs`;
+      }
+      else if (game === 'plinko') {
+        if (!clientSeed) { result.innerHTML = '<div class="err">Plinko needs a Client Seed</div>'; return; }
+        const o = plinkoOutcome(serverSeed, clientSeed, risk);
+        const mult = PLINKO_TABLES[risk][o.slot];
+        html += `<div class="result-row"><span class="lbl">Slot</span><span class="val gold">${o.slot} / 12</span></div>`;
+        html += `<div class="result-row"><span class="lbl">Multiplier</span><span class="val ${mult >= 1 ? 'green' : 'red'}">${mult.toFixed(2)}x</span></div>`;
+        html += `<div class="result-row"><span class="lbl">Path bits</span><span class="val">${o.pathBits.toString(2).padStart(12, '0')}</span></div>`;
+        visualHTML = drawPlinkoPath(o.path, o.slot, mult);
+        formulaText = 'HMAC-SHA256(<b>serverSeed</b>, <b>clientSeed</b>+":"+<b>risk</b>) → first 32 bits → 12 LSB = path bits → count of 1s = slot';
+      }
+      else if (game === 'wheel') {
+        if (!clientSeed) { result.innerHTML = '<div class="err">Wheel needs a Client Seed</div>'; return; }
+        const seg = wheelSegment(serverSeed, clientSeed, risk);
+        const mult = WHEEL_TABLES[risk][seg];
+        html += `<div class="result-row"><span class="lbl">Segment</span><span class="val gold">${seg} / 24</span></div>`;
+        html += `<div class="result-row"><span class="lbl">Multiplier</span><span class="val ${mult >= 1 ? 'green' : 'red'}">${mult.toFixed(2)}x</span></div>`;
+        visualHTML = drawWheel(seg, risk, mult);
+        formulaText = 'HMAC-SHA256(<b>serverSeed</b>, <b>clientSeed</b>+":"+<b>risk</b>) → first 32 bits → mod 24 = segment';
+      }
+      else if (game === 'coinflip') {
+        if (!clientSeed) { result.innerHTML = '<div class="err">Coin Flip needs a Client Seed</div>'; return; }
+        const flips = coinflipFlips(serverSeed, clientSeed, side, streak);
+        const allMatch = flips.every((f) => f === side);
+        html += `<div class="result-row"><span class="lbl">Side picked</span><span class="val">${side.toUpperCase()}</span></div>`;
+        html += `<div class="result-row"><span class="lbl">Streak target</span><span class="val">×${streak}</span></div>`;
+        html += `<div class="result-row"><span class="lbl">Outcome</span><span class="val ${allMatch ? 'green' : 'red'}">${allMatch ? 'WIN' : 'LOSS'}</span></div>`;
+        html += `<div class="result-row"><span class="lbl">Flips</span><span class="val">${flips.map((f) => f === 'heads' ? 'H' : 'T').join(' · ')}</span></div>`;
+        let coins = '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">';
+        flips.forEach((f) => {
+          const ok = f === side;
+          coins += `<div style="width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:Bangers,cursive;font-size:24px;font-weight:700;background:${f === 'heads' ? 'radial-gradient(circle at 30% 30%, #fff5d2, #ffd76a, #a16e10)' : 'radial-gradient(circle at 30% 30%, #cfdbf2, #7c95b8, #2a3450)'};color:${f === 'heads' ? '#5a3a0a' : '#0a0e1a'};border:3px solid ${ok ? '#5be0a4' : '#ff5a6e'};box-shadow:0 0 16px ${ok ? 'rgba(91,224,164,0.5)' : 'rgba(255,90,110,0.5)'}">${f === 'heads' ? 'L' : 'D'}</div>`;
+        });
+        coins += '</div>';
+        visualHTML = coins + `<div class="visual-sub" style="margin-top:14px">${flips.length} flips · ${allMatch ? 'all hit ' + side : 'streak broken'}</div>`;
+        formulaText = `For i in 0..streak-1: HMAC-SHA256(<b>serverSeed</b>, <b>clientSeed</b>+":"+<b>side</b>+":"+<b>streak</b>+":"+i) → first byte LSB → 0=heads / 1=tails`;
+      }
+    } catch (e) {
+      result.innerHTML = `<div class="err">Replay failed: ${e.message || e}</div>`;
+      return;
+    }
+
+    if (visualHTML) {
+      html += `<div class="visual">${visualHTML}</div>`;
+    }
+    result.innerHTML = html;
+
+    formula.innerHTML = `<div style="font-weight:700;color:#c466ff;margin-bottom:6px">VERIFY FORMULA</div>${formulaText}`;
+    formula.style.display = 'block';
+  };
+
+  // Draw a Plinko outcome SVG.
+  function drawPlinkoPath(path, slot, mult) {
+    const ROWS = 12, SLOTS = 13;
+    const W = 320, H = 280;
+    const padX = 20, padTop = 14, padBot = 50;
+    const drawW = W - padX * 2, drawH = H - padTop - padBot;
+    const rowGap = drawH / (ROWS + 1);
+    const colGap = drawW / (SLOTS + 1);
+
+    let svg = `<svg id="plinko-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+    // Pegs
+    for (let r = 0; r < ROWS; r++) {
+      const pegs = r + 2;
+      const startX = padX + (drawW - (pegs - 1) * colGap) / 2;
+      const y = padTop + (r + 1) * rowGap;
+      for (let p = 0; p < pegs; p++) {
+        svg += `<circle cx="${startX + p * colGap}" cy="${y}" r="2" fill="#cfe6ff" />`;
+      }
+    }
+    // Slots
+    const slotW = drawW / SLOTS;
+    const slotY = padTop + drawH + 6;
+    for (let s = 0; s < SLOTS; s++) {
+      const x = padX + s * slotW;
+      const isLanded = s === slot;
+      svg += `<rect x="${x + 1}" y="${slotY}" width="${slotW - 2}" height="${padBot - 14}" rx="4" fill="${isLanded ? '#ffd166' : 'rgba(140,180,255,0.18)'}" stroke="${isLanded ? '#fff' : 'rgba(255,255,255,0.18)'}" />`;
+    }
+    // Path
+    let col = 0;
+    let pts = `${padX + drawW / 2},${padTop - 4}`;
+    for (let r = 0; r < ROWS; r++) {
+      col += path[r];
+      const y = padTop + (r + 1) * rowGap + rowGap * 0.5;
+      const x = padX + drawW / 2 + (col / 2) * colGap;
+      pts += ` ${x},${y}`;
+    }
+    const finalX = padX + slot * slotW + slotW / 2;
+    pts += ` ${finalX},${slotY + (padBot - 14) / 2}`;
+    svg += `<polyline points="${pts}" stroke="#ffd166" stroke-width="2" fill="none" stroke-linejoin="round" />`;
+    // Final ball
+    svg += `<circle cx="${finalX}" cy="${slotY + (padBot - 14) / 2}" r="6" fill="url(#ballg)" />`;
+    svg += `<defs><radialGradient id="ballg"><stop offset="0%" stop-color="#fff5d2"/><stop offset="55%" stop-color="#ffd76a"/><stop offset="100%" stop-color="#a16e10"/></radialGradient></defs>`;
+    svg += `</svg>`;
+    return svg + `<div class="visual-sub">Slot ${slot} · ${mult.toFixed(2)}x</div>`;
+  }
+
+  function drawWheel(seg, risk, mult) {
+    const SEGS = 24;
+    const W = 280, H = 280;
+    const cx = W / 2, cy = H / 2, R = W / 2 - 10;
+    const tbl = WHEEL_TABLES[risk];
+    let svg = `<svg id="wheel-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+    for (let i = 0; i < SEGS; i++) {
+      const a0 = (i / SEGS) * Math.PI * 2 - Math.PI / 2 - (Math.PI / SEGS);
+      const a1 = a0 + (Math.PI * 2 / SEGS);
+      const x0 = cx + Math.cos(a0) * R, y0 = cy + Math.sin(a0) * R;
+      const x1 = cx + Math.cos(a1) * R, y1 = cy + Math.sin(a1) * R;
+      const m = tbl[i];
+      const isLanded = i === seg;
+      const fill = isLanded ? '#ffd166'
+                : m === 0 ? '#23314b'
+                : m >= 5 ? '#ff5a6e'
+                : m >= 2 ? '#ffd166'
+                : '#5be0a4';
+      svg += `<path d="M ${cx} ${cy} L ${x0} ${y0} A ${R} ${R} 0 0 1 ${x1} ${y1} Z" fill="${fill}" stroke="rgba(0,0,0,0.5)" stroke-width="${isLanded ? 2 : 1}" />`;
+      // Mult label
+      const labelA = a0 + (Math.PI * 2 / SEGS) / 2;
+      const lx = cx + Math.cos(labelA) * R * 0.66;
+      const ly = cy + Math.sin(labelA) * R * 0.66;
+      svg += `<text x="${lx}" y="${ly}" font-family="JetBrains Mono, monospace" font-size="10" font-weight="700" fill="${m === 0 ? 'rgba(255,255,255,0.4)' : '#04241a'}" text-anchor="middle" dominant-baseline="middle">${m === 0 ? '0' : (m >= 10 ? m.toFixed(0) : m.toFixed(1)) + 'x'}</text>`;
+    }
+    // Pointer
+    svg += `<polygon points="${cx},2 ${cx-10},20 ${cx+10},20" fill="#ffe97a" />`;
+    // Hub
+    svg += `<circle cx="${cx}" cy="${cy}" r="${R * 0.12}" fill="#0a0e1a" stroke="rgba(255,255,255,0.3)" stroke-width="2" />`;
+    svg += `</svg>`;
+    return svg + `<div class="visual-sub">Segment ${seg} · ${mult.toFixed(2)}x</div>`;
+  }
+})();
+</script>
+</body>
+</html>

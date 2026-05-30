@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Lit Limbo — LitDeX</title>
+<script src="/games/verify-inline.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka+One&family=JetBrains+Mono:wght@400;700&display=swap');
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -111,14 +112,54 @@
       <div class="panel-title">FAIRNESS</div>
       <div class="panel-sub">Verify any past result</div>
       <div id="fair-body" style="max-height: 60vh; overflow-y: auto; text-align: left;"></div>
-      <div class="panel-btns"><button class="panel-btn primary" id="fair-close">CLOSE</button></div>
+      <div class="panel-btns" style="display:flex;gap:8px"><button class="panel-btn verify" id="open-verifier" style="flex:1">OPEN VERIFIER</button><button class="panel-btn primary" id="fair-close" style="flex:1">CLOSE</button></div>
+    </div>
+  </div>
+  <div id="commit-modal" class="hidden" style="position:absolute;inset:0;z-index:34;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.88);backdrop-filter:blur(6px);transition:opacity 0.3s ease">
+    <div class="panel-card">
+      <div class="panel-title">PROVABLY FAIR</div>
+      <div class="panel-sub">Server commits before you bet · copy and verify later</div>
+      <div id="commit-body" style="text-align: left;"></div>
+      <div class="panel-btns"><button class="panel-btn primary" id="commit-proceed">START PLAYING</button></div>
+    </div>
+  </div>
+
+  <div id="verify-modal" class="hidden" style="position:absolute;inset:0;z-index:36;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.88);backdrop-filter:blur(6px);transition:opacity 0.3s ease">
+    <div class="panel-card" style="max-width:420px">
+      <div class="panel-title">VERIFIER</div>
+      <div class="panel-sub">Paste two values · see the result</div>
+      <div style="text-align:left">
+        <div class="fair-row"><span class="lbl">Seed Hash · committed before bet</span>
+          <input type="text" id="vfy-hash" placeholder="64 hex chars" style="width:100%;background:rgba(8,14,28,0.85);border:1px solid rgba(140,180,255,0.18);border-radius:6px;padding:8px;color:#fff;font-family:'JetBrains Mono',monospace;font-size:10px"/>
+        </div>
+        <div class="fair-row"><span class="lbl">Server Seed · revealed after bet</span>
+          <input type="text" id="vfy-seed" placeholder="64 hex chars" style="width:100%;background:rgba(8,14,28,0.85);border:1px solid rgba(140,180,255,0.18);border-radius:6px;padding:8px;color:#fff;font-family:'JetBrains Mono',monospace;font-size:10px"/>
+        </div>
+        <div id="vfy-result" style="margin-top:12px;display:none"></div>
+      </div>
+      <div class="panel-btns" style="display:flex;gap:8px"><button class="panel-btn primary" id="vfy-run" style="flex:1">VERIFY</button><button class="panel-btn" id="vfy-close" style="flex:1">CLOSE</button></div>
     </div>
   </div>
   <style>
-    #fairness.hidden{opacity:0;pointer-events:none}
-    .fair-row{display:block;text-align:left;font-family:'JetBrains Mono',monospace;font-size:10px;color:#aac6ee;letter-spacing:0.06em;margin:8px 0;word-break:break-all}
-    .fair-row .lbl{color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:0.16em;font-size:9px;display:block;margin-bottom:2px}
-    .fair-row .val{color:#fff;background:rgba(15,25,45,0.85);padding:6px 8px;border-radius:6px;font-size:10px;line-height:1.45;display:block}
+    #verify-modal.hidden { opacity: 0; pointer-events: none; }
+    .vfy-emoji { font-size: 64px; line-height: 1; margin: 12px auto 8px; text-align: center; }
+    .vfy-banner { font-family:'Bangers',cursive; font-size: 24px; letter-spacing: 3px; text-align:center; margin-bottom: 6px; }
+    .vfy-banner.win { color: #5be0a4; text-shadow: 0 0 18px rgba(91,224,164,0.5); }
+    .vfy-banner.loss { color: #ff8a8a; text-shadow: 0 0 18px rgba(255,138,140,0.5); }
+    .vfy-banner.fail { color: #ff8a8a; }
+    .vfy-line { font-family:'JetBrains Mono',monospace; font-size: 11px; color: rgba(255,255,255,0.7); text-align:center; margin: 2px 0; }
+    .vfy-line b { color:#fff; }
+  </style>
+  <style>
+    #fairness.hidden, #commit-modal.hidden { opacity: 0; pointer-events: none; }
+    .fair-row { display: block; text-align: left; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #aac6ee; letter-spacing: 0.06em; margin: 8px 0; word-break: break-all; }
+    .fair-row .lbl { color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.16em; font-size: 9px; display: block; margin-bottom: 4px; }
+    .fair-row .val { color: #fff; background: rgba(15,25,45,0.85); padding: 6px 8px; border-radius: 6px; font-size: 10px; line-height: 1.45; display: block; }
+    .copy-row { display: flex; align-items: stretch; gap: 6px; margin-bottom: 6px; }
+    .copy-row .val { flex: 1; }
+    .copy-btn { background: linear-gradient(180deg, #ffd166, #c98b16); color: #5a3a0a; border: none; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; padding: 0 12px; cursor: pointer; flex-shrink: 0; -webkit-tap-highlight-color: transparent; }
+    .copy-btn.copied { background: linear-gradient(180deg, #5be0a4, #1f9c66); color: #04241a; }
+    .panel-btn.verify { background: linear-gradient(180deg, rgba(196,102,255,0.3), rgba(106,45,153,0.5)); border-color: rgba(196,102,255,0.5); color: #e6b8ff; }
   </style>
   <div id="err-banner"><span id="err-msg"></span></div>
 </div>
@@ -149,24 +190,94 @@
   function sndWin()  { tone(880,70,'square',0.16); setTimeout(()=>tone(1320,90,'square',0.15),60); setTimeout(()=>tone(1760,140,'square',0.13),130); }
   function sndLoss() { tone(180,300,'sawtooth',0.16); }
 
-  const ST = { roundId: null, token: null, stake: STAKE, busy: false, target: 2, gamesLeft: 0, seedHash: null, lastResult: null };
+  const ST = { roundId: null, token: null, stake: STAKE, busy: false, target: 2, gamesLeft: 0, seedHash: null, clientSeed: null, lastResult: null };
 
   const fairness = document.getElementById('fairness'), fairBody = document.getElementById('fair-body');
+  const commitModal = document.getElementById('commit-modal'), commitBody = document.getElementById('commit-body');
+  document.getElementById('commit-proceed').onclick = () => commitModal.classList.add('hidden');
+
+  function attachCopy() {
+    document.querySelectorAll('.copy-btn').forEach((btn) => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.onclick = async () => {
+        const txt = btn.dataset.copy || '';
+        try { await navigator.clipboard.writeText(txt); }
+        catch { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+        const orig = btn.textContent; btn.textContent = 'COPIED'; btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1400);
+      };
+    });
+  }
+
+  function showCommitModal() {
+    commitBody.innerHTML = `
+      <div class="fair-row"><span class="lbl">Seed Hash · committed by server</span>
+        <div class="copy-row"><span class="val">${ST.seedHash || '—'}</span><button class="copy-btn" data-copy="${ST.seedHash || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">Round ID</span>
+        <div class="copy-row"><span class="val">${ST.roundId || '—'}</span><button class="copy-btn" data-copy="${ST.roundId || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">How it works</span><span class="val">The server has already chosen the multiplier for this round. The seed hash is the cryptographic fingerprint of that choice. After your roll, the server reveals the actual seed so you can verify sha256(seed) matches this hash.</span></div>
+    `;
+    attachCopy();
+    commitModal.classList.remove('hidden');
+  }
+
   document.getElementById('fair-close').onclick = () => fairness.classList.add('hidden');
-  document.getElementById('open-fairness').onclick = () => {
+  document.getElementById('open-verifier').onclick = () => {
+    fairness.classList.add('hidden');
+    const r = ST.lastResult || {};
+    document.getElementById('vfy-hash').value = r.seedHash || ST.seedHash || '';
+    document.getElementById('vfy-seed').value = r.serverSeed || '';
+    document.getElementById('vfy-result').style.display = 'none';
+    document.getElementById('verify-modal').classList.remove('hidden');
+  };
+  document.getElementById('vfy-close').onclick = () => document.getElementById('verify-modal').classList.add('hidden');
+  document.getElementById('vfy-run').onclick = () => {
+    const hash = document.getElementById('vfy-hash').value.trim().toLowerCase();
+    const seed = document.getElementById('vfy-seed').value.trim().toLowerCase();
+    const out = document.getElementById('vfy-result');
+    out.style.display = 'block';
+    if (!seed.match(/^[0-9a-f]+$/)) { out.innerHTML = '<div class="vfy-banner fail">⚠ INVALID</div><div class="vfy-line">Server seed must be hex</div>'; return; }
+    if (!ST.roundId) { out.innerHTML = '<div class="vfy-banner fail">⚠ NO ROUND</div><div class="vfy-line">Play a round first to use this verifier inline</div>'; return; }
+    const computed = LitDexVerify.sha256str(seed);
+    if (hash && computed !== hash) { out.innerHTML = `<div class="vfy-banner fail">✗ HASH MISMATCH</div><div class="vfy-line">sha256(seed) does NOT equal seedHash</div>`; return; }
+    const rolled = LitDexVerify.limboRoll(seed, ST.roundId);
+    const won = rolled >= ST.target;
+    const emoji = won ? '😄' : '😢';
+    out.innerHTML = `
+      <div class="vfy-emoji">${emoji}</div>
+      <div class="vfy-banner ${won ? 'win' : 'loss'}">${won ? 'YOU WON' : 'YOU LOST'}</div>
+      <div class="vfy-line">Rolled: <b>${rolled.toFixed(2)}x</b> · Target: <b>${Number(ST.target).toFixed(2)}x</b></div>
+      ${hash ? '<div class="vfy-line" style="color:#5be0a4">✓ Hash verified</div>' : ''}
+    `;
+  };
+  document.getElementById('open-fairness').onclick = () => openFairness();
+  function openFairness() {
     const r = ST.lastResult;
     fairBody.innerHTML = r ? `
-      <div class="fair-row"><span class="lbl">Seed Hash</span><span class="val">${r.seedHash || ST.seedHash || '—'}</span></div>
-      <div class="fair-row"><span class="lbl">Server Seed (revealed)</span><span class="val">${r.serverSeed || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Seed Hash</span>
+        <div class="copy-row"><span class="val">${r.seedHash || ST.seedHash || '—'}</span><button class="copy-btn" data-copy="${r.seedHash || ST.seedHash || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">Server Seed (revealed)</span>
+        <div class="copy-row"><span class="val">${r.serverSeed || '—'}</span><button class="copy-btn" data-copy="${r.serverSeed || ''}">COPY</button></div>
+      </div>
+      <div class="fair-row"><span class="lbl">Round ID</span>
+        <div class="copy-row"><span class="val">${ST.roundId || '—'}</span><button class="copy-btn" data-copy="${ST.roundId || ''}">COPY</button></div>
+      </div>
       <div class="fair-row"><span class="lbl">Result</span><span class="val">target ${Number(r.target).toFixed(2)}x · rolled ${Number(r.rolled).toFixed(2)}x · ${r.won ? 'WIN' : 'LOSS'}</span></div>
-      <div class="fair-row"><span class="lbl">Verify</span><span class="val">sha256(serverSeed) must match seedHash. Then HMAC-SHA256(serverSeed, roundId) → first 32 bits / 2^32 = u in (0,1) → rolled = 0.99 / max(u, 1e-7), capped 1..1000.</span></div>
+      <div class="fair-row"><span class="lbl">Verify formula</span><span class="val">sha256(serverSeed) must equal seedHash. Then HMAC-SHA256(serverSeed, roundId) → first 32 bits / 2^32 = u in (0,1) → rolled = 0.99 / max(u, 1e-7), capped 1..1000.</span></div>
     ` : `
-      <div class="fair-row"><span class="lbl">Seed Hash</span><span class="val">${ST.seedHash || '—'}</span></div>
+      <div class="fair-row"><span class="lbl">Seed Hash</span>
+        <div class="copy-row"><span class="val">${ST.seedHash || '—'}</span><button class="copy-btn" data-copy="${ST.seedHash || ''}">COPY</button></div>
+      </div>
       <div class="fair-row"><span class="lbl">Server Seed</span><span class="val">Hidden — revealed at end of round</span></div>
       <div class="fair-row"><span class="lbl">How it works</span><span class="val">Server commits sha256(serverSeed) before you bet. After you roll, server reveals serverSeed so you can verify the outcome was pre-determined.</span></div>
     `;
+    attachCopy();
     fairness.classList.remove('hidden');
-  };
+  }
 
   function showErr(m) { errMsg.textContent = m||'error'; errBanner.classList.add('visible'); setTimeout(()=>errBanner.classList.remove('visible'), 2400); }
 
@@ -230,13 +341,14 @@
       const r = await fetch(`${API}/litlimbo/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ wallet }) });
       const d = await r.json();
       if (!r.ok || d.error) { showErr(d?.error || 'start_failed'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; return; }
-      ST.roundId = d.roundId; ST.token = d.token; ST.stake = d.stake; ST.gamesLeft = d.gamesLeft; ST.seedHash = d.seedHash;
+      ST.roundId = d.roundId; ST.token = d.token; ST.stake = d.stake; ST.gamesLeft = d.gamesLeft; ST.seedHash = d.seedHash; ST.clientSeed = d.clientSeed || null; ST.lastResult = null;
       panel.classList.add('hidden');
       rolled.textContent = '—';
       rolled.classList.remove('win','loss');
       rolledSub.textContent = 'SET TARGET · ROLL · WIN IF ≥ TARGET';
       hudGames.textContent = `${DAILY-ST.gamesLeft}/${DAILY}`;
       refreshSummary();
+      showCommitModal();
       fetchStats().then((s) => { if (s) hudBal.textContent = String(s.pointsBalance || 0); });
     } catch { showErr('Network error'); btnP.disabled = false; btnP.textContent = `PLAY · ${STAKE} PTS`; }
   }
@@ -246,32 +358,64 @@
     ST.busy = true;
     btnRoll.disabled = true;
     sndRoll();
-    const start = performance.now();
-    const spin = () => {
-      const t = performance.now() - start;
-      if (t > 700) return;
-      const fake = Math.pow(10, Math.random() * 2);  // 1..100 ish
-      rolled.textContent = `${fake.toFixed(2)}x`;
-      requestAnimationFrame(spin);
-    };
-    spin();
+
+    let d;
     try {
       const r = await fetch(`${API}/litlimbo/play`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roundId: ST.roundId, token: ST.token, target: ST.target }),
       });
-      const d = await r.json();
-      setTimeout(() => {
-        if (!r.ok || d.error) { showErr(d?.error || 'play_failed'); ST.busy = false; btnRoll.disabled = false; return; }
-        rolled.textContent = `${d.rolled.toFixed(2)}x`;
-        rolledSub.textContent = `TARGET ${d.target.toFixed(2)}x · ${d.won ? 'WIN' : 'LOSS'}`;
-        rolled.classList.remove('win','loss','bump');
-        void rolled.offsetWidth;
-        rolled.classList.add('bump', d.won ? 'win' : 'loss');
-        if (d.won) sndWin(); else sndLoss();
-        endPanel(d);
-      }, 700);
-    } catch { showErr('Network error'); ST.busy = false; btnRoll.disabled = false; }
+      d = await r.json();
+      if (!r.ok || d.error) {
+        showErr(d?.error || 'play_failed');
+        ST.busy = false; btnRoll.disabled = false;
+        return;
+      }
+    } catch {
+      showErr('Network error');
+      ST.busy = false; btnRoll.disabled = false;
+      return;
+    }
+
+    const realRolled = Number(d.rolled);
+
+    // Spin that ramps up multiplier values then settles on the real one.
+    await new Promise((resolve) => {
+      const startT = performance.now();
+      const dur = 1600;
+      // Range: start near 1.00x, ease toward real value.
+      function step() {
+        const elapsed = performance.now() - startT;
+        const k = Math.min(1, elapsed / dur);
+        const ease = 1 - Math.pow(1 - k, 3);
+        // Add fast jitter early, settle smoothly to exact end value.
+        const jitter = (1 - k) * (1 - k) * (Math.sin(elapsed * 0.05) * 1.5 + (Math.random() - 0.5) * 1.2);
+        let val;
+        if (realRolled <= 5) {
+          // Linear ramp for low multipliers.
+          val = 1 + (realRolled - 1) * ease + jitter;
+        } else {
+          // Exponential feel for higher multipliers — looks more "casino".
+          val = 1 + Math.pow(realRolled - 1, ease) + jitter;
+          if (k > 0.85) val = realRolled + jitter * 0.4;
+        }
+        val = Math.max(1, val);
+        rolled.textContent = `${val.toFixed(2)}x`;
+        if (k < 1) requestAnimationFrame(step);
+        else {
+          rolled.textContent = `${realRolled.toFixed(2)}x`;
+          resolve();
+        }
+      }
+      requestAnimationFrame(step);
+    });
+
+    rolledSub.textContent = `TARGET ${d.target.toFixed(2)}x · ${d.won ? 'WIN' : 'LOSS'}`;
+    rolled.classList.remove('win','loss','bump');
+    void rolled.offsetWidth;
+    rolled.classList.add('bump', d.won ? 'win' : 'loss');
+    if (d.won) sndWin(); else sndLoss();
+    setTimeout(() => endPanel(d), 1500);
   };
 
   function endPanel(d) {
@@ -284,8 +428,10 @@
       <div class="panel-row"><span class="lbl">Target</span><span class="val">${d.target.toFixed(2)}x</span></div>
       <div class="panel-row"><span class="lbl">Profit</span><span class="val" style="color:${d.profit >= 0 ? '#5be0a4' : '#ff8a8a'}">${d.profit >= 0 ? '+' : ''}${d.profit} PTS</span></div>
       ${d.explorerUrl ? `<div class="panel-row"><span class="lbl">Tx</span><a class="val" style="color:#5be0a4;text-decoration:underline" href="${d.explorerUrl}" target="_blank" rel="noreferrer">${(d.txHash||'').slice(0,10)}…</a></div>` : ''}
+      <button class="panel-btn verify" style="width:100%;margin-top:14px" id="btn-verify-end">VERIFY FAIRNESS</button>
     `;
-    postParent({ type: 'litdex:litlimbo:end', won: d.won, target: d.target, rolled: d.rolled, awarded: d.awarded, profit: d.profit, stake: d.stake, txInfo: d.txHash ? { txHash: d.txHash, explorerUrl: d.explorerUrl } : null });
+    document.getElementById('btn-verify-end').onclick = (e) => { e.stopPropagation(); openFairness(); };
+    postParent({ type: 'litdex:litlimbo:end', won: d.won, target: d.target, rolled: d.rolled, awarded: d.awarded, profit: d.profit, stake: d.stake, txInfo: d.txHash ? { txHash: d.txHash, explorerUrl: d.explorerUrl } : null, seedHash: ST.seedHash || d.seedHash, serverSeed: d.serverSeed, roundId: ST.roundId, clientSeed: ST.clientSeed });
     fetchStats().then((s) => {
       const left = s ? Math.max(0, Number(s.gamesLeft||0)) : 0;
       const bal  = s ? Number(s.pointsBalance||0) : 0;
