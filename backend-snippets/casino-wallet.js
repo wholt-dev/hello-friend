@@ -32,6 +32,7 @@ const STAKE_MULTIPLE = 5;          // user must deposit/withdraw in multiples of
 const MIN_DEPOSIT    = 5;
 const MAX_DEPOSIT    = 1_000_000;  // sanity cap per call
 const MIN_WITHDRAW   = 5;
+const DAILY_DEPOSIT_CAP = 2;       // deposits per UTC day per wallet
 
 let _db = null;
 let _txq = null;
@@ -108,6 +109,22 @@ function credit(wallet, amount, reason, ref) {
   return tx();
 }
 
+// IST midnight rollover (matches the rest of the games server).
+function todayIST() {
+  const d = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  return d.toISOString().slice(0, 10);
+}
+
+function depositsToday(wallet) {
+  const w = String(wallet).toLowerCase();
+  const today = todayIST();
+  const start = new Date(today + 'T00:00:00.000Z').getTime() - 5.5 * 60 * 60 * 1000;
+  const r = _db.prepare(
+    "SELECT COUNT(*) AS n FROM casino_ledger WHERE wallet = ? AND reason = 'deposit' AND ts >= ?"
+  ).get(w, start);
+  return Number(r?.n || 0);
+}
+
 // Move points from on-chain → casino balance.
 async function deposit(wallet, amount) {
   const w = String(wallet).toLowerCase();
@@ -116,6 +133,11 @@ async function deposit(wallet, amount) {
   if (amt < MIN_DEPOSIT)        return { ok: false, error: `min_deposit_${MIN_DEPOSIT}` };
   if (amt > MAX_DEPOSIT)        return { ok: false, error: `max_deposit_${MAX_DEPOSIT}` };
   if (amt % STAKE_MULTIPLE)     return { ok: false, error: `must_be_multiple_of_${STAKE_MULTIPLE}` };
+
+  const used = depositsToday(w);
+  if (used >= DAILY_DEPOSIT_CAP) {
+    return { ok: false, error: 'daily_deposit_cap_reached', used, cap: DAILY_DEPOSIT_CAP };
+  }
 
   // Burn the user's on-chain points first. If the broadcast fails, no
   // casino credit happens.
@@ -133,7 +155,13 @@ async function deposit(wallet, amount) {
     _logLedger(w, amt, 'deposit', null, txHash);
   });
   tx();
-  return { ok: true, txHash, balance: balance(w) };
+  return {
+    ok: true,
+    txHash,
+    balance: balance(w),
+    depositsToday: used + 1,
+    depositsRemaining: Math.max(0, DAILY_DEPOSIT_CAP - (used + 1)),
+  };
 }
 
 // Move points casino → on-chain.
@@ -184,14 +212,18 @@ function summary(wallet) {
   const r = _db.prepare(
     'SELECT balance, total_deposited, total_withdrawn FROM casino_balance WHERE wallet = ?'
   ).get(w);
+  const used = depositsToday(w);
   return {
     balance: r ? Number(r.balance) : 0,
     totalDeposited: r ? Number(r.total_deposited) : 0,
     totalWithdrawn: r ? Number(r.total_withdrawn) : 0,
+    depositsToday: used,
+    depositsRemaining: Math.max(0, DAILY_DEPOSIT_CAP - used),
+    dailyDepositCap: DAILY_DEPOSIT_CAP,
   };
 }
 
 module.exports = {
-  init, balance, spend, credit, deposit, withdraw, ledger, summary,
-  MIN_DEPOSIT, MAX_DEPOSIT, MIN_WITHDRAW, STAKE_MULTIPLE,
+  init, balance, spend, credit, deposit, withdraw, ledger, summary, depositsToday,
+  MIN_DEPOSIT, MAX_DEPOSIT, MIN_WITHDRAW, STAKE_MULTIPLE, DAILY_DEPOSIT_CAP,
 };

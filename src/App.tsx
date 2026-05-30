@@ -3667,6 +3667,11 @@ const WeeklyLeaderboard = ({ className = '' }: { className?: string }) => {
 
 const CASINO_API = 'https://game.test-hub.xyz';
 const CASINO_STAKE_MULTIPLE = 5;
+// 6 casino games × 20 daily plays × 5 PTS stake = 600 PTS for a full
+// daily session. Round up to the next multiple of 50 for a cleaner
+// UX recommendation.
+const CASINO_DAILY_RECOMMENDED = 600;
+const CASINO_GAMES_BREAKDOWN = '6 casino games · 20 plays/day · 5 PTS stake';
 
 const CasinoWalletBadge = ({ wallet, onOpen }: { wallet: string; onOpen: () => void }) => {
   const [balance, setBalance] = useState<number | null>(null);
@@ -3706,78 +3711,122 @@ const CasinoWalletModal = ({ open, onClose, wallet }: { open: boolean; onClose: 
   const [amount, setAmount] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [info, setInfo] = useState<{ balance: number; totalDeposited: number; totalWithdrawn: number } | null>(null);
+  const [success, setSuccess] = useState<{ txHash: string; balance: number } | null>(null);
+  const [info, setInfo] = useState<{ balance: number; totalDeposited: number; totalWithdrawn: number; depositsToday?: number; depositsRemaining?: number; dailyDepositCap?: number } | null>(null);
+  const [onChainPts, setOnChainPts] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open || !wallet) return;
-    setErr(''); setAmount('');
+    setErr(''); setAmount(''); setSuccess(null);
     let cancelled = false;
-    (async () => {
+    const load = async () => {
       try {
         const r = await fetch(`${CASINO_API}/casino/balance/${wallet}`);
         if (r.ok) {
           const d = await r.json();
-          if (!cancelled) setInfo({ balance: Number(d?.balance ?? 0), totalDeposited: Number(d?.totalDeposited ?? 0), totalWithdrawn: Number(d?.totalWithdrawn ?? 0) });
+          if (!cancelled) setInfo({
+            balance: Number(d?.balance ?? 0),
+            totalDeposited: Number(d?.totalDeposited ?? 0),
+            totalWithdrawn: Number(d?.totalWithdrawn ?? 0),
+            depositsToday: Number(d?.depositsToday ?? 0),
+            depositsRemaining: d?.depositsRemaining != null ? Number(d.depositsRemaining) : undefined,
+            dailyDepositCap: d?.dailyDepositCap != null ? Number(d.dailyDepositCap) : undefined,
+          });
         }
       } catch { /* ignore */ }
-    })();
+      try {
+        const r = await fetch(`https://api.test-hub.xyz/points/${wallet}`);
+        if (r.ok) {
+          const d = await r.json();
+          if (!cancelled) setOnChainPts(Number(d?.total ?? 0));
+        }
+      } catch { /* ignore */ }
+    };
+    load();
     return () => { cancelled = true; };
   }, [open, wallet, busy]);
 
+  const max = tab === 'deposit' ? (onChainPts ?? 0) : (info?.balance ?? 0);
+  const maxRoundedDown = max - (max % CASINO_STAKE_MULTIPLE);
+
   const submit = async () => {
-    if (!wallet) return;
+    if (!wallet) { setErr('Connect wallet first'); return; }
     const n = Number(amount);
     if (!Number.isFinite(n) || n <= 0) { setErr('Enter a positive amount'); return; }
     if (n % CASINO_STAKE_MULTIPLE !== 0) { setErr(`Must be a multiple of ${CASINO_STAKE_MULTIPLE}`); return; }
-    setErr(''); setBusy(true);
+    if (tab === 'deposit' && onChainPts != null && n > onChainPts) { setErr(`You only have ${onChainPts.toLocaleString()} on-chain pts`); return; }
+    if (tab === 'withdraw' && info && n > info.balance) { setErr(`Casino balance is only ${info.balance.toLocaleString()}`); return; }
+    setErr(''); setBusy(true); setSuccess(null);
     try {
       const r = await fetch(`${CASINO_API}/casino/${tab}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wallet, amount: n }),
       });
-      const d = await r.json();
-      if (!r.ok || !d.ok) { setErr(d?.error || `${tab}_failed`); }
-      else {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) {
+        const code = d?.error || `${tab}_failed`;
+        const human: Record<string, string> = {
+          on_chain_burn_failed: 'On-chain burn failed. Server may be busy — try again in a sec.',
+          on_chain_mint_failed: 'On-chain mint failed. Balance restored — try again.',
+          insufficient: 'Casino balance is insufficient.',
+          bad_amount: 'Invalid amount.',
+          must_be_multiple_of_5: 'Amount must be a multiple of 5.',
+          min_deposit_5: 'Minimum deposit is 5 PTS.',
+          min_withdraw_5: 'Minimum withdraw is 5 PTS.',
+          max_deposit_1000000: 'Maximum deposit is 1,000,000 PTS per call.',
+          bad_wallet: 'Wallet address is invalid.',
+          daily_deposit_cap_reached: 'You\'ve hit the daily deposit cap (2/day). Resets at 00:00 IST — think twice next time.',
+        };
+        setErr(human[code] || code);
+      } else {
+        setSuccess({ txHash: d.txHash, balance: d.balance });
         setAmount('');
         try { window.dispatchEvent(new Event('litdex:casino-wallet:refresh')); } catch {}
       }
-    } catch { setErr('Network error'); }
+    } catch { setErr('Network error — server may be down'); }
     setBusy(false);
   };
 
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[200000] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="bg-brand-surface border border-brand-border rounded-2xl p-6 w-full max-w-[420px] font-mono text-brand-text-primary">
+      <div onClick={(e) => e.stopPropagation()} className="bg-brand-surface border border-brand-border rounded-2xl p-6 w-full max-w-[440px] font-mono text-brand-text-primary max-h-[90vh] overflow-y-auto">
         <div className="text-center mb-4">
           <div className="text-2xl font-bold tracking-tighter text-brand-text-primary">Casino Wallet</div>
           <div className="text-[10px] uppercase tracking-widest text-brand-text-muted mt-1">Deposit once · play freely · withdraw any time</div>
         </div>
-        {info && (
-          <div className="grid grid-cols-3 gap-2 mb-4">
-            <div className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2 text-center">
-              <div className="text-[8px] uppercase tracking-widest text-brand-text-muted">Balance</div>
-              <div className="text-[#5be0a4] font-bold text-sm">{info.balance.toLocaleString()}</div>
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5">
+            <div className="text-[8px] uppercase tracking-widest text-brand-text-muted mb-0.5">On-Chain Points</div>
+            <div className="text-brand-text-primary font-bold text-sm">{onChainPts == null ? '—' : onChainPts.toLocaleString()}</div>
+          </div>
+          <div className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5">
+            <div className="text-[8px] uppercase tracking-widest text-brand-text-muted mb-0.5">Casino Balance</div>
+            <div className="text-[#5be0a4] font-bold text-sm">{info ? info.balance.toLocaleString() : '—'}</div>
+          </div>
+        </div>
+        {info && (info.totalDeposited > 0 || info.totalWithdrawn > 0) && (
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <div className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-1.5 text-center">
+              <div className="text-[8px] uppercase tracking-widest text-brand-text-muted">Total Deposited</div>
+              <div className="text-brand-text-primary text-xs">{info.totalDeposited.toLocaleString()}</div>
             </div>
-            <div className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2 text-center">
-              <div className="text-[8px] uppercase tracking-widest text-brand-text-muted">Deposited</div>
-              <div className="text-brand-text-primary text-sm">{info.totalDeposited.toLocaleString()}</div>
-            </div>
-            <div className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2 text-center">
-              <div className="text-[8px] uppercase tracking-widest text-brand-text-muted">Withdrawn</div>
-              <div className="text-brand-text-primary text-sm">{info.totalWithdrawn.toLocaleString()}</div>
+            <div className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-1.5 text-center">
+              <div className="text-[8px] uppercase tracking-widest text-brand-text-muted">Total Withdrawn</div>
+              <div className="text-brand-text-primary text-xs">{info.totalWithdrawn.toLocaleString()}</div>
             </div>
           </div>
         )}
         <div className="grid grid-cols-2 gap-1.5 mb-4">
           {(['deposit', 'withdraw'] as const).map((t) => (
-            <button key={t} onClick={() => { setTab(t); setErr(''); setAmount(''); }} className={`py-2 rounded-lg text-[10px] uppercase tracking-widest font-bold transition-colors ${tab === t ? 'bg-white text-black' : 'bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-muted hover:text-brand-text-primary'}`}>{t}</button>
+            <button key={t} onClick={() => { setTab(t); setErr(''); setAmount(''); setSuccess(null); }} className={`py-2 rounded-lg text-[10px] uppercase tracking-widest font-bold transition-colors ${tab === t ? 'bg-white text-black' : 'bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-muted hover:text-brand-text-primary'}`}>{t}</button>
           ))}
         </div>
         <div>
-          <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">
-            Amount · multiple of {CASINO_STAKE_MULTIPLE}
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-[9px] uppercase tracking-widest text-brand-text-muted">Amount · multiple of {CASINO_STAKE_MULTIPLE}</div>
+            <div className="text-[9px] text-brand-text-muted">Available: <span className="text-brand-text-primary font-bold">{max.toLocaleString()}</span></div>
           </div>
           <input
             type="number"
@@ -3788,10 +3837,11 @@ const CasinoWalletModal = ({ open, onClose, wallet }: { open: boolean; onClose: 
             placeholder={`e.g. ${CASINO_STAKE_MULTIPLE * 20}`}
             className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5 text-[14px] text-brand-text-primary placeholder:text-brand-text-muted/50 outline-none focus:border-white/30"
           />
-          <div className="grid grid-cols-4 gap-1.5 mt-2">
+          <div className="grid grid-cols-5 gap-1.5 mt-2">
             {[50, 100, 500, 1000].map((p) => (
-              <button key={p} onClick={() => setAmount(String(p))} className="py-1.5 rounded-md text-[10px] font-bold bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-muted hover:text-brand-text-primary">{p}</button>
+              <button key={p} disabled={p > max} onClick={() => setAmount(String(p))} className="py-1.5 rounded-md text-[10px] font-bold bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-muted hover:text-brand-text-primary disabled:opacity-30 disabled:cursor-not-allowed">{p}</button>
             ))}
+            <button disabled={maxRoundedDown <= 0} onClick={() => setAmount(String(maxRoundedDown))} className="py-1.5 rounded-md text-[10px] font-bold bg-white text-black hover:bg-white/90 disabled:opacity-30 disabled:cursor-not-allowed">MAX</button>
           </div>
         </div>
         <div className="text-[10px] text-brand-text-muted mt-3">
@@ -3799,10 +3849,38 @@ const CasinoWalletModal = ({ open, onClose, wallet }: { open: boolean; onClose: 
             ? 'Burns this many points on chain and credits your casino balance. One transaction.'
             : 'Withdraws from casino balance back to on-chain points. One transaction.'}
         </div>
+        {tab === 'deposit' && (
+          <div className="mt-3 px-3 py-2 rounded-lg bg-[#0a0a0a] border border-[#1f1f1f] text-[10px] text-brand-text-muted leading-relaxed">
+            <div className="flex items-center justify-between">
+              <span className="text-brand-text-primary font-bold uppercase tracking-widest text-[9px]">Recommended</span>
+              <button onClick={() => setAmount(String(CASINO_DAILY_RECOMMENDED))} className="text-[#5be0a4] underline text-[10px] font-bold">{CASINO_DAILY_RECOMMENDED} PTS</button>
+            </div>
+            <div className="mt-1">{CASINO_GAMES_BREAKDOWN} = <span className="text-brand-text-primary">{CASINO_DAILY_RECOMMENDED} PTS</span> for a full daily session.</div>
+            {info && info.dailyDepositCap != null && (
+              <div className="mt-1.5 pt-1.5 border-t border-white/5">
+                Daily deposits used: <span className="text-brand-text-primary font-bold">{info.depositsToday ?? 0} / {info.dailyDepositCap}</span>
+                {info.depositsRemaining === 0 && <span className="text-[#ff8a8a]"> · cap reached, resets 00:00 IST</span>}
+                <div className="opacity-70 mt-0.5">2 deposits per day — think twice how much you want to deposit.</div>
+              </div>
+            )}
+          </div>
+        )}
         {err && <div className="mt-3 px-3 py-2 rounded-lg bg-[rgba(239,73,86,0.08)] border border-[rgba(239,73,86,0.3)] text-[#ef4956] text-[11px]">{err}</div>}
+        {success && (
+          <div className="mt-3 px-3 py-2 rounded-lg bg-[rgba(62,207,142,0.08)] border border-[rgba(62,207,142,0.3)] text-[#3ecf8e] text-[11px]">
+            ✓ {tab === 'deposit' ? 'Deposit' : 'Withdraw'} confirmed · new balance: {success.balance.toLocaleString()}
+            {success.txHash && (
+              <a href={`https://liteforge.explorer.caldera.xyz/tx/${success.txHash}`} target="_blank" rel="noreferrer" className="block mt-1 underline">
+                tx {success.txHash.slice(0, 10)}…{success.txHash.slice(-6)}
+              </a>
+            )}
+          </div>
+        )}
         <div className="flex gap-2 mt-5">
-          <button onClick={submit} disabled={busy || !wallet} className="flex-1 py-3 rounded-lg bg-white text-black font-bold text-[11px] uppercase tracking-widest disabled:opacity-50 hover:bg-white/90 transition-colors">
-            {busy ? 'Processing…' : tab === 'deposit' ? 'Deposit' : 'Withdraw'}
+          <button onClick={submit} disabled={busy || !wallet || (tab === 'deposit' && info?.depositsRemaining === 0)} className="flex-1 py-3 rounded-lg bg-white text-black font-bold text-[11px] uppercase tracking-widest disabled:opacity-50 hover:bg-white/90 transition-colors">
+            {busy ? 'Processing…' : tab === 'deposit'
+              ? (info?.depositsRemaining === 0 ? 'Daily Cap Reached' : 'Deposit')
+              : 'Withdraw'}
           </button>
           <button onClick={onClose} className="flex-1 py-3 rounded-lg bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-primary font-bold text-[11px] uppercase tracking-widest hover:bg-[#1a1a1a] transition-colors">Close</button>
         </div>

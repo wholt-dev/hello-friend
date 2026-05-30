@@ -89,7 +89,9 @@ async function _broadcastOnce(method, args) {
   txReq.nonce = _nonce;
   txReq.chainId = _chainId;
   // Let the signer fill in gas; ethers will estimate if missing.
+  console.log(`[casino-tx] sending ${method} nonce=${_nonce} args=${JSON.stringify(args.map((a) => typeof a === 'bigint' ? a.toString() : a))}`);
   const sent = await _signer.sendTransaction(txReq);
+  console.log(`[casino-tx] broadcast ${method} hash=${sent.hash}`);
   _nonce += 1;
   return sent.hash;
 }
