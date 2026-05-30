@@ -130,6 +130,37 @@ app.post('/activity/award', async (req, res) => {
     res.json({ success: false, reason: e.message });
   }
 });
+
+// GET /activity/counts/:wallet → today's per-bucket usage so the UI can
+// render "0/100" style daily counters and "cap reached" states.
+app.get('/activity/counts/:wallet', (req, res) => {
+  try {
+    const w = String(req.params.wallet || '').toLowerCase();
+    if (!w.match(/^0x[a-f0-9]{40}$/)) return res.status(400).json({ error: 'bad_wallet' });
+    const day = _apToday();
+    const get = (bucket) => {
+      const r = _apDB.prepare('SELECT points FROM ap_daily WHERE wallet=? AND bucket=? AND day=?').get(w, bucket, day);
+      return r ? Number(r.points) : 0;
+    };
+    const deployBuckets = ['deploy_nft', 'deploy_staking', 'deploy_vesting', 'deploy_tokenfactory'];
+    const deployUsed = deployBuckets.reduce((s, b) => s + get(b), 0);
+    res.json({
+      day,
+      swap:   { used: get('swap'), cap: 100 },
+      pool:   { used: get('pool'), cap: 100 },
+      // 4 off-chain deploy types (100 each = 400). ERC20's on-chain 100 is
+      // tracked by the PointsSystem contract (deployDaily) and added on the
+      // frontend so the dashboard can show /500.
+      deploy: { used: deployUsed, cap: 400, perType: {
+        nft: get('deploy_nft'), staking: get('deploy_staking'),
+        vesting: get('deploy_vesting'), tokenfactory: get('deploy_tokenfactory'),
+      } },
+    });
+  } catch (e) {
+    console.error('[activity/counts]', e.message);
+    res.status(500).json({ error: 'counts_failed' });
+  }
+});
 // ── end activity points ───────────────────────────────────────────────
 `;
 

@@ -62,11 +62,11 @@ export async function awardActivity(opts: {
   action: "swap" | "pool" | "deploy" | "nft_mint";
   txHash?: string | null;
   meta?: Record<string, unknown>;
-}) {
+}): Promise<{ credited: number; capped: boolean } | null> {
   try {
     const wallet = (opts.wallet || "").toLowerCase();
-    if (!wallet || !opts.txHash) return;
-    await fetch("https://api.test-hub.xyz/activity/award", {
+    if (!wallet || !opts.txHash) return null;
+    const r = await fetch("https://api.test-hub.xyz/activity/award", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -76,11 +76,18 @@ export async function awardActivity(opts: {
         meta: opts.meta || {},
       }),
     });
-    // Give the relayer a moment, then refresh the on-chain points HUD.
+    let out: { credited: number; capped: boolean } | null = null;
+    try {
+      const d = await r.json();
+      out = { credited: Number(d?.credited ?? 0), capped: !!d?.capped };
+    } catch { /* ignore parse */ }
+    // Give the relayer a moment, then refresh the on-chain points HUD + counts.
     setTimeout(() => {
       try { window.dispatchEvent(new CustomEvent("litdex:points-refresh")); } catch { /* ignore */ }
+      try { window.dispatchEvent(new CustomEvent("litdex:activity-refresh")); } catch { /* ignore */ }
     }, 4000);
-  } catch { /* award is best-effort; the action already succeeded */ }
+    return out;
+  } catch { return null; }
 }
 
 export function shortHex(addr: string, l = 4, r = 4): string {

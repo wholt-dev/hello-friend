@@ -80,6 +80,27 @@ export default function SwapCard({
   const [isPositionsExpanded, setIsPositionsExpanded] = React.useState(false)
   const [isSelectPositionExpanded, setIsSelectPositionExpanded] = React.useState(false)
 
+  // Daily activity counter (swap or pool, depending on this card's mode).
+  const [dailyUsed, setDailyUsed] = React.useState<number>(0)
+  const DAILY_BUCKET = mode === "pool" ? "pool" : "swap"
+  const DAILY_CAP = 100
+  const fetchDailyCounts = React.useCallback(async () => {
+    if (!walletAddress) { setDailyUsed(0); return; }
+    try {
+      const r = await fetch(`https://api.test-hub.xyz/activity/counts/${walletAddress.toLowerCase()}`);
+      if (r.ok) {
+        const d = await r.json();
+        setDailyUsed(Number(d?.[DAILY_BUCKET]?.used ?? 0));
+      }
+    } catch { /* ignore */ }
+  }, [walletAddress, DAILY_BUCKET]);
+  React.useEffect(() => {
+    fetchDailyCounts();
+    const h = () => fetchDailyCounts();
+    window.addEventListener("litdex:activity-refresh", h);
+    return () => window.removeEventListener("litdex:activity-refresh", h);
+  }, [fetchDailyCounts]);
+
   const { data: fromBalance } = useBalance({
     address: walletAddress,
     token: isNativeAddr(fromAddr) ? undefined : fromAddr as `0x${string}`,
@@ -348,7 +369,28 @@ export default function SwapCard({
           ],
         });
         refreshPoints();
-        awardActivity({ wallet: walletAddress, action: "swap", txHash: hash });
+        awardActivity({ wallet: walletAddress, action: "swap", txHash: hash }).then((r) => {
+          if (!r) return;
+          if (r.capped) {
+            showSuccess({
+              title: "DAILY CAP REACHED",
+              subtitle: "MAX 100 SWAP POINTS PER DAY",
+              rows: [
+                { label: "POINTS", value: "+0 PTS (CAP REACHED)" },
+                { label: "RESETS", value: "00:00 IST" },
+              ],
+            });
+          } else if (r.credited > 0) {
+            showSuccess({
+              title: `+${r.credited} POINTS`,
+              subtitle: "SWAP REWARD CREDITED",
+              rows: [
+                { label: "POINTS", value: `+${r.credited} PTS` },
+                { label: "TODAY", value: `${Math.min(100, dailyUsed + r.credited)}/100` },
+              ],
+            });
+          }
+        });
       } else {
         if (subMode === "add" || (subMode === "remove" && poolAction === "add")) {
           const rKey = "liteswap";
@@ -382,7 +424,14 @@ export default function SwapCard({
             ],
           });
           refreshPoints();
-          awardActivity({ wallet: walletAddress, action: "pool", txHash: hash });
+          awardActivity({ wallet: walletAddress, action: "pool", txHash: hash }).then((r) => {
+            if (!r) return;
+            if (r.capped) {
+              showSuccess({ title: "DAILY CAP REACHED", subtitle: "MAX 100 POOL POINTS PER DAY", rows: [{ label: "POINTS", value: "+0 PTS (CAP REACHED)" }, { label: "RESETS", value: "00:00 IST" }] });
+            } else if (r.credited > 0) {
+              showSuccess({ title: `+${r.credited} POINTS`, subtitle: "LIQUIDITY REWARD CREDITED", rows: [{ label: "POINTS", value: `+${r.credited} PTS` }, { label: "TODAY", value: `${Math.min(100, dailyUsed + r.credited)}/100` }] });
+            }
+          });
           fetchPositions();
         } else {
           if (!selectedLp) {
@@ -417,7 +466,14 @@ export default function SwapCard({
             ],
           });
           refreshPoints();
-          awardActivity({ wallet: walletAddress, action: "pool", txHash: hash });
+          awardActivity({ wallet: walletAddress, action: "pool", txHash: hash }).then((r) => {
+            if (!r) return;
+            if (r.capped) {
+              showSuccess({ title: "DAILY CAP REACHED", subtitle: "MAX 100 POOL POINTS PER DAY", rows: [{ label: "POINTS", value: "+0 PTS (CAP REACHED)" }, { label: "RESETS", value: "00:00 IST" }] });
+            } else if (r.credited > 0) {
+              showSuccess({ title: `+${r.credited} POINTS`, subtitle: "LIQUIDITY REWARD CREDITED", rows: [{ label: "POINTS", value: `+${r.credited} PTS` }, { label: "TODAY", value: `${Math.min(100, dailyUsed + r.credited)}/100` }] });
+            }
+          });
           fetchPositions();
           setSelectedLp(null);
         }
@@ -989,7 +1045,14 @@ export default function SwapCard({
             <span className="text-white opacity-60">Routed via {activeRouter}</span>
           )}
         </div>
-        <span>Real-time quotes</span>
+        <div className="flex flex-col items-end gap-1">
+          {isConnected && (
+            <span className="text-white opacity-70">
+              {mode === "pool" ? "Pool" : "Swap"} points today {Math.min(dailyUsed, DAILY_CAP)}/{DAILY_CAP}
+            </span>
+          )}
+          <span>Real-time quotes</span>
+        </div>
       </footer>
 
       {mode === "pool" && lpPositions.length > 0 && (
