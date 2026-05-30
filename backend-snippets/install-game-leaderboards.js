@@ -31,7 +31,6 @@ const SERVER_DIR = process.cwd().endsWith('game-server')
 const PATCHES = [
   {
     file: 'litdice.js',
-    marker: "router.get('/leaderboard'",
     code: `
 router.get('/leaderboard', (req, res) => {
   try {
@@ -58,7 +57,6 @@ router.get('/leaderboard', (req, res) => {
   },
   {
     file: 'litlimbo.js',
-    marker: "router.get('/leaderboard'",
     code: `
 router.get('/leaderboard', (req, res) => {
   try {
@@ -85,7 +83,6 @@ router.get('/leaderboard', (req, res) => {
   },
   {
     file: 'litmines.js',
-    marker: "router.get('/leaderboard'",
     code: `
 router.get('/leaderboard', (req, res) => {
   try {
@@ -112,7 +109,6 @@ router.get('/leaderboard', (req, res) => {
   },
   {
     file: 'litplinko.js',
-    marker: "router.get('/leaderboard'",
     code: `
 router.get('/leaderboard', (req, res) => {
   try {
@@ -139,7 +135,6 @@ router.get('/leaderboard', (req, res) => {
   },
   {
     file: 'litwheel.js',
-    marker: "router.get('/leaderboard'",
     code: `
 router.get('/leaderboard', (req, res) => {
   try {
@@ -166,7 +161,6 @@ router.get('/leaderboard', (req, res) => {
   },
   {
     file: 'litcoinflip.js',
-    marker: "router.get('/leaderboard'",
     code: `
 router.get('/leaderboard', (req, res) => {
   try {
@@ -188,7 +182,6 @@ router.get('/leaderboard', (req, res) => {
   },
   {
     file: 'pumpdump.js',
-    marker: "router.get('/leaderboard'",
     code: `
 router.get('/leaderboard', (req, res) => {
   try {
@@ -210,7 +203,76 @@ router.get('/leaderboard', (req, res) => {
   },
 ];
 
-let touched = 0, skipped = 0, missing = 0;
+// Brace-aware scanner: find a complete `router.get('/leaderboard', …);` block
+// (or `router.get("/leaderboard", …);`) and return its [start, end] indices.
+// Handles nested object literals, template literals, single/double quoted
+// strings, and line/block comments.
+function findLeaderboardBlock(src) {
+  const startRe = /\brouter\.get\(\s*['"]\/leaderboard['"]\s*,/g;
+  const m = startRe.exec(src);
+  if (!m) return null;
+  const start = m.index;
+  // Walk from the opening `(` of router.get(...).
+  let i = src.indexOf('(', start);
+  if (i < 0) return null;
+  let depthParen = 0;
+  let depthBrace = 0;
+  let inStrSingle = false;
+  let inStrDouble = false;
+  let inStrTpl = false;
+  let inLineCmt = false;
+  let inBlockCmt = false;
+  for (; i < src.length; i++) {
+    const c = src[i];
+    const next = src[i + 1];
+    if (inLineCmt) { if (c === '\n') inLineCmt = false; continue; }
+    if (inBlockCmt) { if (c === '*' && next === '/') { inBlockCmt = false; i++; } continue; }
+    if (inStrSingle) { if (c === '\\') { i++; continue; } if (c === "'") inStrSingle = false; continue; }
+    if (inStrDouble) { if (c === '\\') { i++; continue; } if (c === '"') inStrDouble = false; continue; }
+    if (inStrTpl)    { if (c === '\\') { i++; continue; } if (c === '`') inStrTpl = false; continue; }
+    if (c === '/' && next === '/') { inLineCmt = true; i++; continue; }
+    if (c === '/' && next === '*') { inBlockCmt = true; i++; continue; }
+    if (c === "'") { inStrSingle = true; continue; }
+    if (c === '"') { inStrDouble = true; continue; }
+    if (c === '`') { inStrTpl = true; continue; }
+    if (c === '(') depthParen++;
+    else if (c === ')') {
+      depthParen--;
+      if (depthParen === 0 && depthBrace === 0) {
+        // After the closing `)`, expect optional `;`
+        let j = i + 1;
+        if (src[j] === ';') j++;
+        // Consume trailing whitespace + a single newline so we leave clean spacing.
+        while (j < src.length && (src[j] === ' ' || src[j] === '\t')) j++;
+        if (src[j] === '\r') j++;
+        if (src[j] === '\n') j++;
+        return { start, end: j };
+      }
+    }
+    else if (c === '{') depthBrace++;
+    else if (c === '}') depthBrace--;
+  }
+  return null;
+}
+
+// Repair an "orphan catch" left behind by an earlier broken installer:
+//   "  } catch (e) {\n    console.error('[/<game>/leaderboard]', …);\n    res.status(500).json({ error: 'leaderboard_failed' });\n  }\n});\n"
+// at the top level. Strip these so we have a clean file to re-install into.
+function repairOrphanCatch(src, gameName) {
+  // The catch block always references the leaderboard error string we used.
+  const tag = `[/${gameName}/leaderboard]`;
+  const re = new RegExp(
+    "\\n\\s*\\}\\s*catch\\s*\\(\\s*e\\s*\\)\\s*\\{\\s*\\n[^\\n]*" +
+    tag.replace(/[/\\]/g, '\\$&') +
+    "[^\\n]*\\n[^\\n]*leaderboard_failed[^\\n]*\\n\\s*\\}\\s*\\n\\s*\\}\\s*\\)\\s*;\\s*\\n",
+    'g'
+  );
+  let n = 0;
+  const out = src.replace(re, () => { n++; return '\n'; });
+  return { src: out, fixed: n };
+}
+
+let touched = 0, repaired = 0, missing = 0;
 for (const p of PATCHES) {
   const fp = path.join(SERVER_DIR, p.file);
   if (!fs.existsSync(fp)) {
@@ -218,35 +280,42 @@ for (const p of PATCHES) {
     missing++;
     continue;
   }
-  const src = fs.readFileSync(fp, 'utf8');
-  // If a leaderboard route already exists, strip it out so we can
-  // re-install the latest version. This keeps the installer
-  // idempotent AND lets us push schema fixes (e.g. column renames).
-  let working = src;
-  const existingRe = /\nrouter\.get\('\/leaderboard'[\s\S]*?\}\);\s*\n/;
-  if (existingRe.test(working)) {
-    console.log(`[update] ${p.file} — replacing existing leaderboard endpoint`);
-    working = working.replace(existingRe, '\n');
+  const original = fs.readFileSync(fp, 'utf8');
+  let working = original;
+
+  // Step 1: strip any orphan catch blocks left by earlier broken runs.
+  const gameName = p.file.replace(/\.js$/, '');
+  const fix = repairOrphanCatch(working, gameName);
+  if (fix.fixed > 0) {
+    working = fix.src;
+    console.log(`[heal] ${p.file} — removed ${fix.fixed} orphan catch block(s)`);
+    repaired++;
   }
-  // Insert before the final module.exports = router; line.
-  const out = working.replace(
-    /module\.exports\s*=\s*router\s*;?\s*$/,
-    `${p.code}\nmodule.exports = router;\n`,
-  );
-  if (out === working) {
-    console.log(`[fail] ${p.file} — could not find module.exports anchor`);
+
+  // Step 2: strip ALL existing /leaderboard endpoints (brace-aware).
+  while (true) {
+    const block = findLeaderboardBlock(working);
+    if (!block) break;
+    working = working.slice(0, block.start) + working.slice(block.end);
+  }
+
+  // Step 3: insert fresh endpoint just before module.exports = router.
+  const meRe = /module\.exports\s*=\s*router\s*;?\s*$/;
+  if (!meRe.test(working)) {
+    console.log(`[fail] ${p.file} — module.exports anchor not found`);
     missing++;
     continue;
   }
-  if (out === src) {
+  working = working.replace(meRe, `${p.code.trim()}\n\nmodule.exports = router;\n`);
+
+  if (working === original) {
     console.log(`[ok]   ${p.file} — already up to date`);
-    skipped++;
     continue;
   }
-  fs.writeFileSync(fp, out, 'utf8');
+  fs.writeFileSync(fp, working, 'utf8');
   console.log(`[done] ${p.file} — leaderboard endpoint installed`);
   touched++;
 }
 
-console.log(`\n${touched} patched, ${skipped} already present, ${missing} skipped.`);
+console.log(`\n${touched} patched, ${repaired} repaired, ${missing} skipped/missing.`);
 console.log('Restart the server to pick up changes:  pm2 restart litdex-game');
