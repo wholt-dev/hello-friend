@@ -88,10 +88,11 @@ const GAMES = [
   { id: 'litlaunch',   firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM litlaunch_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(awarded) DESC LIMIT 20" },
   { id: 'blockchain',  firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM blockchain_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(highest_tile) DESC LIMIT 20" },
   // Math Slash — ongoing game, starts THIS week. Lives in a SEPARATE DB
-  // (game.db) with the live weekly leaderboard table (ms_weekly_leaderboard,
-  // current IST week only).
+  // (game.db). Its ms_weekly_leaderboard never gets week-reset in practice,
+  // so we reward the current top-20 by total_score directly (this mirrors
+  // exactly what the in-app Math Slash leaderboard shows).
   { id: 'mathslash',   firstPayout: MATHSLASH_FIRST_PAYOUT, optional: true, db: 'game.db',
-    sql: "SELECT wallet FROM ms_weekly_leaderboard WHERE week_start = @week ORDER BY total_score DESC LIMIT 20" },
+    sql: "SELECT wallet FROM ms_weekly_leaderboard ORDER BY total_score DESC LIMIT 20" },
 ];
 
 // ISO week key like 2026-W22 (UTC) so we never double-pay the same week.
