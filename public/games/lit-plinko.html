@@ -218,6 +218,7 @@
       hudGames.textContent = `${DAILY-ST.gamesLeft}/${DAILY}`;
       hudMult.textContent = '—';
       panel.classList.add('hidden');
+      ST.ball = null;     // no ball before drop
       drawBoard();
       showCommitModal();
       fetchStats().then((s) => { if (s) hudBal.textContent = String(s.pointsBalance || 0); });
@@ -250,15 +251,22 @@
     const rowGap = drawH / (ROWS + 1);
     const colGap = drawW / (SLOTS + 1);
 
-    // Pegs
-    ctx2d.fillStyle = 'rgba(255,255,255,0.85)';
+    // Pegs (with subtle glow)
     for (let r = 0; r < ROWS; r++) {
       const pegs = r + 2;
       const startX = padX + (drawW - (pegs - 1) * colGap) / 2;
       const y = padTop + (r + 1) * rowGap;
       for (let p = 0; p < pegs; p++) {
+        const px = startX + p * colGap;
+        // Outer glow.
+        ctx2d.fillStyle = 'rgba(255,255,255,0.18)';
         ctx2d.beginPath();
-        ctx2d.arc(startX + p * colGap, y, 3, 0, Math.PI * 2);
+        ctx2d.arc(px, y, 4.5, 0, Math.PI * 2);
+        ctx2d.fill();
+        // Solid peg.
+        ctx2d.fillStyle = '#cfe6ff';
+        ctx2d.beginPath();
+        ctx2d.arc(px, y, 3, 0, Math.PI * 2);
         ctx2d.fill();
       }
     }
@@ -284,17 +292,41 @@
     }
     // Ball preview
     if (ST.ball) {
+      const scale = ST.ball.scale != null ? ST.ball.scale : 1;
+      // Soft motion trail.
+      ctx2d.save();
+      ctx2d.globalAlpha = 0.35;
       ctx2d.fillStyle = '#ffd76a';
-      ctx2d.shadowColor = '#ffd76a'; ctx2d.shadowBlur = 14;
       ctx2d.beginPath();
-      ctx2d.arc(ST.ball.x, ST.ball.y, 5, 0, Math.PI * 2);
+      ctx2d.arc(ST.ball.x, ST.ball.y - 6, 4, 0, Math.PI * 2);
+      ctx2d.fill();
+      ctx2d.globalAlpha = 0.18;
+      ctx2d.beginPath();
+      ctx2d.arc(ST.ball.x, ST.ball.y - 12, 3, 0, Math.PI * 2);
+      ctx2d.fill();
+      ctx2d.restore();
+      // Main ball with glow.
+      const grd = ctx2d.createRadialGradient(ST.ball.x - 2, ST.ball.y - 2, 1, ST.ball.x, ST.ball.y, 7 * scale);
+      grd.addColorStop(0, '#fff5d2');
+      grd.addColorStop(0.55, '#ffd76a');
+      grd.addColorStop(1, '#a16e10');
+      ctx2d.fillStyle = grd;
+      ctx2d.shadowColor = '#ffd76a'; ctx2d.shadowBlur = 16;
+      ctx2d.beginPath();
+      ctx2d.arc(ST.ball.x, ST.ball.y, 7 * scale, 0, Math.PI * 2);
       ctx2d.fill();
       ctx2d.shadowBlur = 0;
+      // White highlight specular.
+      ctx2d.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx2d.beginPath();
+      ctx2d.arc(ST.ball.x - 2, ST.ball.y - 2, 2 * scale, 0, Math.PI * 2);
+      ctx2d.fill();
     }
   }
   function roundRect(c,x,y,w,h,r){r=Math.max(0,Math.min(r,w/2,h/2));c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.quadraticCurveTo(x+w,y,x+w,y+r);c.lineTo(x+w,y+h-r);c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);c.lineTo(x,y+r);c.quadraticCurveTo(x,y,x+r,y);c.closePath();}
 
   // Animate ball through path. path[i] = -1 (left) or +1 (right) for row i.
+  // Realistic gravity-driven drop with arc bounces between pegs.
   function animateBall(path, finalSlot) {
     return new Promise((resolve) => {
       const W = stageCanvas.clientWidth, H = stageCanvas.clientHeight;
@@ -303,42 +335,78 @@
       const rowGap = drawH / (ROWS + 1);
       const colGap = drawW / (SLOTS + 1);
 
-      // Path positions per row.
-      const positions = [];
-      // Row 0 has 2 pegs centered. Ball starts above row 0, goes between pegs.
-      let col = 0; // -1 = left of center, +1 = right
+      // Build the list of waypoints the ball passes through. The ball
+      // sits between pegs of consecutive rows, so each waypoint y is
+      // between row r and row r+1.
+      const wp = [];
+      let col = 0;            // -1 left, +1 right offsets from row centerline
       const startX = padX + drawW / 2;
-      positions.push({ x: startX, y: padTop });
+      // Start: above the first row of pegs.
+      wp.push({ x: startX, y: padTop - 12 });
+      // Top of row 0 (just above pegs) for clean drop-in.
+      wp.push({ x: startX, y: padTop + rowGap * 0.4 });
       for (let r = 0; r < ROWS; r++) {
         col += path[r];
         const y = padTop + (r + 1) * rowGap + rowGap * 0.5;
         const x = padX + drawW / 2 + (col / 2) * colGap;
-        positions.push({ x, y });
+        wp.push({ x, y });
       }
-      // Final slot center.
+      // Settle into the slot center.
       const slotW = drawW / SLOTS;
       const finalX = padX + finalSlot * slotW + slotW / 2;
-      const finalY = padTop + drawH + (padBot / 2);
-      positions.push({ x: finalX, y: finalY });
+      const finalY = padTop + drawH + 6;
+      wp.push({ x: finalX, y: finalY });
+      // Bottom of slot (resting position).
+      wp.push({ x: finalX, y: padTop + drawH + (padBot / 2) });
 
-      let i = 0;
-      const startTime = performance.now();
-      const stepDur = 80;     // ms per peg
+      // Per-segment durations: faster early, slower into final slot.
+      const segDur = [];
+      for (let i = 0; i < wp.length - 1; i++) {
+        if (i === 0) segDur.push(160);
+        else if (i === wp.length - 2) segDur.push(220);
+        else if (i === wp.length - 3) segDur.push(180);
+        else segDur.push(120);
+      }
+      const totalDur = segDur.reduce((a, b) => a + b, 0);
+
+      const startT = performance.now();
+      let lastSegIdx = -1;
       function step() {
-        const total = positions.length - 1;
-        const elapsed = performance.now() - startTime;
-        const progress = elapsed / stepDur;
-        const idx = Math.min(total - 1, Math.floor(progress));
-        const t = progress - idx;
-        if (idx >= total) {
-          ST.ball = positions[total];
+        const elapsed = performance.now() - startT;
+        if (elapsed >= totalDur) {
+          ST.ball = { x: wp[wp.length - 1].x, y: wp[wp.length - 1].y, scale: 1 };
           drawBoard();
           resolve();
           return;
         }
-        const a = positions[idx], b = positions[idx + 1];
-        ST.ball = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-        if (i !== idx) { sndPeg(); i = idx; }
+        // Find current segment.
+        let acc = 0, segIdx = 0;
+        for (segIdx = 0; segIdx < segDur.length; segIdx++) {
+          if (elapsed < acc + segDur[segIdx]) break;
+          acc += segDur[segIdx];
+        }
+        if (segIdx >= segDur.length) segIdx = segDur.length - 1;
+        const segT = (elapsed - acc) / segDur[segIdx];
+        const a = wp[segIdx], b = wp[segIdx + 1];
+
+        // Ease in-out with slight gravity feel: sine for x, quad-out for y.
+        const easeX = 0.5 - 0.5 * Math.cos(segT * Math.PI);     // ease-in-out
+        const easeY = 1 - Math.pow(1 - segT, 2);                // ease-out (gravity acceleration)
+        let bx = a.x + (b.x - a.x) * easeX;
+        let by = a.y + (b.y - a.y) * easeY;
+        // Add a small vertical arc so each bounce looks bouncy
+        // (ball lifts slightly above straight line near segment middle).
+        const archUp = Math.max(0, Math.sin(segT * Math.PI)) * Math.min(rowGap * 0.18, 8);
+        // Only arc on peg-bounce segments (not start or final settle).
+        if (segIdx > 0 && segIdx < wp.length - 2) by -= archUp;
+
+        // Squash on impact (start of a new segment).
+        const settle = segT < 0.18 ? (1 - segT / 0.18) * 0.18 : 0;
+        const scale = 1 - settle;
+
+        ST.ball = { x: bx, y: by, scale };
+
+        if (segIdx !== lastSegIdx) { sndPeg(); lastSegIdx = segIdx; }
         drawBoard();
         requestAnimationFrame(step);
       }

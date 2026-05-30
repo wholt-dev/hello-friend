@@ -332,40 +332,67 @@
     ST.busy = true;
     btnRoll.disabled = true;
     sndRoll();
-    // Spin animation: cycle a random number for ~600ms.
-    const start = performance.now();
-    const spin = () => {
-      const t = performance.now() - start;
-      if (t > 550) { return; }
-      const fake = Math.random() * 100;
-      rollDisp.textContent = fake.toFixed(2);
-      rollMarker.style.left = `${fake}%`;
-      rollLbl.textContent = fake.toFixed(2);
-      requestAnimationFrame(spin);
-    };
-    spin();
+
+    // Fetch the result FIRST so the spin can land on the real value.
+    let d;
     try {
       const r = await fetch(`${API}/litdice/play`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roundId: ST.roundId, token: ST.token, target: ST.target, direction: ST.dir }),
       });
-      const d = await r.json();
-      // Wait until spin finishes before showing result.
-      setTimeout(() => {
-        if (!r.ok || d.error) { showErr(d?.error || 'play_failed'); ST.busy = false; btnRoll.disabled = false; return; }
-        const roll = Number(d.roll);
-        rollDisp.textContent = roll.toFixed(2);
-        rollMarker.style.left = `${roll}%`;
-        rollLbl.textContent = roll.toFixed(2);
-        rollDisp.classList.remove('win','loss','bump');
-        void rollDisp.offsetWidth;
-        rollDisp.classList.add('bump', d.won ? 'win' : 'loss');
-        if (d.won) sndWin(); else sndLoss();
-        // Hold the actual result on screen so the player can read it
-        // before the result modal pops over the dice display.
-        setTimeout(() => endPanel(d), 1500);
-      }, 600);
-    } catch { showErr('Network error'); ST.busy = false; btnRoll.disabled = false; }
+      d = await r.json();
+      if (!r.ok || d.error) {
+        showErr(d?.error || 'play_failed');
+        ST.busy = false; btnRoll.disabled = false;
+        return;
+      }
+    } catch {
+      showErr('Network error');
+      ST.busy = false; btnRoll.disabled = false;
+      return;
+    }
+
+    const realRoll = Number(d.roll);
+
+    // Smooth ease-out spin that LANDS exactly on the real roll.
+    // Decaying oscillation around the target so it looks like a dice
+    // rolling to a stop, then snaps to the exact server value.
+    await new Promise((resolve) => {
+      const startT = performance.now();
+      const dur = 1400;
+      const startVal = parseFloat(rollDisp.textContent) || 50;
+      function step() {
+        const elapsed = performance.now() - startT;
+        const k = Math.min(1, elapsed / dur);
+        const ease = 1 - Math.pow(1 - k, 3); // ease-out cubic
+        const oscAmp = 24 * (1 - k) * (1 - k);
+        const osc = Math.sin(elapsed * 0.045) * oscAmp;
+        const display = Math.max(0, Math.min(99.99,
+          startVal + (realRoll - startVal) * ease + osc
+        ));
+        rollDisp.textContent = display.toFixed(2);
+        rollMarker.style.left = `${display}%`;
+        rollLbl.textContent = display.toFixed(2);
+        if (k < 1) requestAnimationFrame(step);
+        else {
+          // Snap to exact server value.
+          rollDisp.textContent = realRoll.toFixed(2);
+          rollMarker.style.left = `${realRoll}%`;
+          rollLbl.textContent = realRoll.toFixed(2);
+          resolve();
+        }
+      }
+      requestAnimationFrame(step);
+    });
+
+    rollDisp.classList.remove('win','loss','bump');
+    void rollDisp.offsetWidth;
+    rollDisp.classList.add('bump', d.won ? 'win' : 'loss');
+    if (d.won) sndWin(); else sndLoss();
+
+    // Hold the actual result on screen so the player can read it
+    // before the result modal pops over the dice display.
+    setTimeout(() => endPanel(d), 1500);
   };
 
   function endPanel(d) {

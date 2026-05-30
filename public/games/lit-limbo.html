@@ -302,33 +302,64 @@
     ST.busy = true;
     btnRoll.disabled = true;
     sndRoll();
-    const start = performance.now();
-    const spin = () => {
-      const t = performance.now() - start;
-      if (t > 700) return;
-      const fake = Math.pow(10, Math.random() * 2);  // 1..100 ish
-      rolled.textContent = `${fake.toFixed(2)}x`;
-      requestAnimationFrame(spin);
-    };
-    spin();
+
+    let d;
     try {
       const r = await fetch(`${API}/litlimbo/play`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roundId: ST.roundId, token: ST.token, target: ST.target }),
       });
-      const d = await r.json();
-      setTimeout(() => {
-        if (!r.ok || d.error) { showErr(d?.error || 'play_failed'); ST.busy = false; btnRoll.disabled = false; return; }
-        rolled.textContent = `${d.rolled.toFixed(2)}x`;
-        rolledSub.textContent = `TARGET ${d.target.toFixed(2)}x · ${d.won ? 'WIN' : 'LOSS'}`;
-        rolled.classList.remove('win','loss','bump');
-        void rolled.offsetWidth;
-        rolled.classList.add('bump', d.won ? 'win' : 'loss');
-        if (d.won) sndWin(); else sndLoss();
-        // Hold result on screen so player can see actual rolled value.
-        setTimeout(() => endPanel(d), 1500);
-      }, 700);
-    } catch { showErr('Network error'); ST.busy = false; btnRoll.disabled = false; }
+      d = await r.json();
+      if (!r.ok || d.error) {
+        showErr(d?.error || 'play_failed');
+        ST.busy = false; btnRoll.disabled = false;
+        return;
+      }
+    } catch {
+      showErr('Network error');
+      ST.busy = false; btnRoll.disabled = false;
+      return;
+    }
+
+    const realRolled = Number(d.rolled);
+
+    // Spin that ramps up multiplier values then settles on the real one.
+    await new Promise((resolve) => {
+      const startT = performance.now();
+      const dur = 1600;
+      // Range: start near 1.00x, ease toward real value.
+      function step() {
+        const elapsed = performance.now() - startT;
+        const k = Math.min(1, elapsed / dur);
+        const ease = 1 - Math.pow(1 - k, 3);
+        // Add fast jitter early, settle smoothly to exact end value.
+        const jitter = (1 - k) * (1 - k) * (Math.sin(elapsed * 0.05) * 1.5 + (Math.random() - 0.5) * 1.2);
+        let val;
+        if (realRolled <= 5) {
+          // Linear ramp for low multipliers.
+          val = 1 + (realRolled - 1) * ease + jitter;
+        } else {
+          // Exponential feel for higher multipliers — looks more "casino".
+          val = 1 + Math.pow(realRolled - 1, ease) + jitter;
+          if (k > 0.85) val = realRolled + jitter * 0.4;
+        }
+        val = Math.max(1, val);
+        rolled.textContent = `${val.toFixed(2)}x`;
+        if (k < 1) requestAnimationFrame(step);
+        else {
+          rolled.textContent = `${realRolled.toFixed(2)}x`;
+          resolve();
+        }
+      }
+      requestAnimationFrame(step);
+    });
+
+    rolledSub.textContent = `TARGET ${d.target.toFixed(2)}x · ${d.won ? 'WIN' : 'LOSS'}`;
+    rolled.classList.remove('win','loss','bump');
+    void rolled.offsetWidth;
+    rolled.classList.add('bump', d.won ? 'win' : 'loss');
+    if (d.won) sndWin(); else sndLoss();
+    setTimeout(() => endPanel(d), 1500);
   };
 
   function endPanel(d) {
