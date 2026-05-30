@@ -13,7 +13,7 @@
   .pill{flex:1;background:linear-gradient(180deg,rgba(15,25,45,0.95),rgba(5,10,20,0.92));border:1px solid rgba(140,180,255,0.18);border-radius:12px;padding:7px 10px 8px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.16em;color:#aac6ee;text-transform:uppercase;text-align:center;backdrop-filter:blur(6px)}
   .pill .v{display:block;color:#fff;font-weight:700;font-size:16px;margin-top:3px;letter-spacing:0.5px}
   .pill.bal .v{color:#5be0a4}.pill.mult .v{color:#ffe97a;font-size:18px}.pill.games .v{color:#aac6ee}
-  #stage-canvas{position:absolute;left:0;top:80px;right:0;bottom:170px;z-index:3;width:100%;height:auto}
+  #stage-canvas{position:absolute;left:0;top:80px;right:0;bottom:140px;z-index:3;width:100%;height:auto}
   #risk-row{position:absolute;left:12px;right:12px;bottom:84px;z-index:5;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .risk-btn{min-height:42px;border-radius:10px;border:1px solid rgba(140,180,255,0.22);background:rgba(15,25,45,0.85);color:#fff;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.1em;cursor:pointer;-webkit-tap-highlight-color:transparent}
   .risk-btn.on{box-shadow:0 3px 0 rgba(0,0,0,0.3)}
@@ -76,8 +76,9 @@
       <div class="panel-title">FAIRNESS</div>
       <div class="panel-sub">Verify any past result</div>
       <div id="fair-body" style="max-height: 60vh; overflow-y: auto;"></div>
-      <div class="panel-btns">
-        <button class="panel-btn primary" id="fair-close">CLOSE</button>
+      <div class="panel-btns" style="display:flex;gap:8px">
+        <button class="panel-btn verify" id="open-verifier" style="flex:1">OPEN VERIFIER</button>
+        <button class="panel-btn primary" id="fair-close" style="flex:1">CLOSE</button>
       </div>
     </div>
   </div>
@@ -175,6 +176,18 @@
   btnX.onclick = () => postParent({ type: 'litdex:litplinko:exit' });
   openFair.onclick = () => showFairness();
   fairClose.onclick = () => fairness.classList.add('hidden');
+  document.getElementById('open-verifier').onclick = () => {
+    const r = ST.lastResult || {};
+    const params = new URLSearchParams({
+      g: 'plinko',
+      seedHash: r.seedHash || ST.seedHash || '',
+      serverSeed: r.serverSeed || '',
+      roundId: ST.roundId || '',
+      clientSeed: r.clientSeed || ST.clientSeed || '',
+      risk: ST.risk || 'low',
+    });
+    window.open(`/games/verify.html?${params.toString()}`, '_blank');
+  };
 
   async function fetchStats() { if (!wallet) return null; try { const r = await fetch(`${API}/litplinko/stats/${wallet}`); if (!r.ok) return null; return await r.json(); } catch { return null; } }
 
@@ -246,7 +259,7 @@
     const W = stageCanvas.clientWidth, H = stageCanvas.clientHeight;
     if (!W || !H) return;
     ctx2d.clearRect(0,0,W,H);
-    const padX = 20, padTop = 20, padBot = 60;
+    const padX = 20, padTop = 20, padBot = 90;     // extra room for slots row
     const drawW = W - padX * 2, drawH = H - padTop - padBot;
     const rowGap = drawH / (ROWS + 1);
     const colGap = drawW / (SLOTS + 1);
@@ -272,23 +285,35 @@
     }
     // Slots
     const slotW = drawW / SLOTS;
-    const slotY = padTop + drawH + 4;
+    const slotY = padTop + drawH + 8;
+    const slotH = padBot - 16;
     const tbl = ST.tables ? ST.tables[ST.risk] : null;
     for (let s = 0; s < SLOTS; s++) {
       const x = padX + s * slotW;
       const mult = tbl ? (tbl[s] / 100) : 1;
       const intensity = Math.min(1, mult / 30);
-      const color = mult >= 5 ? `rgba(255,213,90,${0.4 + intensity * 0.6})`
-                  : mult >= 1.5 ? `rgba(91,224,164,${0.3 + intensity * 0.6})`
-                  : `rgba(140,180,255,0.18)`;
+      const color = mult >= 5 ? `rgba(255,213,90,${0.45 + intensity * 0.55})`
+                  : mult >= 1.5 ? `rgba(91,224,164,${0.35 + intensity * 0.55})`
+                  : mult >= 0.5 ? `rgba(140,180,255,0.28)`
+                  : `rgba(255,138,140,0.28)`;
       ctx2d.fillStyle = color;
-      roundRect(ctx2d, x + 2, slotY, slotW - 4, padBot - 12, 6);
+      roundRect(ctx2d, x + 2, slotY, slotW - 4, slotH, 8);
       ctx2d.fill();
+      ctx2d.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx2d.lineWidth = 1;
+      ctx2d.stroke();
+      // Multiplier label.
       ctx2d.fillStyle = '#fff';
-      ctx2d.font = `bold ${Math.min(13, slotW * 0.4)}px 'JetBrains Mono', monospace`;
+      const fontSize = Math.max(10, Math.min(15, slotW * 0.32));
+      ctx2d.font = `bold ${fontSize}px 'JetBrains Mono', monospace`;
       ctx2d.textAlign = 'center';
       ctx2d.textBaseline = 'middle';
-      ctx2d.fillText(`${mult.toFixed(mult < 1 ? 1 : (mult >= 100 ? 0 : 1))}x`, x + slotW / 2, slotY + (padBot - 12) / 2);
+      let label;
+      if (mult === 0) label = '0';
+      else if (mult >= 100) label = `${mult.toFixed(0)}x`;
+      else if (mult >= 10) label = `${mult.toFixed(0)}x`;
+      else label = `${mult.toFixed(1)}x`;
+      ctx2d.fillText(label, x + slotW / 2, slotY + slotH / 2);
     }
     // Ball preview
     if (ST.ball) {
@@ -330,20 +355,16 @@
   function animateBall(path, finalSlot) {
     return new Promise((resolve) => {
       const W = stageCanvas.clientWidth, H = stageCanvas.clientHeight;
-      const padX = 20, padTop = 20, padBot = 60;
+      const padX = 20, padTop = 20, padBot = 90;
       const drawW = W - padX * 2, drawH = H - padTop - padBot;
       const rowGap = drawH / (ROWS + 1);
       const colGap = drawW / (SLOTS + 1);
 
-      // Build the list of waypoints the ball passes through. The ball
-      // sits between pegs of consecutive rows, so each waypoint y is
-      // between row r and row r+1.
+      // Build the list of waypoints the ball passes through.
       const wp = [];
-      let col = 0;            // -1 left, +1 right offsets from row centerline
+      let col = 0;
       const startX = padX + drawW / 2;
-      // Start: above the first row of pegs.
-      wp.push({ x: startX, y: padTop - 12 });
-      // Top of row 0 (just above pegs) for clean drop-in.
+      wp.push({ x: startX, y: padTop - 14 });
       wp.push({ x: startX, y: padTop + rowGap * 0.4 });
       for (let r = 0; r < ROWS; r++) {
         col += path[r];
@@ -354,18 +375,18 @@
       // Settle into the slot center.
       const slotW = drawW / SLOTS;
       const finalX = padX + finalSlot * slotW + slotW / 2;
-      const finalY = padTop + drawH + 6;
+      const finalY = padTop + drawH + 16;
       wp.push({ x: finalX, y: finalY });
-      // Bottom of slot (resting position).
-      wp.push({ x: finalX, y: padTop + drawH + (padBot / 2) });
+      const slotH = padBot - 16;
+      wp.push({ x: finalX, y: padTop + drawH + 8 + slotH * 0.5 });
 
-      // Per-segment durations: faster early, slower into final slot.
+      // Slow + smooth: 220ms drop-in, 200ms per peg, 280ms slot settle.
       const segDur = [];
       for (let i = 0; i < wp.length - 1; i++) {
-        if (i === 0) segDur.push(160);
-        else if (i === wp.length - 2) segDur.push(220);
-        else if (i === wp.length - 3) segDur.push(180);
-        else segDur.push(120);
+        if (i === 0)                       segDur.push(220);
+        else if (i === wp.length - 2)      segDur.push(280);
+        else if (i === wp.length - 3)      segDur.push(240);
+        else                                segDur.push(200);
       }
       const totalDur = segDur.reduce((a, b) => a + b, 0);
 
@@ -379,7 +400,6 @@
           resolve();
           return;
         }
-        // Find current segment.
         let acc = 0, segIdx = 0;
         for (segIdx = 0; segIdx < segDur.length; segIdx++) {
           if (elapsed < acc + segDur[segIdx]) break;
@@ -389,23 +409,22 @@
         const segT = (elapsed - acc) / segDur[segIdx];
         const a = wp[segIdx], b = wp[segIdx + 1];
 
-        // Ease in-out with slight gravity feel: sine for x, quad-out for y.
-        const easeX = 0.5 - 0.5 * Math.cos(segT * Math.PI);     // ease-in-out
-        const easeY = 1 - Math.pow(1 - segT, 2);                // ease-out (gravity acceleration)
+        // Ease-in-out cosine for X (smooth side-to-side).
+        const easeX = 0.5 - 0.5 * Math.cos(segT * Math.PI);
+        // Quadratic for Y to mimic gravity (slow start, fast end of fall).
+        const easeY = segT * segT;
         let bx = a.x + (b.x - a.x) * easeX;
         let by = a.y + (b.y - a.y) * easeY;
-        // Add a small vertical arc so each bounce looks bouncy
-        // (ball lifts slightly above straight line near segment middle).
-        const archUp = Math.max(0, Math.sin(segT * Math.PI)) * Math.min(rowGap * 0.18, 8);
-        // Only arc on peg-bounce segments (not start or final settle).
+
+        // Tiny upward arc on peg-bounce segments.
+        const archUp = Math.max(0, Math.sin(segT * Math.PI)) * Math.min(rowGap * 0.22, 11);
         if (segIdx > 0 && segIdx < wp.length - 2) by -= archUp;
 
-        // Squash on impact (start of a new segment).
-        const settle = segT < 0.18 ? (1 - segT / 0.18) * 0.18 : 0;
+        // Squash on impact (start of segment).
+        const settle = segT < 0.20 ? (1 - segT / 0.20) * 0.20 : 0;
         const scale = 1 - settle;
 
         ST.ball = { x: bx, y: by, scale };
-
         if (segIdx !== lastSegIdx) { sndPeg(); lastSegIdx = segIdx; }
         drawBoard();
         requestAnimationFrame(step);

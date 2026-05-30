@@ -118,7 +118,7 @@
       <div class="panel-title">FAIRNESS</div>
       <div class="panel-sub">Verify any past result</div>
       <div id="fair-body" style="max-height: 60vh; overflow-y: auto; text-align: left;"></div>
-      <div class="panel-btns"><button class="panel-btn primary" id="fair-close">CLOSE</button></div>
+      <div class="panel-btns" style="display:flex;gap:8px"><button class="panel-btn verify" id="open-verifier" style="flex:1">OPEN VERIFIER</button><button class="panel-btn primary" id="fair-close" style="flex:1">CLOSE</button></div>
     </div>
   </div>
 
@@ -208,6 +208,16 @@
   commitProceed.onclick = () => commitModal.classList.add('hidden');
 
   document.getElementById('fair-close').onclick = () => fairness.classList.add('hidden');
+  document.getElementById('open-verifier').onclick = () => {
+    const r = ST.lastResult || {};
+    const params = new URLSearchParams({
+      g: 'dice',
+      seedHash: r.seedHash || ST.seedHash || '',
+      serverSeed: r.serverSeed || '',
+      roundId: ST.roundId || '',
+    });
+    window.open(`/games/verify.html?${params.toString()}`, '_blank');
+  };
   document.getElementById('open-fairness').onclick = () => openFairness();
   function openFairness() {
     const r = ST.lastResult;

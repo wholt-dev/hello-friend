@@ -77,7 +77,7 @@
       <div class="panel-title">FAIRNESS</div>
       <div class="panel-sub">Verify any past result</div>
       <div id="fair-body" style="max-height: 60vh; overflow-y: auto;"></div>
-      <div class="panel-btns"><button class="panel-btn primary" id="fair-close">CLOSE</button></div>
+      <div class="panel-btns" style="display:flex;gap:8px"><button class="panel-btn verify" id="open-verifier" style="flex:1">OPEN VERIFIER</button><button class="panel-btn primary" id="fair-close" style="flex:1">CLOSE</button></div>
     </div>
   </div>
 
@@ -176,6 +176,18 @@
   btnX.onclick = () => postParent({ type: 'litdex:litwheel:exit' });
   openFair.onclick = () => showFairness();
   fairClose.onclick = () => fairness.classList.add('hidden');
+  document.getElementById('open-verifier').onclick = () => {
+    const r = ST.lastResult || {};
+    const params = new URLSearchParams({
+      g: 'wheel',
+      seedHash: r.seedHash || ST.seedHash || '',
+      serverSeed: r.serverSeed || '',
+      roundId: ST.roundId || '',
+      clientSeed: r.clientSeed || ST.clientSeed || '',
+      risk: ST.risk || 'low',
+    });
+    window.open(`/games/verify.html?${params.toString()}`, '_blank');
+  };
 
   async function fetchStats() { if (!wallet) return null; try { const r = await fetch(`${API}/litwheel/stats/${wallet}`); if (!r.ok) return null; return await r.json(); } catch { return null; } }
 
