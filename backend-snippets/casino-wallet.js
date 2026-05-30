@@ -116,6 +116,7 @@ function todayIST() {
 }
 
 function depositsToday(wallet) {
+  if (!_db) return 0;
   const w = String(wallet).toLowerCase();
   const today = todayIST();
   const start = new Date(today + 'T00:00:00.000Z').getTime() - 5.5 * 60 * 60 * 1000;
