@@ -1051,7 +1051,7 @@ const NFTsPage = () => {
 
       // Step 3: Mint NFT directly
       console.log("Minting NFT type:", nftType);
-      const mintTxHash = await mintRewardNFT(nftType);
+      await mintRewardNFT(nftType);
 
       // Step 4: Deduct points from PointsSystemV6
       try {
@@ -1059,13 +1059,6 @@ const NFTsPage = () => {
       } catch (spendErr) {
         console.error("spendPoints failed:", spendErr);
       }
-
-      // Award mint points (server-enforced, idempotent per tx):
-      // litshard +200, litcore +500, litgod +1000.
-      try {
-        const tierKey = nftType === 1 ? 'litshard' : nftType === 2 ? 'litcore' : 'litgod';
-        awardActivity({ wallet: address, action: 'nft_mint', txHash: mintTxHash, meta: { tier: tierKey } });
-      } catch { /* best-effort */ }
 
       addNotif(address, { type: "nft", title: "+NFT minted!", message: `${tier.name} minted successfully` });
       showSuccess({

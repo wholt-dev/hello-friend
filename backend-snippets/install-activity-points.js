@@ -9,13 +9,12 @@
 // daily caps. Points are minted via the same queueQuest()/recordQuestFor
 // relayer the domain + messenger flows already use.
 //
-// REWARD SPEC (server-enforced — frontend cannot inflate):
+// REWARD SPEC (server-enforced - frontend cannot inflate):
 //   swap       +5 per swap,  cap 100/day   (= 20 swaps)
 //   pool       +5 per add/remove, cap 100/day combined (= 20 actions)
-//   deploy     +100 per deploy, cap 500/day combined across all 5 types
-//              (erc20 / nft / staking / vesting / tokenfactory)
-//   nft_mint   one-shot per mint, NO daily cap:
-//                litshard +200,  litcore +500,  litgod +1000
+//   deploy     +5 per deploy, per-type cap 100/day each across 4 types
+//              (nft / staking / vesting / tokenfactory). ERC20 deploys
+//              already earn +5/100 on-chain via the deployer contract.
 //
 // Idempotency: every credit is keyed by txHash. A given txHash credits
 // at most once (DB unique). Daily caps tracked per (wallet, bucket, IST-day).
@@ -84,8 +83,6 @@ const _AP_RULES = {
   deploy_vesting:  { bucket: 'deploy_vesting',  per: 5, cap: 100 },
   deploy_tokenfactory: { bucket: 'deploy_tokenfactory', per: 5, cap: 100 },
 };
-// nft_mint is special: one-shot per tier, no daily cap.
-const _AP_MINT = { litshard: 200, litcore: 500, litgod: 1000 };
 
 app.post('/activity/award', async (req, res) => {
   try {
@@ -105,36 +102,29 @@ app.post('/activity/award', async (req, res) => {
     if (!receipt || !receipt.status) return res.json({ success: false, reason: 'tx_not_found_or_failed' });
     if ((receipt.from || '').toLowerCase() !== w) return res.json({ success: false, reason: 'tx_not_from_wallet' });
 
-    // Resolve points + cap.
-    let pts = 0, bucket = null;
-    if (action === 'nft_mint') {
-      const tier = String(meta?.tier || '').toLowerCase();
-      pts = _AP_MINT[tier] || 0;
-      if (pts <= 0) return res.json({ success: false, reason: 'bad_tier' });
-    } else {
-      // 'deploy' with meta.type maps to deploy_<type>; swap/pool map directly.
-      let ruleKey = action;
-      if (action === 'deploy') ruleKey = 'deploy_' + String(meta?.type || '').toLowerCase();
-      const rule = _AP_RULES[ruleKey];
-      if (!rule) return res.json({ success: false, reason: 'unsupported_action' });
-      bucket = rule.bucket;
-      const used = _apDayPoints(w, bucket);
-      const remaining = Math.max(0, rule.cap - used);
-      pts = Math.min(rule.per, remaining);
-      if (pts <= 0) return res.json({ success: true, capped: true, credited: 0, used });
-    }
+    // Resolve points + cap. 'deploy' with meta.type maps to deploy_<type>;
+    // swap/pool map directly.
+    let ruleKey = action;
+    if (action === 'deploy') ruleKey = 'deploy_' + String(meta?.type || '').toLowerCase();
+    const rule = _AP_RULES[ruleKey];
+    if (!rule) return res.json({ success: false, reason: 'unsupported_action' });
+    const bucket = rule.bucket;
+    const used = _apDayPoints(w, bucket);
+    const remaining = Math.max(0, rule.cap - used);
+    const pts = Math.min(rule.per, remaining);
+    if (pts <= 0) return res.json({ success: true, capped: true, credited: 0, used });
 
     // Credit via the existing relayer queue (idempotent on-chain via questId too).
-    const questId = (bucket || action) + '_' + tx.slice(2, 18);
+    const questId = bucket + '_' + tx.slice(2, 18);
     const qtx = await queueQuest(w, pts, questId);
     if (qtx && qtx.wait) await qtx.wait();
 
     _apDB.prepare('INSERT OR IGNORE INTO ap_credits (tx_hash, wallet, action, points, ts) VALUES (?,?,?,?,?)')
-      .run(tx, w, bucket || action, pts, Date.now());
-    if (bucket) _apAddDay(w, bucket, pts);
+      .run(tx, w, bucket, pts, Date.now());
+    _apAddDay(w, bucket, pts);
 
-    console.log('[activity/award] ' + w.slice(0,10) + ' ' + (bucket || action) + ' +' + pts + 'pts');
-    res.json({ success: true, credited: pts, action: bucket || action });
+    console.log('[activity/award] ' + w.slice(0,10) + ' ' + bucket + ' +' + pts + 'pts');
+    res.json({ success: true, credited: pts, action: bucket });
   } catch (e) {
     console.error('[activity/award]', e.message);
     res.json({ success: false, reason: e.message });
