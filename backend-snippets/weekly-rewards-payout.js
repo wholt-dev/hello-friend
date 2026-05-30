@@ -87,12 +87,12 @@ const GAMES = [
   { id: 'zkminer',     firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM zkminer_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(charges) DESC LIMIT 20" },
   { id: 'litlaunch',   firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM litlaunch_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(awarded) DESC LIMIT 20" },
   { id: 'blockchain',  firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM blockchain_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(highest_tile) DESC LIMIT 20" },
-  // Math Slash — ongoing game, starts THIS week. Lives in a SEPARATE DB
-  // (game.db). Its ms_weekly_leaderboard never gets week-reset in practice,
-  // so we reward the current top-20 by total_score directly (this mirrors
-  // exactly what the in-app Math Slash leaderboard shows).
-  { id: 'mathslash',   firstPayout: MATHSLASH_FIRST_PAYOUT, optional: true, db: 'game.db',
-    sql: "SELECT wallet FROM ms_weekly_leaderboard ORDER BY total_score DESC LIMIT 20" },
+  // Math Slash — ongoing game, starts THIS week. Lives in the shared
+  // simple_game.db. Mirrors EXACTLY the in-app /simple/leaderboard query
+  // (game_rewards, id > 72254 = current season) so the wallets that see
+  // themselves on the leaderboard are the ones that get paid.
+  { id: 'mathslash',   firstPayout: MATHSLASH_FIRST_PAYOUT, optional: true,
+    sql: "SELECT wallet, SUM(score) AS total_score FROM game_rewards WHERE id > 72254 GROUP BY wallet ORDER BY total_score DESC LIMIT 20" },
 ];
 
 // ISO week key like 2026-W22 (UTC) so we never double-pay the same week.
