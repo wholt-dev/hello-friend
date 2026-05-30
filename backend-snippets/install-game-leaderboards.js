@@ -255,6 +255,26 @@ function findLeaderboardBlock(src) {
   return null;
 }
 
+// Fallback for malformed `router.get('/leaderboard', ...)` blocks where
+// braces never balance (because an earlier broken installer chopped the
+// body). Scan forward to the next top-level anchor — `router.get(`,
+// `router.post(`, `router.put(`, `router.delete(`, or `module.exports`.
+function findMalformedLeaderboardBlock(src) {
+  const startRe = /\brouter\.get\(\s*['"]\/leaderboard['"]\s*,/g;
+  const m = startRe.exec(src);
+  if (!m) return null;
+  const start = m.index;
+  // From after the start, find the next top-level statement anchor.
+  // We accept matches that begin at column 0 (start of line) only — that
+  // way we don't get fooled by a `router.get(` inside a string.
+  const tail = src.slice(start + 1);
+  const anchorRe = /(\r?\n)(router\.(get|post|put|delete)\(|module\.exports\s*=)/g;
+  const a = anchorRe.exec(tail);
+  if (!a) return null;
+  // Strip from `start` up to (but not including) the newline before the anchor.
+  return { start, end: start + 1 + a.index + a[1].length };
+}
+
 // Repair an "orphan catch" left behind by an earlier broken installer:
 //   "  } catch (e) {\n    console.error('[/<game>/leaderboard]', …);\n    res.status(500).json({ error: 'leaderboard_failed' });\n  }\n});\n"
 // at the top level. Strip these so we have a clean file to re-install into.
@@ -292,11 +312,19 @@ for (const p of PATCHES) {
     repaired++;
   }
 
-  // Step 2: strip ALL existing /leaderboard endpoints (brace-aware).
+  // Step 2: strip ALL existing /leaderboard endpoints (brace-aware first,
+  // then fall back to anchor-stripping for malformed leftovers).
   while (true) {
     const block = findLeaderboardBlock(working);
     if (!block) break;
     working = working.slice(0, block.start) + working.slice(block.end);
+  }
+  while (true) {
+    const block = findMalformedLeaderboardBlock(working);
+    if (!block) break;
+    console.log(`[heal] ${p.file} — stripped malformed leaderboard block`);
+    working = working.slice(0, block.start) + working.slice(block.end);
+    repaired++;
   }
 
   // Step 3: insert fresh endpoint just before module.exports = router.
