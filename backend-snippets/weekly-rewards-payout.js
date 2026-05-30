@@ -52,21 +52,25 @@ function tierFor(rank) {
   return null;
 }
 
-// Each game: db file + the SQL to pull its top-20 wallets (best-first).
+// All games share one SQLite file on the server (simple_game.db). Each
+// game's tables live inside it. The Math Slash leaderboard reads from
+// simple_scores.
+const SHARED_DB = process.env.GAMES_DB || 'simple_game.db';
+
 const GAMES = [
-  { id: 'litdice',     db: 'litdice.db',     sql: "SELECT wallet FROM litdice_rounds WHERE settled=1 AND won=1 GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
-  { id: 'litlimbo',    db: 'litlimbo.db',    sql: "SELECT wallet FROM litlimbo_rounds WHERE settled=1 AND won=1 GROUP BY wallet ORDER BY MAX(rolled_x100) DESC LIMIT 20" },
-  { id: 'litmines',    db: 'litmines.db',    sql: "SELECT wallet FROM litmines_rounds WHERE settled=1 AND outcome='cashout' GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
-  { id: 'litplinko',   db: 'litplinko.db',   sql: "SELECT wallet FROM litplinko_rounds WHERE settled=1 GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
-  { id: 'litwheel',    db: 'litwheel.db',    sql: "SELECT wallet FROM litwheel_rounds WHERE settled=1 GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
-  { id: 'litcoinflip', db: 'litcoinflip.db', sql: "SELECT wallet FROM litcoin_rounds WHERE settled=1 AND won=1 GROUP BY wallet ORDER BY MAX(streak) DESC LIMIT 20" },
-  { id: 'pumpdump',    db: 'pumpdump.db',    sql: "SELECT wallet FROM pumpdump_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(pot) DESC LIMIT 20" },
-  { id: 'littower',    db: 'littower.db',    sql: "SELECT wallet FROM littower_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(height) DESC LIMIT 20" },
-  { id: 'zkminer',     db: 'zkminer.db',     sql: "SELECT wallet FROM zkminer_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(charges) DESC LIMIT 20" },
-  { id: 'litlaunch',   db: 'litlaunch.db',   sql: "SELECT wallet FROM litlaunch_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(awarded) DESC LIMIT 20" },
-  { id: 'blockchain',  db: 'blockchain.db',  sql: "SELECT wallet FROM blockchain_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(highest_tile) DESC LIMIT 20" },
-  // Math Slash uses the shared simple-game DB; adjust if your file differs.
-  { id: 'mathslash',   db: 'simple.db',      sql: "SELECT wallet FROM simple_scores GROUP BY wallet ORDER BY MAX(total_score) DESC LIMIT 20", optional: true },
+  { id: 'litdice',     sql: "SELECT wallet FROM litdice_rounds WHERE settled=1 AND won=1 GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
+  { id: 'litlimbo',    sql: "SELECT wallet FROM litlimbo_rounds WHERE settled=1 AND won=1 GROUP BY wallet ORDER BY MAX(rolled_x100) DESC LIMIT 20" },
+  { id: 'litmines',    sql: "SELECT wallet FROM litmines_rounds WHERE settled=1 AND outcome='cashout' GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
+  { id: 'litplinko',   sql: "SELECT wallet FROM litplinko_rounds WHERE settled=1 GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
+  { id: 'litwheel',    sql: "SELECT wallet FROM litwheel_rounds WHERE settled=1 GROUP BY wallet ORDER BY MAX(multiplier_x100) DESC LIMIT 20" },
+  { id: 'litcoinflip', sql: "SELECT wallet FROM litcoin_rounds WHERE settled=1 AND won=1 GROUP BY wallet ORDER BY MAX(streak) DESC LIMIT 20" },
+  { id: 'pumpdump',    sql: "SELECT wallet FROM pumpdump_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(pot) DESC LIMIT 20" },
+  { id: 'littower',    sql: "SELECT wallet FROM littower_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(height) DESC LIMIT 20" },
+  { id: 'zkminer',     sql: "SELECT wallet FROM zkminer_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(charges) DESC LIMIT 20" },
+  { id: 'litlaunch',   sql: "SELECT wallet FROM litlaunch_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(awarded) DESC LIMIT 20" },
+  { id: 'blockchain',  sql: "SELECT wallet FROM blockchain_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(highest_tile) DESC LIMIT 20" },
+  // Math Slash leaderboard (shares the same DB).
+  { id: 'mathslash',   sql: "SELECT wallet FROM simple_scores GROUP BY wallet ORDER BY MAX(total_score) DESC LIMIT 20", optional: true },
 ];
 
 // ISO week key like 2026-W22 (UTC) so we never double-pay the same week.
@@ -81,7 +85,7 @@ function weekKey() {
 
 function openDb(file) {
   const fp = path.join(SERVER_DIR, file);
-  try { return new Database(fp, { readonly: false, fileMustExist: true }); }
+  try { return new Database(fp, { readonly: true, fileMustExist: true }); }
   catch { return null; }
 }
 
@@ -126,15 +130,18 @@ const recordPaid = (rec) =>
   console.log(`  zkLTC: ${bal.zkltc}`);
   console.log(`  LDEX:  ${bal.ldex} (decimals ${bal.ldexDecimals})\n`);
 
-  // Build the plan.
+  // Build the plan from the single shared games DB.
   const plan = [];
   let needZkltc = 0, needLdex = 0, needPts = 0;
+  const gdb = openDb(SHARED_DB);
+  if (!gdb) {
+    console.error(`Could not open shared games DB: ${path.join(SERVER_DIR, SHARED_DB)}`);
+    process.exit(1);
+  }
   for (const g of GAMES) {
-    const db = openDb(g.db);
-    if (!db) { if (!g.optional) console.log(`[skip] ${g.id} — db ${g.db} not found`); continue; }
     let rows = [];
-    try { rows = db.prepare(g.sql).all(); } catch (e) { console.log(`[skip] ${g.id} — ${e.message}`); db.close(); continue; }
-    db.close();
+    try { rows = gdb.prepare(g.sql).all(); }
+    catch (e) { if (!g.optional) console.log(`[skip] ${g.id} — ${e.message}`); continue; }
     rows.forEach((row, i) => {
       const rank = i + 1;
       const t = tierFor(rank);
@@ -145,6 +152,7 @@ const recordPaid = (rec) =>
       needZkltc += t.zkltc; needLdex += t.ldex; needPts += t.pts;
     });
   }
+  gdb.close();
 
   console.log(`Plan: ${plan.length} payouts across ${new Set(plan.map((p) => p.game)).size} games`);
   console.log(`  Total zkLTC needed: ${needZkltc}`);
