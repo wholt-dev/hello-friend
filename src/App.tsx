@@ -52,7 +52,7 @@ import SwapCard from './components/ui/crypto-swap-card';
 import BridgeCard from './components/ui/bridge-card';
 import { AnimatedNavFramer } from './components/ui/navigation-menu';
 import { litvmChain, errMsg, LITDEX_DEPLOYER_ADDRESS, readTotalDeployed, deployTokenLitDeX, shortAddr, readDeployments, readDeployFee, readLegacyDeployFee, deployTokenLegacy, getLegacyTokenInfo, getLegacyTokensByCreator, getLegacyTotalDeployedDisplay, readPoints, readCheckinInfo, readCurrentDay, checkinToday, claimNFTRewardsByType, claimNFTRewards, readUserNFTs, readNFTPendingByType, readNFTCurrentDay, readNFTTotalMinted, readNFTAvailablePoints, syncUserPoints, mintRewardNFT, spendUserPoints } from './lib/litdex-core-logic';
-import { showSuccess, showError, showInfo, refreshPoints } from './lib/feedback';
+import { showSuccess, showError, showInfo, refreshPoints, awardActivity } from './lib/feedback';
 
 // --- Types ---
 type PageID = 'swap' | 'pool' | 'deploy' | 'points' | 'checkin' | 'nfts' | 'messenger' | 'quests' | 'games' | 'faucet' | 'hub' | 'chatui';
@@ -277,6 +277,7 @@ const PoolPage = () => {
 const PointsPage = ({ setPage }: { setPage: (p: PageID) => void }) => {
   const { address, isConnected } = useAccount();
   const [pointsData, setPointsData] = useState<{ total: bigint; deployDaily: bigint; msgDaily: bigint; hasCheckedIn: boolean } | null>(null);
+  const [activity, setActivity] = useState<{ swap: number; pool: number; deployOffchain: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState("00:00:00");
   const [previousPage, setPreviousPage] = useState<PageID>('swap');
@@ -294,15 +295,34 @@ const PointsPage = ({ setPage }: { setPage: (p: PageID) => void }) => {
     }
   }, [address]);
 
-  useEffect(() => {
-    if (isConnected && address) fetchPoints();
-  }, [isConnected, address, fetchPoints]);
+  const fetchActivity = React.useCallback(async () => {
+    if (!address) { setActivity(null); return; }
+    try {
+      const r = await fetch(`https://api.test-hub.xyz/activity/counts/${address.toLowerCase()}`);
+      if (r.ok) {
+        const d = await r.json();
+        setActivity({
+          swap: Number(d?.swap?.used ?? 0),
+          pool: Number(d?.pool?.used ?? 0),
+          deployOffchain: Number(d?.deploy?.used ?? 0), // 4 off-chain types (max 400)
+        });
+      }
+    } catch { /* ignore */ }
+  }, [address]);
 
   useEffect(() => {
-    const onRefresh = () => fetchPoints();
+    if (isConnected && address) { fetchPoints(); fetchActivity(); }
+  }, [isConnected, address, fetchPoints, fetchActivity]);
+
+  useEffect(() => {
+    const onRefresh = () => { fetchPoints(); fetchActivity(); };
     window.addEventListener("litdex:points-refresh", onRefresh);
-    return () => window.removeEventListener("litdex:points-refresh", onRefresh);
-  }, [fetchPoints]);
+    window.addEventListener("litdex:activity-refresh", onRefresh);
+    return () => {
+      window.removeEventListener("litdex:points-refresh", onRefresh);
+      window.removeEventListener("litdex:activity-refresh", onRefresh);
+    };
+  }, [fetchPoints, fetchActivity]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -326,14 +346,26 @@ const PointsPage = ({ setPage }: { setPage: (p: PageID) => void }) => {
 
   const totalPoints = pointsData ? Number(pointsData.total) : 0;
   const isCheckedIn = pointsData?.hasCheckedIn ?? false;
-  
-  const dailyDeploy = pointsData ? Number(pointsData.deployDaily) : 0;
-  const deployCap = 100;
-  const deployProgress = (dailyDeploy / deployCap) * 100;
+
+  // Deploy = on-chain ERC20 (deployDaily, max 100) + off-chain 4 factory
+  // types (max 400) = combined out of 500.
+  const erc20Deploy = pointsData ? Number(pointsData.deployDaily) : 0;
+  const offchainDeploy = activity ? activity.deployOffchain : 0;
+  const dailyDeploy = erc20Deploy + offchainDeploy;
+  const deployCap = 500;
+  const deployProgress = Math.min(100, (dailyDeploy / deployCap) * 100);
 
   const dailyMsg = pointsData ? Number(pointsData.msgDaily) : 0;
   const msgCap = 20;
   const msgProgress = (dailyMsg / msgCap) * 100;
+
+  const dailySwap = activity ? activity.swap : 0;
+  const swapCap = 100;
+  const swapProgress = Math.min(100, (dailySwap / swapCap) * 100);
+
+  const dailyPool = activity ? activity.pool : 0;
+  const poolCap = 100;
+  const poolProgress = Math.min(100, (dailyPool / poolCap) * 100);
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-6xl mx-auto py-12 px-6">
@@ -393,7 +425,7 @@ const PointsPage = ({ setPage }: { setPage: (p: PageID) => void }) => {
                   <Rocket size={10} className="text-white/40" />
                 </div>
                 <div className="font-bold text-white text-xl tracking-tight">
-                  {dailyDeploy} <span className="text-xs text-white/20 font-medium">/ 100</span>
+                  {dailyDeploy} <span className="text-xs text-white/20 font-medium">/ 500</span>
                 </div>
              </div>
              <div className="px-6 py-5 bg-white/[0.02] border border-white/5 rounded-2xl group hover:border-white/10 transition-all backdrop-blur-md">
@@ -426,7 +458,7 @@ const PointsPage = ({ setPage }: { setPage: (p: PageID) => void }) => {
            <div className="space-y-4">
               <div className="flex justify-between items-end">
                 <div className="text-[9px] font-bold text-white uppercase tracking-[0.2em]">Deployments</div>
-                <div className="text-[9px] text-white/40 uppercase font-mono">{dailyDeploy}/100</div>
+                <div className="text-[9px] text-white/40 uppercase font-mono">{dailyDeploy}/500</div>
               </div>
               <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5">
                 <motion.div initial={{ width: 0 }} animate={{ width: `${deployProgress}%` }} className="h-full rounded-full bg-white/40" />
@@ -440,6 +472,26 @@ const PointsPage = ({ setPage }: { setPage: (p: PageID) => void }) => {
               </div>
               <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5">
                 <motion.div initial={{ width: 0 }} animate={{ width: `${msgProgress}%` }} className="h-full rounded-full bg-white/40" />
+              </div>
+           </div>
+
+           <div className="space-y-4">
+              <div className="flex justify-between items-end">
+                <div className="text-[9px] font-bold text-white uppercase tracking-[0.2em]">Swaps</div>
+                <div className="text-[9px] text-white/40 uppercase font-mono">{dailySwap}/100</div>
+              </div>
+              <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5">
+                <motion.div initial={{ width: 0 }} animate={{ width: `${swapProgress}%` }} className="h-full rounded-full bg-white/40" />
+              </div>
+           </div>
+
+           <div className="space-y-4">
+              <div className="flex justify-between items-end">
+                <div className="text-[9px] font-bold text-white uppercase tracking-[0.2em]">Liquidity (Pool)</div>
+                <div className="text-[9px] text-white/40 uppercase font-mono">{dailyPool}/100</div>
+              </div>
+              <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5">
+                <motion.div initial={{ width: 0 }} animate={{ width: `${poolProgress}%` }} className="h-full rounded-full bg-white/40" />
               </div>
            </div>
         </div>
@@ -1316,6 +1368,41 @@ const DeployPage = () => {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [totalDeployed, setTotalDeployed] = useState<number | null>(null);
 
+  // Per-type daily deploy counters (each capped at 100):
+  //   erc20 -> on-chain deployDaily; nft/staking/vesting/factory -> off-chain.
+  const PER_TYPE_CAP = 100;
+  const [deployCounts, setDeployCounts] = useState<Record<string, number>>({});
+  const fetchDeployCounts = React.useCallback(async () => {
+    if (!address) { setDeployCounts({}); return; }
+    const next: Record<string, number> = { erc20: 0, nft: 0, staking: 0, vesting: 0, factory: 0 };
+    try {
+      const p = await readPoints(address);
+      next.erc20 = Number(p.deployDaily);
+    } catch { /* ignore */ }
+    try {
+      const r = await fetch(`https://api.test-hub.xyz/activity/counts/${address.toLowerCase()}`);
+      if (r.ok) {
+        const d = await r.json();
+        const pt = d?.deploy?.perType || {};
+        next.nft = Number(pt.nft ?? 0);
+        next.staking = Number(pt.staking ?? 0);
+        next.vesting = Number(pt.vesting ?? 0);
+        next.factory = Number(pt.tokenfactory ?? 0);
+      }
+    } catch { /* ignore */ }
+    setDeployCounts(next);
+  }, [address]);
+  useEffect(() => {
+    fetchDeployCounts();
+    const h = () => fetchDeployCounts();
+    window.addEventListener("litdex:activity-refresh", h);
+    window.addEventListener("litdex:points-refresh", h);
+    return () => {
+      window.removeEventListener("litdex:activity-refresh", h);
+      window.removeEventListener("litdex:points-refresh", h);
+    };
+  }, [fetchDeployCounts]);
+
   const types = [
     { id: 'erc20', name: 'ERC20 Token', icon: Coins },
     { id: 'nft', name: 'NFT (ERC721)', icon: ImageIcon },
@@ -1393,19 +1480,28 @@ const DeployPage = () => {
 
       <div className="flex flex-wrap justify-center gap-2 mb-12">
         {types.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setSelectedType(t.id)}
-            className={cn(
-              "flex items-center gap-2 px-6 py-3 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-widest",
-              selectedType === t.id 
-                ? "bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.15)]" 
-                : "bg-black/20 border-white/5 text-brand-text-muted hover:border-white/10 hover:text-white"
+          <div key={t.id} className="flex flex-col items-center gap-1.5">
+            {isConnected && (
+              <span
+                title={`${t.name} deploys today (+5 each, max ${PER_TYPE_CAP})`}
+                className="italic text-[10px] font-medium text-white/60 tabular-nums px-2 py-0.5 rounded-full border border-white/10 bg-white/5"
+              >
+                {Math.min(deployCounts[t.id] ?? 0, PER_TYPE_CAP)}/{PER_TYPE_CAP}
+              </span>
             )}
-          >
-            <t.icon size={14} />
-            {t.name}
-          </button>
+            <button
+              onClick={() => setSelectedType(t.id)}
+              className={cn(
+                "flex items-center gap-2 px-6 py-3 rounded-2xl border transition-all font-bold text-[10px] uppercase tracking-widest",
+                selectedType === t.id 
+                  ? "bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.15)]" 
+                  : "bg-black/20 border-white/5 text-brand-text-muted hover:border-white/10 hover:text-white"
+              )}
+            >
+              <t.icon size={14} />
+              {t.name}
+            </button>
+          </div>
         ))}
       </div>
 
@@ -2031,6 +2127,9 @@ contract MNFT is ERC721, Ownable {
       setTxStatus("success");
       const ca = (result as any).tokenAddress as string | undefined;
       const explorerUrl = `${litvmChain.blockExplorers.default.url}/tx/${result.txHash}`;
+      awardActivity({ wallet: address, action: 'deploy', txHash: result.txHash, meta: { type: 'nft' } }).then((r) => {
+        if (r?.capped) showSuccess({ title: "DAILY CAP REACHED", subtitle: "MAX 100 NFT-DEPLOY POINTS/DAY", rows: [{ label: "POINTS", value: "+0 PTS (CAP REACHED)" }, { label: "RESETS", value: "00:00 IST" }] });
+      });
       const shortHash = `${result.txHash.slice(0, 6)}...${result.txHash.slice(-4)}`;
       try {
         if (address) addNotif(address, {
@@ -2380,6 +2479,7 @@ contract MNFT is ERC721, Ownable {
 };
 
 const StakingForm = ({ onDeployed }: any) => {
+  const { address } = useAccount();
   const [stakingToken, setStakingToken] = useState('');
   const [rewardToken, setRewardToken] = useState('');
   const [rewardRate, setRewardRate] = useState('12');
@@ -2510,6 +2610,9 @@ contract ldex is Ownable, ReentrancyGuard, Pausable {
         label || "Staking Pool"
       );
       setTxInfo({ hash: res.txHash, address: res.contractAddress });
+      awardActivity({ wallet: address, action: 'deploy', txHash: res.txHash, meta: { type: 'staking' } }).then((r) => {
+        if (r?.capped) showSuccess({ title: "DAILY CAP REACHED", subtitle: "MAX 100 STAKING-DEPLOY POINTS/DAY", rows: [{ label: "POINTS", value: "+0 PTS (CAP REACHED)" }, { label: "RESETS", value: "00:00 IST" }] });
+      });
       {
         const explorerUrl = `${litvmChain.blockExplorers.default.url}/tx/${res.txHash}`;
         const shortHash = `${res.txHash.slice(0, 6)}...${res.txHash.slice(-4)}`;
@@ -2653,6 +2756,7 @@ contract ldex is Ownable, ReentrancyGuard, Pausable {
 };
 
 const VestingForm = ({ onDeployed }: any) => {
+  const { address } = useAccount();
   const [tokenAddress, setTokenAddress] = useState('');
   const [beneficiary, setBeneficiary] = useState('');
   const [amount, setAmount] = useState('');
@@ -2753,6 +2857,9 @@ contract ${label.replace(/\s+/g, '') || "TokenVesting"} is Ownable, ReentrancyGu
         label || "Token Vesting"
       );
       setTxInfo({ hash: res.txHash, address: res.contractAddress });
+      awardActivity({ wallet: address, action: 'deploy', txHash: res.txHash, meta: { type: 'vesting' } }).then((r) => {
+        if (r?.capped) showSuccess({ title: "DAILY CAP REACHED", subtitle: "MAX 100 VESTING-DEPLOY POINTS/DAY", rows: [{ label: "POINTS", value: "+0 PTS (CAP REACHED)" }, { label: "RESETS", value: "00:00 IST" }] });
+      });
       {
         const explorerUrl = `${litvmChain.blockExplorers.default.url}/tx/${res.txHash}`;
         const shortHash = `${res.txHash.slice(0, 6)}...${res.txHash.slice(-4)}`;
@@ -3039,6 +3146,9 @@ contract LitVMTokenFactory is Ownable {
         pausable
       });
       setTxInfo({ hash: res.txHash, address: res.tokenAddress });
+      awardActivity({ wallet: address, action: 'deploy', txHash: res.txHash, meta: { type: 'tokenfactory' } }).then((r) => {
+        if (r?.capped) showSuccess({ title: "DAILY CAP REACHED", subtitle: "MAX 100 FACTORY-DEPLOY POINTS/DAY", rows: [{ label: "POINTS", value: "+0 PTS (CAP REACHED)" }, { label: "RESETS", value: "00:00 IST" }] });
+      });
       {
         const explorerUrl = `${litvmChain.blockExplorers.default.url}/tx/${res.txHash}`;
         const shortHash = `${res.txHash.slice(0, 6)}...${res.txHash.slice(-4)}`;

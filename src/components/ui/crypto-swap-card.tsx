@@ -29,7 +29,7 @@ import {
 import type { RouterKey } from "@/lib/litdex-core-logic"
 import { ChevronDown } from "lucide-react"
 import { addNotif } from "@/lib/notifications"
-import { showSuccess, showError, refreshPoints } from "@/lib/feedback"
+import { showSuccess, showError, refreshPoints, awardActivity } from "@/lib/feedback"
 
 type Coin = {
   address: string
@@ -79,6 +79,27 @@ export default function SwapCard({
   const [poolAction, setPoolAction] = React.useState<"add" | "remove">("remove")
   const [isPositionsExpanded, setIsPositionsExpanded] = React.useState(false)
   const [isSelectPositionExpanded, setIsSelectPositionExpanded] = React.useState(false)
+
+  // Daily activity counter (swap or pool, depending on this card's mode).
+  const [dailyUsed, setDailyUsed] = React.useState<number>(0)
+  const DAILY_BUCKET = mode === "pool" ? "pool" : "swap"
+  const DAILY_CAP = 100
+  const fetchDailyCounts = React.useCallback(async () => {
+    if (!walletAddress) { setDailyUsed(0); return; }
+    try {
+      const r = await fetch(`https://api.test-hub.xyz/activity/counts/${walletAddress.toLowerCase()}`);
+      if (r.ok) {
+        const d = await r.json();
+        setDailyUsed(Number(d?.[DAILY_BUCKET]?.used ?? 0));
+      }
+    } catch { /* ignore */ }
+  }, [walletAddress, DAILY_BUCKET]);
+  React.useEffect(() => {
+    fetchDailyCounts();
+    const h = () => fetchDailyCounts();
+    window.addEventListener("litdex:activity-refresh", h);
+    return () => window.removeEventListener("litdex:activity-refresh", h);
+  }, [fetchDailyCounts]);
 
   const { data: fromBalance } = useBalance({
     address: walletAddress,
@@ -342,12 +363,14 @@ export default function SwapCard({
           title: "SWAP CONFIRMED",
           subtitle: "PROTOCOL VERIFICATION COMPLETE",
           rows: [
+            { label: "BASE POINTS", value: dailyUsed >= DAILY_CAP ? "+0 PTS (DAILY CAP)" : "+5 PTS" },
             { label: "SENT", value: `${fromAmount} ${ti}` },
             { label: "RECEIVED", value: `${toAmount} ${to}` },
             { label: "ROUTER", value: ROUTERS[rKey].label || "LitDEX" },
           ],
         });
         refreshPoints();
+        awardActivity({ wallet: walletAddress, action: "swap", txHash: hash });
       } else {
         if (subMode === "add" || (subMode === "remove" && poolAction === "add")) {
           const rKey = "liteswap";
@@ -376,11 +399,13 @@ export default function SwapCard({
             title: "LIQUIDITY ADDED",
             subtitle: "PROTOCOL VERIFICATION COMPLETE",
             rows: [
+              { label: "BASE POINTS", value: dailyUsed >= DAILY_CAP ? "+0 PTS (DAILY CAP)" : "+5 PTS" },
               { label: "PAIR", value: `${ta} / ${tb}` },
               { label: "STATUS", value: "POOL UPDATED" },
             ],
           });
           refreshPoints();
+          awardActivity({ wallet: walletAddress, action: "pool", txHash: hash });
           fetchPositions();
         } else {
           if (!selectedLp) {
@@ -410,11 +435,13 @@ export default function SwapCard({
             title: "LIQUIDITY REMOVED",
             subtitle: "PROTOCOL VERIFICATION COMPLETE",
             rows: [
+              { label: "BASE POINTS", value: dailyUsed >= DAILY_CAP ? "+0 PTS (DAILY CAP)" : "+5 PTS" },
               { label: "PAIR", value: `${ta} / ${tb}` },
               { label: "STATUS", value: "POSITION CLOSED" }
             ],
           });
           refreshPoints();
+          awardActivity({ wallet: walletAddress, action: "pool", txHash: hash });
           fetchPositions();
           setSelectedLp(null);
         }
@@ -459,6 +486,14 @@ export default function SwapCard({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {isConnected && (
+            <span
+              title={`${mode === "pool" ? "Pool" : "Swap"} points today (+5 each, resets daily)`}
+              className="italic text-[11px] font-medium text-white/70 tabular-nums px-2.5 py-1 rounded-full border border-white/10 bg-white/5"
+            >
+              {Math.min(dailyUsed, DAILY_CAP)}/{DAILY_CAP}
+            </span>
+          )}
           {mode === "pool" && (
             <div className="flex bg-brand-surface-2 rounded-lg p-1 border border-brand-border mr-2">
               <button
@@ -986,7 +1021,9 @@ export default function SwapCard({
             <span className="text-white opacity-60">Routed via {activeRouter}</span>
           )}
         </div>
-        <span>Real-time quotes</span>
+        <div className="flex flex-col items-end gap-1">
+          <span>Real-time quotes</span>
+        </div>
       </footer>
 
       {mode === "pool" && lpPositions.length > 0 && (
