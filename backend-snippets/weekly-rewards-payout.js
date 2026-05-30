@@ -87,9 +87,10 @@ const GAMES = [
   { id: 'zkminer',     firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM zkminer_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(charges) DESC LIMIT 20" },
   { id: 'litlaunch',   firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM litlaunch_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(awarded) DESC LIMIT 20" },
   { id: 'blockchain',  firstPayout: DEFAULT_FIRST_PAYOUT, sql: "SELECT wallet FROM blockchain_sessions WHERE settled=1 GROUP BY wallet ORDER BY MAX(highest_tile) DESC LIMIT 20" },
-  // Math Slash — ongoing game, starts THIS week. Uses the live weekly
-  // leaderboard table (ms_weekly_leaderboard, current IST week only).
-  { id: 'mathslash',   firstPayout: MATHSLASH_FIRST_PAYOUT, optional: true,
+  // Math Slash — ongoing game, starts THIS week. Lives in a SEPARATE DB
+  // (game.db) with the live weekly leaderboard table (ms_weekly_leaderboard,
+  // current IST week only).
+  { id: 'mathslash',   firstPayout: MATHSLASH_FIRST_PAYOUT, optional: true, db: 'game.db',
     sql: "SELECT wallet FROM ms_weekly_leaderboard WHERE week_start = @week ORDER BY total_score DESC LIMIT 20" },
 ];
 
@@ -150,15 +151,16 @@ const recordPaid = (rec) =>
   console.log(`  zkLTC: ${bal.zkltc}`);
   console.log(`  LDEX:  ${bal.ldex} (decimals ${bal.ldexDecimals})\n`);
 
-  // Build the plan from the single shared games DB.
+  // Build the plan. Most games live in the shared simple_game.db; a few
+  // (Math Slash) live in their own DB and declare `db` explicitly.
   const today = istDateStr();
   const msWeek = weekStartIST();
   const plan = [];
   let needZkltc = 0, needLdex = 0, needPts = 0;
-  const gdb = openDb(SHARED_DB);
-  if (!gdb) {
-    console.error(`Could not open shared games DB: ${path.join(SERVER_DIR, SHARED_DB)}`);
-    process.exit(1);
+  const dbCache = {};
+  function dbFor(file) {
+    if (!(file in dbCache)) dbCache[file] = openDb(file);
+    return dbCache[file];
   }
   for (const g of GAMES) {
     // Per-game start-date guard: skip games whose first payout date
@@ -167,6 +169,8 @@ const recordPaid = (rec) =>
       console.log(`[wait] ${g.id} — first payout ${g.firstPayout}, today ${today}`);
       continue;
     }
+    const gdb = dbFor(g.db || SHARED_DB);
+    if (!gdb) { if (!g.optional) console.log(`[skip] ${g.id} — db ${g.db || SHARED_DB} not found`); continue; }
     let rows = [];
     try {
       const stmt = gdb.prepare(g.sql);
@@ -182,7 +186,7 @@ const recordPaid = (rec) =>
       needZkltc += t.zkltc; needLdex += t.ldex; needPts += t.pts;
     });
   }
-  gdb.close();
+  Object.values(dbCache).forEach((d) => { try { d && d.close(); } catch {} });
 
   console.log(`Plan: ${plan.length} payouts across ${new Set(plan.map((p) => p.game)).size} games`);
   console.log(`  Total zkLTC needed: ${needZkltc}`);
