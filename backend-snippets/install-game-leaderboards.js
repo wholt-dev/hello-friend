@@ -303,47 +303,37 @@ for (const p of PATCHES) {
   const original = fs.readFileSync(fp, 'utf8');
   let working = original;
 
-  // Step 1: strip any orphan catch blocks left by earlier broken runs.
-  const gameName = p.file.replace(/\.js$/, '');
-  const fix = repairOrphanCatch(working, gameName);
-  if (fix.fixed > 0) {
-    working = fix.src;
-    console.log(`[heal] ${p.file} — removed ${fix.fixed} orphan catch block(s)`);
+  // Strategy: the /leaderboard route is ALWAYS the last route, immediately
+  // before `module.exports = router;`. So:
+  //   1. Find the FIRST `router.get('/leaderboard'` occurrence.
+  //   2. Discard everything from there to end-of-file (this nukes any number
+  //      of broken/duplicate/incomplete leaderboard blocks AND the trailing
+  //      module.exports).
+  //   3. Re-append one clean leaderboard block + module.exports.
+  // If no leaderboard exists yet, just insert before module.exports.
+  const lbMatch = working.match(/\n[ \t]*router\.get\(\s*['"]\/leaderboard['"]/);
+  if (lbMatch && lbMatch.index != null) {
+    const head = working.slice(0, lbMatch.index).replace(/\s*$/, '');
+    working = `${head}\n\n${p.code.trim()}\n\nmodule.exports = router;\n`;
     repaired++;
+  } else {
+    const meRe = /module\.exports\s*=\s*router\s*;?\s*$/;
+    if (!meRe.test(working)) {
+      console.log(`[fail] ${p.file} — no /leaderboard and no module.exports anchor`);
+      missing++;
+      continue;
+    }
+    working = working.replace(meRe, `${p.code.trim()}\n\nmodule.exports = router;\n`);
   }
-
-  // Step 2: strip ALL existing /leaderboard endpoints (brace-aware first,
-  // then fall back to anchor-stripping for malformed leftovers).
-  while (true) {
-    const block = findLeaderboardBlock(working);
-    if (!block) break;
-    working = working.slice(0, block.start) + working.slice(block.end);
-  }
-  while (true) {
-    const block = findMalformedLeaderboardBlock(working);
-    if (!block) break;
-    console.log(`[heal] ${p.file} — stripped malformed leaderboard block`);
-    working = working.slice(0, block.start) + working.slice(block.end);
-    repaired++;
-  }
-
-  // Step 3: insert fresh endpoint just before module.exports = router.
-  const meRe = /module\.exports\s*=\s*router\s*;?\s*$/;
-  if (!meRe.test(working)) {
-    console.log(`[fail] ${p.file} — module.exports anchor not found`);
-    missing++;
-    continue;
-  }
-  working = working.replace(meRe, `${p.code.trim()}\n\nmodule.exports = router;\n`);
 
   if (working === original) {
     console.log(`[ok]   ${p.file} — already up to date`);
     continue;
   }
   fs.writeFileSync(fp, working, 'utf8');
-  console.log(`[done] ${p.file} — leaderboard endpoint installed`);
+  console.log(`[done] ${p.file} — leaderboard endpoint installed (clean)`);
   touched++;
 }
 
-console.log(`\n${touched} patched, ${repaired} repaired, ${missing} skipped/missing.`);
+console.log(`\n${touched} patched, ${repaired} had existing block(s) replaced, ${missing} skipped/missing.`);
 console.log('Restart the server to pick up changes:  pm2 restart litdex-game');
