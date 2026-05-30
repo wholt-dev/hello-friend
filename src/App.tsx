@@ -585,6 +585,7 @@ const PointsPage = ({ setPage }: { setPage: (p: PageID) => void }) => {
               </div>
            </Card>
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Pump or Dump · Top Pots" endpoint={`${SIMPLE_API}/pumpdump/leaderboard`} scoreField="best_pot" scoreLabel="Best Pot" /></div>)}
       </div>
     </motion.div>
   );
@@ -4515,7 +4516,7 @@ const PumpDumpPage = ({ onBack }: { onBack: () => void }) => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pump-dump-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
 
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -4557,7 +4558,6 @@ const PumpDumpPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
-            <GameLeaderboard title="Pump or Dump · Top Pots" endpoint={`${SIMPLE_API}/pumpdump/leaderboard`} scoreField="best_pot" scoreLabel="Best Pot" />
           </div>
         )}
 
@@ -4676,6 +4676,7 @@ const PumpDumpPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Tower · Top Heights" endpoint={`${SIMPLE_API}/littower/leaderboard`} scoreField="best_height" scoreLabel="Best Height" /></div>)}
       </div>
     </motion.div>
   );
@@ -4813,7 +4814,7 @@ const LitTowerPage = ({ onBack }: { onBack: () => void }) => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-tower-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
 
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -4851,7 +4852,6 @@ const LitTowerPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
-            <GameLeaderboard title="Lit Tower · Top Heights" endpoint={`${SIMPLE_API}/littower/leaderboard`} scoreField="best_height" scoreLabel="Best Height" />
           </div>
         )}
 
@@ -4962,6 +4962,7 @@ const LitTowerPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="ZK Miner · Top Scores" endpoint={`${SIMPLE_API}/zkminer/leaderboard`} scoreField="best_score" scoreLabel="Best Score" scoreFormat={(v) => `${Number(v||0).toFixed(1)} PTS`} /></div>)}
       </div>
     </motion.div>
   );
@@ -5095,7 +5096,7 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="zk-miner-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
 
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -5137,7 +5138,6 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
-            <GameLeaderboard title="ZK Miner · Top Scores" endpoint={`${SIMPLE_API}/zkminer/leaderboard`} scoreField="best_score" scoreLabel="Best Score" scoreFormat={(v) => `${Number(v||0).toFixed(1)} PTS`} />
           </div>
         )}
 
@@ -5248,6 +5248,7 @@ const ZkMinerPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Launch · Top Coins" endpoint={`${SIMPLE_API}/litlaunch/leaderboard`} scoreField="best_score" scoreLabel="Coins" /></div>)}
       </div>
     </motion.div>
   );
@@ -5383,7 +5384,7 @@ const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-launch-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
 
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -5421,7 +5422,6 @@ const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
-            <GameLeaderboard title="Lit Launch · Top Coins" endpoint={`${SIMPLE_API}/litlaunch/leaderboard`} scoreField="best_score" scoreLabel="Coins" />
           </div>
         )}
 
@@ -5533,6 +5533,7 @@ const LitLaunchPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Block Chain · Top Tiles" endpoint={`${SIMPLE_API}/blockchain/leaderboard`} scoreField="best_tile" scoreLabel="Best Tile" /></div>)}
       </div>
     </motion.div>
   );
@@ -5666,7 +5667,7 @@ const BlockChainPage = ({ onBack }: { onBack: () => void }) => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="block-chain-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
 
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -5708,7 +5709,6 @@ const BlockChainPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
-            <GameLeaderboard title="Block Chain · Top Tiles" endpoint={`${SIMPLE_API}/blockchain/leaderboard`} scoreField="best_tile" scoreLabel="Best Tile" />
           </div>
         )}
 
@@ -5820,6 +5820,7 @@ const BlockChainPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Dice · Top Multipliers" endpoint={`${SIMPLE_API}/litdice/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} /></div>)}
       </div>
     </motion.div>
   );
@@ -5904,7 +5905,7 @@ const LitDicePage = ({ onBack }: { onBack: () => void }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-dice-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -5924,7 +5925,6 @@ const LitDicePage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
-            <GameLeaderboard title="Lit Dice · Top Multipliers" endpoint={`${SIMPLE_API}/litdice/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} />
           </div>
         )}
         <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
@@ -5947,6 +5947,7 @@ const LitDicePage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Limbo · Top Crashes" endpoint={`${SIMPLE_API}/litlimbo/leaderboard`} scoreField="best_roll" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} /></div>)}
       </div>
     </motion.div>
   );
@@ -6031,7 +6032,7 @@ const LitLimboPage = ({ onBack }: { onBack: () => void }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-limbo-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -6052,7 +6053,6 @@ const LitLimboPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
-            <GameLeaderboard title="Lit Limbo · Top Crashes" endpoint={`${SIMPLE_API}/litlimbo/leaderboard`} scoreField="best_roll" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} />
           </div>
         )}
         <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
@@ -6075,6 +6075,7 @@ const LitLimboPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Mines · Top Multipliers" endpoint={`${SIMPLE_API}/litmines/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} /></div>)}
       </div>
     </motion.div>
   );
@@ -6159,7 +6160,7 @@ const LitMinesPage = ({ onBack }: { onBack: () => void }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-mines-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -6180,7 +6181,6 @@ const LitMinesPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
-            <GameLeaderboard title="Lit Mines · Top Multipliers" endpoint={`${SIMPLE_API}/litmines/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} />
           </div>
         )}
         <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
@@ -6203,6 +6203,7 @@ const LitMinesPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Plinko · Top Multipliers" endpoint={`${SIMPLE_API}/litplinko/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} /></div>)}
       </div>
     </motion.div>
   );
@@ -6255,7 +6256,7 @@ const LitPlinkoPage = ({ onBack }: { onBack: () => void }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-plinko-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -6276,7 +6277,6 @@ const LitPlinkoPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
-            <GameLeaderboard title="Lit Plinko · Top Multipliers" endpoint={`${SIMPLE_API}/litplinko/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} />
           </div>
         )}
         <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
@@ -6297,6 +6297,7 @@ const LitPlinkoPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Wheel · Top Multipliers" endpoint={`${SIMPLE_API}/litwheel/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} /></div>)}
       </div>
     </motion.div>
   );
@@ -6346,7 +6347,7 @@ const LitWheelPage = ({ onBack }: { onBack: () => void }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-wheel-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -6367,7 +6368,6 @@ const LitWheelPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
-            <GameLeaderboard title="Lit Wheel · Top Multipliers" endpoint={`${SIMPLE_API}/litwheel/leaderboard`} scoreField="best_multiplier" scoreLabel="Best ×" scoreFormat={(v) => `${Number(v||0).toFixed(2)}x`} />
           </div>
         )}
         <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
@@ -6388,6 +6388,7 @@ const LitWheelPage = ({ onBack }: { onBack: () => void }) => {
             </div>
           )}
         </div>
+      {!playing && (<div className="order-3"><GameLeaderboard title="Lit Coin Flip · Top Streaks" endpoint={`${SIMPLE_API}/litcoinflip/leaderboard`} scoreField="best_streak" scoreLabel="Best Streak" scoreFormat={(v) => `×${Number(v||0)}`} /></div>)}
       </div>
     </motion.div>
   );
@@ -6437,7 +6438,7 @@ const LitCoinFlipPage = ({ onBack }: { onBack: () => void }) => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="lit-coin-flip-page py-8 max-w-7xl mx-auto px-4">
       <button onClick={onBack} className="font-mono text-[11px] uppercase text-brand-text-muted hover:text-brand-text-primary mb-6">← Back to Games</button>
-      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[280px_1fr]'}`}>
+      <div className={`grid gap-5 ${playing ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[260px_1fr_300px]'}`}>
         {!playing && (
           <div className="order-2 lg:order-1 space-y-5">
             <div className="p-5 rounded-2xl font-mono bg-brand-surface border border-brand-border">
@@ -6458,7 +6459,6 @@ const LitCoinFlipPage = ({ onBack }: { onBack: () => void }) => {
                 </>
               )}
             </div>
-            <GameLeaderboard title="Lit Coin Flip · Top Streaks" endpoint={`${SIMPLE_API}/litcoinflip/leaderboard`} scoreField="best_streak" scoreLabel="Best Streak" scoreFormat={(v) => `×${Number(v||0)}`} />
           </div>
         )}
         <div className={`order-1 lg:order-2 overflow-hidden ${playing ? 'fixed inset-0 z-[100000] bg-black rounded-none border-0' : 'game-canvas-wrap rounded-2xl'}`}>
@@ -6557,13 +6557,22 @@ const ProvablyFairModal = ({ open, onClose }: { open: boolean; onClose: () => vo
   const [streak, setStreak] = useState(1);
   const [bombs, setBombs] = useState(3);
   const [result, setResult] = useState<{ won: boolean; details: string; subline?: string; flips?: string; mismatch?: boolean } | null>(null);
-  const [scriptReady, setScriptReady] = useState(false);
+  const [scriptReady, setScriptReady] = useState<boolean>(typeof window !== 'undefined' && !!(window as any).LitDexVerify);
 
   useEffect(() => {
     if (!open) return;
     if ((window as any).LitDexVerify) { setScriptReady(true); return; }
+    // Try existing tag first
+    const existing = document.querySelector('script[data-litdex-verify="1"]') as HTMLScriptElement | null;
+    if (existing) {
+      const checkInterval = setInterval(() => {
+        if ((window as any).LitDexVerify) { setScriptReady(true); clearInterval(checkInterval); }
+      }, 100);
+      return () => clearInterval(checkInterval);
+    }
     const s = document.createElement('script');
     s.src = '/games/verify-inline.js';
+    s.dataset.litdexVerify = '1';
     s.onload = () => setScriptReady(true);
     s.onerror = () => setScriptReady(false);
     document.head.appendChild(s);
@@ -6574,32 +6583,46 @@ const ProvablyFairModal = ({ open, onClose }: { open: boolean; onClose: () => vo
 
   const run = () => {
     const v = (window as any).LitDexVerify;
-    if (!v) { setResult({ won: false, details: 'Verifier still loading, retry in a sec', mismatch: true }); return; }
+    if (!v) {
+      // Try one more time to load synchronously
+      setResult({ won: false, details: 'Loading verifier… try again in a second', mismatch: true });
+      const s = document.createElement('script');
+      s.src = '/games/verify-inline.js';
+      s.onload = () => setScriptReady(true);
+      document.head.appendChild(s);
+      return;
+    }
     const seed = serverSeed.trim().toLowerCase();
     if (!/^[0-9a-f]+$/.test(seed)) { setResult({ won: false, details: 'Server seed must be hex', mismatch: true }); return; }
     const wantHash = seedHash.trim().toLowerCase();
     if (wantHash && v.sha256str(seed) !== wantHash) { setResult({ won: false, details: 'Hash mismatch — sha256(seed) does not match seedHash', mismatch: true }); return; }
     try {
       if (game === 'dice') {
+        if (!roundId.trim()) { setResult({ won: false, details: 'Round ID required for dice', mismatch: true }); return; }
         const roll = v.diceRoll(seed, roundId.trim());
         setResult({ won: false, details: `Roll: ${roll.toFixed(2)}`, subline: 'Compare against your target & direction' });
       } else if (game === 'limbo') {
+        if (!roundId.trim()) { setResult({ won: false, details: 'Round ID required for limbo', mismatch: true }); return; }
         const roll = v.limboRoll(seed, roundId.trim());
         setResult({ won: false, details: `Crash: ${roll.toFixed(2)}x`, subline: 'Compare against your target multiplier' });
       } else if (game === 'mines') {
+        if (!roundId.trim()) { setResult({ won: false, details: 'Round ID required for mines', mismatch: true }); return; }
         const arr = v.minesBombs(seed, roundId.trim(), bombs);
         setResult({ won: false, details: `Bombs at: [${arr.join(', ')}]`, subline: `${bombs} bombs of 25 cells` });
       } else if (game === 'plinko') {
+        if (!clientSeed.trim()) { setResult({ won: false, details: 'Client seed required for plinko', mismatch: true }); return; }
         const { slot } = v.plinkoOutcome(seed, clientSeed.trim(), risk);
         const mult = (v.PLINKO[risk] || [])[slot] || 0;
         const won = mult > 1;
         setResult({ won, details: `Slot ${slot} · ${mult.toFixed(2)}x`, subline: `Risk: ${risk.toUpperCase()}` });
       } else if (game === 'wheel') {
+        if (!clientSeed.trim()) { setResult({ won: false, details: 'Client seed required for wheel', mismatch: true }); return; }
         const seg = v.wheelSegment(seed, clientSeed.trim(), risk);
         const mult = (v.WHEEL[risk] || [])[seg] || 0;
         const won = mult > 0;
         setResult({ won, details: `Segment ${seg} · ${mult.toFixed(2)}x`, subline: `Risk: ${risk.toUpperCase()}` });
       } else if (game === 'coinflip') {
+        if (!clientSeed.trim()) { setResult({ won: false, details: 'Client seed required for coinflip', mismatch: true }); return; }
         const flips = v.coinflipFlips(seed, clientSeed.trim(), side, streak);
         const won = flips.every((f: string) => f === side);
         setResult({ won, details: won ? 'All flips matched your side' : 'A flip went against you', subline: `Picked ${side.toUpperCase()} · streak ×${streak}`, flips: flips.map((f: string) => f === 'heads' ? 'H' : 'T').join(' · ') });
@@ -6611,86 +6634,86 @@ const ProvablyFairModal = ({ open, onClose }: { open: boolean; onClose: () => vo
   const needsRound = game === 'dice' || game === 'limbo' || game === 'mines';
   const needsClient = game === 'plinko' || game === 'wheel' || game === 'coinflip';
   return (
-    <div className="fixed inset-0 z-[200000] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="bg-[#0a0e1a] border border-[#1f2638] rounded-2xl p-6 w-[92%] max-w-[480px] font-mono text-white">
-        <div className="text-center mb-4">
-          <div className="text-2xl tracking-[3px]" style={{ fontFamily: 'Bangers, cursive' }}>PROVABLY FAIR</div>
-          <div className="text-[10px] uppercase tracking-widest text-white/55 mt-1">Verify any past round on chain</div>
+    <div className="fixed inset-0 z-[200000] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-brand-surface border border-brand-border rounded-2xl p-6 w-full max-w-[480px] font-mono text-brand-text-primary max-h-[90vh] overflow-y-auto">
+        <div className="text-center mb-5">
+          <div className="text-2xl font-bold tracking-tighter text-brand-text-primary">Provably Fair</div>
+          <div className="text-[10px] uppercase tracking-widest text-brand-text-muted mt-1">Verify any past round on chain</div>
         </div>
-        <div className="grid grid-cols-3 gap-1 mb-4">
+        <div className="grid grid-cols-3 gap-1.5 mb-4">
           {(['dice','limbo','mines','plinko','wheel','coinflip'] as const).map((g) => (
-            <button key={g} onClick={() => setGame(g)} className={`py-2 rounded-md text-[10px] uppercase tracking-widest font-bold ${game === g ? 'bg-white text-black' : 'bg-white/5 text-white/55 hover:text-white'}`}>{g}</button>
+            <button key={g} onClick={() => setGame(g)} className={`py-2 rounded-lg text-[10px] uppercase tracking-widest font-bold transition-colors ${game === g ? 'bg-white text-black' : 'bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-muted hover:text-brand-text-primary'}`}>{g}</button>
           ))}
         </div>
         <div className="space-y-3">
           <div>
-            <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Seed Hash · committed before bet</div>
-            <input value={seedHash} onChange={(e) => setSeedHash(e.target.value)} placeholder="64 hex chars (optional but recommended)" className="w-full bg-[#080e1c] border border-white/10 rounded-md px-3 py-2 text-[11px] text-white placeholder:text-white/25 outline-none focus:border-white/30" />
+            <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Seed Hash · committed before bet</div>
+            <input value={seedHash} onChange={(e) => setSeedHash(e.target.value)} placeholder="64 hex chars (optional but recommended)" className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5 text-[11px] text-brand-text-primary placeholder:text-brand-text-muted/50 outline-none focus:border-white/30" />
           </div>
           <div>
-            <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Server Seed · revealed after bet</div>
-            <input value={serverSeed} onChange={(e) => setServerSeed(e.target.value)} placeholder="64 hex chars" className="w-full bg-[#080e1c] border border-white/10 rounded-md px-3 py-2 text-[11px] text-white placeholder:text-white/25 outline-none focus:border-white/30" />
+            <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Server Seed · revealed after bet</div>
+            <input value={serverSeed} onChange={(e) => setServerSeed(e.target.value)} placeholder="64 hex chars" className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5 text-[11px] text-brand-text-primary placeholder:text-brand-text-muted/50 outline-none focus:border-white/30" />
           </div>
           {needsRound && (
             <div>
-              <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Round ID</div>
-              <input value={roundId} onChange={(e) => setRoundId(e.target.value)} placeholder="UUID from your round" className="w-full bg-[#080e1c] border border-white/10 rounded-md px-3 py-2 text-[11px] text-white placeholder:text-white/25 outline-none focus:border-white/30" />
+              <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Round ID</div>
+              <input value={roundId} onChange={(e) => setRoundId(e.target.value)} placeholder="UUID from your round" className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5 text-[11px] text-brand-text-primary placeholder:text-brand-text-muted/50 outline-none focus:border-white/30" />
             </div>
           )}
           {needsClient && (
             <div>
-              <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Client Seed</div>
-              <input value={clientSeed} onChange={(e) => setClientSeed(e.target.value)} placeholder="from commit modal" className="w-full bg-[#080e1c] border border-white/10 rounded-md px-3 py-2 text-[11px] text-white placeholder:text-white/25 outline-none focus:border-white/30" />
+              <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Client Seed</div>
+              <input value={clientSeed} onChange={(e) => setClientSeed(e.target.value)} placeholder="from commit modal" className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5 text-[11px] text-brand-text-primary placeholder:text-brand-text-muted/50 outline-none focus:border-white/30" />
             </div>
           )}
           {(game === 'plinko' || game === 'wheel') && (
             <div>
-              <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Risk</div>
-              <div className="grid grid-cols-3 gap-1">
+              <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Risk</div>
+              <div className="grid grid-cols-3 gap-1.5">
                 {(['low','medium','high'] as const).map((r) => (
-                  <button key={r} onClick={() => setRisk(r)} className={`py-1.5 rounded-md text-[9px] uppercase tracking-widest font-bold ${risk === r ? 'bg-white text-black' : 'bg-white/5 text-white/55 hover:text-white'}`}>{r}</button>
+                  <button key={r} onClick={() => setRisk(r)} className={`py-2 rounded-lg text-[9px] uppercase tracking-widest font-bold transition-colors ${risk === r ? 'bg-white text-black' : 'bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-muted hover:text-brand-text-primary'}`}>{r}</button>
                 ))}
               </div>
             </div>
           )}
           {game === 'mines' && (
             <div>
-              <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Bombs</div>
-              <input type="number" min={1} max={24} value={bombs} onChange={(e) => setBombs(Math.max(1, Math.min(24, Number(e.target.value)||3)))} className="w-full bg-[#080e1c] border border-white/10 rounded-md px-3 py-2 text-[11px] text-white outline-none focus:border-white/30" />
+              <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Bombs</div>
+              <input type="number" min={1} max={24} value={bombs} onChange={(e) => setBombs(Math.max(1, Math.min(24, Number(e.target.value)||3)))} className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5 text-[11px] text-brand-text-primary outline-none focus:border-white/30" />
             </div>
           )}
           {game === 'coinflip' && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Side</div>
-                <div className="grid grid-cols-2 gap-1">
+                <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Side</div>
+                <div className="grid grid-cols-2 gap-1.5">
                   {(['heads','tails'] as const).map((s) => (
-                    <button key={s} onClick={() => setSide(s)} className={`py-1.5 rounded-md text-[9px] uppercase tracking-widest font-bold ${side === s ? 'bg-white text-black' : 'bg-white/5 text-white/55 hover:text-white'}`}>{s}</button>
+                    <button key={s} onClick={() => setSide(s)} className={`py-2 rounded-lg text-[9px] uppercase tracking-widest font-bold transition-colors ${side === s ? 'bg-white text-black' : 'bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-muted hover:text-brand-text-primary'}`}>{s}</button>
                   ))}
                 </div>
               </div>
               <div>
-                <div className="text-[9px] uppercase tracking-widest text-white/55 mb-1">Streak</div>
-                <input type="number" min={1} max={5} value={streak} onChange={(e) => setStreak(Math.max(1, Math.min(5, Number(e.target.value)||1)))} className="w-full bg-[#080e1c] border border-white/10 rounded-md px-3 py-2 text-[11px] text-white outline-none focus:border-white/30" />
+                <div className="text-[9px] uppercase tracking-widest text-brand-text-muted mb-1">Streak</div>
+                <input type="number" min={1} max={5} value={streak} onChange={(e) => setStreak(Math.max(1, Math.min(5, Number(e.target.value)||1)))} className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2.5 text-[11px] text-brand-text-primary outline-none focus:border-white/30" />
               </div>
             </div>
           )}
         </div>
         {result && (
-          <div className="mt-4 p-4 rounded-md text-center" style={{ background: result.mismatch ? 'rgba(239,73,86,0.08)' : (result.won ? 'rgba(91,224,164,0.08)' : 'rgba(255,138,140,0.06)'), border: result.mismatch ? '1px solid rgba(239,73,86,0.4)' : (result.won ? '1px solid rgba(91,224,164,0.4)' : '1px solid rgba(255,138,140,0.3)') }}>
+          <div className="mt-4 p-4 rounded-lg text-center" style={{ background: result.mismatch ? 'rgba(239,73,86,0.06)' : (result.won ? 'rgba(62,207,142,0.06)' : 'rgba(239,73,86,0.06)'), border: result.mismatch ? '1px solid rgba(239,73,86,0.3)' : (result.won ? '1px solid rgba(62,207,142,0.3)' : '1px solid rgba(239,73,86,0.25)') }}>
             <div className="text-5xl mb-2">{result.mismatch ? '⚠️' : (result.won ? '😄' : '😢')}</div>
             {!result.mismatch && (game === 'plinko' || game === 'wheel' || game === 'coinflip') && (
-              <div className={`text-xl tracking-[3px] mb-1 ${result.won ? 'text-[#5be0a4]' : 'text-[#ff8a8a]'}`} style={{ fontFamily: 'Bangers, cursive' }}>{result.won ? 'YOU WON' : 'YOU LOST'}</div>
+              <div className={`text-base font-bold tracking-widest mb-1 ${result.won ? 'text-[#3ecf8e]' : 'text-[#ef4956]'}`}>{result.won ? 'YOU WON' : 'YOU LOST'}</div>
             )}
-            <div className="text-[12px] text-white/85 font-bold">{result.details}</div>
-            {result.subline && <div className="text-[10px] text-white/55 mt-1">{result.subline}</div>}
-            {result.flips && <div className="text-[10px] text-white/70 mt-1">Flips: <b>{result.flips}</b></div>}
-            {!result.mismatch && seedHash && <div className="text-[10px] text-[#5be0a4] mt-2">✓ Hash verified</div>}
+            <div className="text-[12px] text-brand-text-primary font-bold">{result.details}</div>
+            {result.subline && <div className="text-[10px] text-brand-text-muted mt-1">{result.subline}</div>}
+            {result.flips && <div className="text-[10px] text-brand-text-primary mt-1">Flips: <b>{result.flips}</b></div>}
+            {!result.mismatch && seedHash && <div className="text-[10px] text-[#3ecf8e] mt-2">✓ Hash verified</div>}
           </div>
         )}
         <div className="flex gap-2 mt-5">
-          <button onClick={run} disabled={!scriptReady} className="flex-1 py-3 rounded-md bg-white text-black font-bold text-[11px] uppercase tracking-widest disabled:opacity-50">Verify</button>
-          <button onClick={onClose} className="flex-1 py-3 rounded-md bg-white/5 border border-white/10 text-white font-bold text-[11px] uppercase tracking-widest">Close</button>
+          <button onClick={run} className="flex-1 py-3 rounded-lg bg-white text-black font-bold text-[11px] uppercase tracking-widest hover:bg-white/90 transition-colors">{scriptReady ? 'Verify' : 'Loading…'}</button>
+          <button onClick={onClose} className="flex-1 py-3 rounded-lg bg-[#0a0a0a] border border-[#1f1f1f] text-brand-text-primary font-bold text-[11px] uppercase tracking-widest hover:bg-[#1a1a1a] transition-colors">Close</button>
         </div>
       </div>
     </div>
@@ -6728,8 +6751,7 @@ const GamesPage = () => {
           >Casino</button>
           <button
             onClick={() => setPfOpen(true)}
-            className="px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors text-[#e6b8ff] hover:bg-white/5"
-            style={{ background: 'linear-gradient(180deg, rgba(196,102,255,0.15), rgba(106,45,153,0.25))', border: '1px solid rgba(196,102,255,0.35)' }}
+            className="px-5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-colors text-white/55 hover:text-white border-l border-white/10 ml-1"
           >Provably Fair</button>
         </div>
       </div>
