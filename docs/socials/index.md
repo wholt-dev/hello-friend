@@ -1,6 +1,6 @@
 # Socials & Quests
 
-The Socials page is a quest board for off-chain actions — follow X accounts, like-and-RT posts, join Telegram channels. Each completion pays out points one-shot (no daily cap).
+The Socials page is a quest board for off-chain actions - follow X accounts, like-and-RT posts, join Telegram channels. Each completion pays out points one-shot (no daily cap).
 
 ## Available quests
 
@@ -34,7 +34,7 @@ For these, paste the post URL in the quest's **Submit** field and the team verif
 
 ## How quests credit
 
-Most quests use a one-time `recordQuestFor(user, pts, questId)` call. The contract's `isQuestDone` mapping prevents double-claims — once you've claimed a quest, hitting it again credits 0 points.
+Most quests use a one-time `recordQuestFor(user, pts, questId)` call. The contract's `isQuestDone` mapping prevents double-claims - once you've claimed a quest, hitting it again credits 0 points.
 
 ## Verification
 
@@ -50,4 +50,4 @@ If your quest doesn't credit within an hour, ping us in [Telegram](https://t.me/
 - **Reward**: points compensate users for off-platform engagement.
 - **Onboarding**: new users find LitDEX through your shares.
 
-> Hit every one-shot quest in your first week — that's roughly **+800 pts** all-time, enough for a LitShard with change to spare.
+> Hit every one-shot quest in your first week - that's roughly **+800 pts** all-time, enough for a LitShard with change to spare.

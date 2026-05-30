@@ -1,6 +1,12 @@
 # Games
 
-LitDEX hosts skill-based mini-games that mint points and zkLTC. Today there's one game live; more roll in over time.
+LitDEX hosts 12 games - 6 skill-based arcades and 6 provably-fair casino games
+- that mint points and pay weekly leaderboard rewards.
+
+- 🎮 **Skill games**: [Math Slash](./math-slash), Lit Tower, ZK Miner, Lit
+  Launch, Block Chain, Pump or Dump
+- 🎲 **Casino games**: [Lit Dice, Limbo, Mines, Plinko, Wheel, Coin Flip](./casino)
+  - all [Provably Fair](./provably-fair)
 
 ## Live games
 
@@ -8,9 +14,9 @@ LitDEX hosts skill-based mini-games that mint points and zkLTC. Today there's on
 | --- | --- | --- |
 | [Math Slash](./math-slash) | Currently paused (will restart with X post) | Score-based points + manual claim |
 | Lit Tower | Live | +1 PT per correct stack (free, 5 games/day, cap 100) |
-| ZK Miner | Live | Match-3 — 3-match=+0.3 PT, 4-match=+0.4 PT, 5+stacks (free, 5 games/day, 30 moves) |
+| ZK Miner | Live | Match-3 - 3-match=+0.3 PT, 4-match=+0.4 PT, 5+stacks (free, 5 games/day, 30 moves) |
 | Lit Launch | Live | Dodge asteroids · catch coins · +1 PT per coin (free, 5 games/day, 3 lives, cap 50) |
-| Block Chain | Live | 2048 — milestone tiles 64=+5, 128=+10, 256=+20, 512=+40, 1024=+80, 2048=+160 (free, 5 games/day) |
+| Block Chain | Live | 2048 - milestone tiles 64=+5, 128=+10, 256=+20, 512=+40, 1024=+80, 2048=+160 (free, 5 games/day) |
 | Lit Dice | Live (Casino) | Pick target 2-98 over/under · 5 PTS stake · up to 99x · 97% RTP |
 | Lit Limbo | Live (Casino) | Set target multiplier · win if RNG ≥ target · 5 PTS stake · up to 100x · 99% RTP |
 | Lit Mines | Live (Casino) | 5×5 grid · 3/5/10 bombs · 5 PTS stake · cash out anytime · 97% RTP |
@@ -21,7 +27,7 @@ LitDEX hosts skill-based mini-games that mint points and zkLTC. Today there's on
 
 ## Coming soon
 
-- **Coin Catch** — catch falling coins, dodge bombs. Already wired in `litdex-core-logic.ts` (`startCoinCatch`, `endCoinCatch`) but not yet enabled.
+- **Coin Catch** - catch falling coins, dodge bombs. Already wired in `litdex-core-logic.ts` (`startCoinCatch`, `endCoinCatch`) but not yet enabled.
 - More arcade-style games as community demand grows.
 
 ## How games credit points
@@ -48,7 +54,7 @@ Idempotency is guaranteed by the questId encoding the date + wallet suffix.
 | Pump or Dump | 15 games / day |
 | Coin Catch | TBD |
 
-The cap is a soft block — past it, the start button shows "DAILY LIMIT REACHED" and the game won't start. Resets at 00:00 IST.
+The cap is a soft block - past it, the start button shows "DAILY LIMIT REACHED" and the game won't start. Resets at 00:00 IST.
 
 ## Anti-bot
 

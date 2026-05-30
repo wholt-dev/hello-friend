@@ -25,7 +25,7 @@ Example schedule for a 6-month cliff + 24-month linear:
 
 The beneficiary calls `release(token)` on the vesting contract. The contract computes how many tokens have vested up to `block.timestamp` minus what's already been released, and transfers the difference.
 
-Anyone can call `release(token)` — only the beneficiary receives the tokens. This means a relayer or the team can pay gas for the beneficiary.
+Anyone can call `release(token)` - only the beneficiary receives the tokens. This means a relayer or the team can pay gas for the beneficiary.
 
 ## Funding the contract
 
@@ -44,6 +44,6 @@ The factory has an optional `revocable` flag. If set:
 - the **owner** (deployer) can call `revoke(token)` to claw back unvested tokens.
 - anything already vested still belongs to the beneficiary.
 
-If `revocable = false` the contract is immutable — once funded, only the beneficiary can withdraw.
+If `revocable = false` the contract is immutable - once funded, only the beneficiary can withdraw.
 
 > For team / advisor grants, default to **revocable = false** so beneficiaries trust the schedule.

@@ -19,9 +19,9 @@ The Messenger page calls `sendMessage` (which the contract internally routes to 
 When a message lands on chain, the contract internally bumps:
 
 - `total += 2`
-- `msgDaily += 2` (counter, not the message count — bumps by 2 per message in pts)
+- `msgDaily += 2` (counter, not the message count - bumps by 2 per message in pts)
 
-The backend `/msg/sent` endpoint is **telemetry only** — it tracks the message count for the UI but does not credit points. (Earlier it called `recordQuestFor` which double-credited. That bug has been fixed.)
+The backend `/msg/sent` endpoint is **telemetry only** - it tracks the message count for the UI but does not credit points. (Earlier it called `recordQuestFor` which double-credited. That bug has been fixed.)
 
 ## Daily cap
 
@@ -40,16 +40,16 @@ The on-chain tx still goes through. Only the UI changes its messaging. (The cont
 
 ## Ergonomics
 
-- Send button stays clickable past the cap — users can still send messages, they just don't earn points.
+- Send button stays clickable past the cap - users can still send messages, they just don't earn points.
 - Helper text reads:
   - `0/10 messages today` (under cap)
   - `Cap reached · 10/10 (no more points today)` (at/over cap)
 
 ## Why on-chain messaging?
 
-- **Permanent receipts** — every message has an explorer URL.
-- **Verifiable identity** — `.lit` reverse-resolution proves who sent.
-- **Composable** — third parties can build mute/block lists, indexers, mirrors on top of the same events.
+- **Permanent receipts** - every message has an explorer URL.
+- **Verifiable identity** - `.lit` reverse-resolution proves who sent.
+- **Composable** - third parties can build mute/block lists, indexers, mirrors on top of the same events.
 
 ## Privacy
 

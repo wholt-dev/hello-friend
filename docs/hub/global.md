@@ -1,6 +1,6 @@
 # Global Feed
 
-The Global Feed is the Hub's Twitter — public posts visible to every wallet, with likes, comments, and optional tip bounties.
+The Global Feed is the Hub's Twitter - public posts visible to every wallet, with likes, comments, and optional tip bounties.
 
 ## Post
 
@@ -10,7 +10,7 @@ The Global Feed is the Hub's Twitter — public posts visible to every wallet, w
 4. Optionally attach a **bounty**: a zkLTC reward split between like-ers and commenters.
 5. Sign. Your post lands as a `Posts.createPost(content, likeReward, commentReward)` event.
 
-Posts are immutable — no edits or deletes.
+Posts are immutable - no edits or deletes.
 
 ## Bounties
 
@@ -19,7 +19,7 @@ A post can include two reward pools:
 - **Like reward**: split equally among the first N likers (where N is set by the contract default).
 - **Comment reward**: split equally among the first N commenters.
 
-You fund the bounty up front (it deducts zkLTC from your wallet on post). If no one engages, the funds stay locked in the contract — there is no automatic refund. Use bounties for posts where you want to drive a specific action.
+You fund the bounty up front (it deducts zkLTC from your wallet on post). If no one engages, the funds stay locked in the contract - there is no automatic refund. Use bounties for posts where you want to drive a specific action.
 
 ## Like and comment
 
@@ -40,6 +40,6 @@ The feed loads the most recent 20 posts on mount. Scroll triggers a "Load more" 
 
 - Posts are permanent and verifiable.
 - Tipping is one-click and routes to the original poster's wallet.
-- Your `.lit` name is your handle — no impersonation possible.
+- Your `.lit` name is your handle - no impersonation possible.
 
 > Posts that include illegal content are visible on chain but the dApp may filter them in the UI. The community moderates by ignoring spam.

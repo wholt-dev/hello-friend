@@ -4,7 +4,7 @@ LitDEX uses a Uniswap V2-style AMM. Liquidity providers (LPs) deposit two tokens
 
 ## Earn fees on idle tokens
 
-Anyone with two tokens can become an LP — there is no whitelist, no cooldown, no minimum size.
+Anyone with two tokens can become an LP - there is no whitelist, no cooldown, no minimum size.
 
 - 0.3% fee per swap → distributed to LPs as additional liquidity
 - Withdraw any time
@@ -29,6 +29,6 @@ These are the deepest pools so quotes have minimal slippage. Less liquid memecoi
 
 ## Risks
 
-LPing is not free yield — there is **impermanent loss**. If one of the paired tokens moves much more than the other you would have been better off just holding. Standard AMM trade-off; the 0.3% fee accrues over time and offsets it on heavily traded pools.
+LPing is not free yield - there is **impermanent loss**. If one of the paired tokens moves much more than the other you would have been better off just holding. Standard AMM trade-off; the 0.3% fee accrues over time and offsets it on heavily traded pools.
 
 > Always test small first. The dApp lets you preview the LP token amount and the share of the pool before signing.

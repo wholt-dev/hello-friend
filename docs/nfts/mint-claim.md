@@ -40,7 +40,7 @@ uint256 today = block.timestamp / 86400;
 require(today > lastClaimDay[user][tier], "Already claimed today");
 ```
 
-If you try to claim again on the same day the tx reverts. Skipping days is fine — the next claim pays for all skipped days at once.
+If you try to claim again on the same day the tx reverts. Skipping days is fine - the next claim pays for all skipped days at once.
 
 ### Multi-tier claim
 

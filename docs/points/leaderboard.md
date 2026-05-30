@@ -1,40 +1,67 @@
-# Leaderboard
+# Leaderboards & Weekly Rewards
 
-A weekly leaderboard ranks the top 20 wallets by points earned in the past 7 days. Top placements pay out zkLTC every Sunday midnight IST.
+Every game on LitDEX has its **own** top-20 leaderboard, and each one pays out
+weekly. Rewards are distributed every **Sunday 23:59 IST** from a dedicated,
+pre-funded rewards wallet - separate from the operational wallet, so payouts
+never interfere with day-to-day gas.
 
-## Rewards
+## Reward tiers (per game, top 20)
 
-| Rank | Bonus |
+| Rank | Reward |
 | --- | --- |
-| 1 | +5,000 pts |
-| 2 | +2,500 pts |
-| 3 | +1,500 pts |
-| 4–10 | +500 pts |
-| 11–20 | +200 pts |
+| 1 | **1 zkLTC + 10,000 LDEX + 2,500 PTS** |
+| 2 | 10,000 LDEX + 1,000 PTS |
+| 3 | 5,000 LDEX + 500 PTS |
+| 4–10 | 3,000 LDEX + 300 PTS |
+| 11–20 | 1,000 LDEX + 100 PTS |
 
-The bonuses land directly in your `total` points balance after the weekly snapshot.
+Each of the 12 games (6 skill arcades + 6 provably-fair casino) runs this same
+tier table independently. zkLTC and LDEX are real on-chain tokens; PTS land in
+your on-chain points balance.
 
-## How ranking is calculated
+## How each game ranks
 
-Each wallet's weekly score = sum of all points earned between **Sunday 00:00 IST** and the next **Saturday 23:59 IST**.
+| Game | Ranked by |
+| --- | --- |
+| Math Slash | Total score |
+| Pump or Dump | Best pot |
+| Lit Tower | Best height |
+| ZK Miner | Best score |
+| Lit Launch | Best coins |
+| Block Chain | Best milestone tile |
+| Lit Dice / Limbo / Mines / Plinko / Wheel | Best multiplier |
+| Lit Coin Flip | Best streak |
 
-The leaderboard ignores `total` (lifetime) — only the rolling weekly score matters. Long-time users do not get a head start over fresh wallets.
+The wallets you see on a game's in-app leaderboard are exactly the wallets that
+get paid - the payout reads the same data the UI shows.
+
+## Schedule
+
+- **Snapshot + distribution**: every **Sunday 23:59 IST**.
+- **Math Slash**: ongoing game - rewards run weekly already.
+- **The 11 newer games**: first payout the first full week after launch.
+
+Distribution is **idempotent** per week - a wallet is never paid twice for the
+same week even if the job re-runs. If the rewards wallet ever runs low it skips
+and logs a warning rather than failing, so a top-up + re-run is always safe.
 
 ## Where to see it
 
-- **Hub → Leaderboard** tab (or the **Socials** page).
-- The dashboard shows your current rank if you're in the top 100.
-- Each row has the `.lit` name (or short address) and weekly score.
+- Each game page shows its leaderboard on the right (top 20) with the reward
+  tier table beneath it.
+- The bottom stats bar on every game shows **Total Games · Unique Players ·
+  Total Points Distributed**.
 
 ## Tips to climb
 
-- **Stack daily caps**: 150+ pts/day floor (check-in + deploys + messages + games + faucet).
-- **Hit one-shot quests**: 100 pts each for X follows, 50 pts each for TG joins.
-- **Run Math Slash to its 5-game daily limit** — fast +10 to +50 over the week.
-- **Register more `.lit` names** — Forever names give +100 each (no daily cap).
+- **Casino games** rank on your best single result, so one big multiplier can
+  jump you up the board.
+- **Skill games** (Tower, Miner, Launch, Block Chain) rank on your best run -
+  keep pushing your personal best.
+- **Math Slash** ranks on cumulative score - consistency over the week wins.
 
 ## Anti-cheat
 
-The contract validates points against the questId (idempotent), bot patterns are filtered server-side for games, and the relayer wallet refuses bursts above plausible human limits.
-
-> Top 3 weekly is competitive — even a 200 pts/day average can land you in 4–10 territory which is +500 / week. Compounds fast.
+Points are validated against an idempotent `questId`, bot patterns are filtered
+server-side for the skill games (score velocity, minimum duration, blacklist),
+and casino outcomes are provably fair (see [Provably Fair](../games/provably-fair)).

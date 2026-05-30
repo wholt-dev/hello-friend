@@ -1,14 +1,14 @@
 # Hub
 
-The Hub is LitDEX's social layer. Everything is on-chain — friend lists, messages, listings, names, transfers. There is no off-chain database; the dApp reads directly from the LiteForge registry, posts, marketplace, and messenger contracts.
+The Hub is LitDEX's social layer. Everything is on-chain - friend lists, messages, listings, names, transfers. There is no off-chain database; the dApp reads directly from the LiteForge registry, posts, marketplace, and messenger contracts.
 
 ## What's inside
 
-- [Private Chat](./private) — DMs between two `.lit` names, end-to-end stored as content hashes on chain
-- [Global Feed](./global) — public posts visible to everyone, with likes, comments, and tip rewards
-- [.lit Market](./market) — list and buy `.lit` names with bids, accepts, rejects
-- [.lit Domain Registration](./lit-domain) — register a new name with duration-based pricing
-- [Profile](./profile) — your bio, your owned names, transfer history
+- [Private Chat](./private) - DMs between two `.lit` names, end-to-end stored as content hashes on chain
+- [Global Feed](./global) - public posts visible to everyone, with likes, comments, and tip rewards
+- [.lit Market](./market) - list and buy `.lit` names with bids, accepts, rejects
+- [.lit Domain Registration](./lit-domain) - register a new name with duration-based pricing
+- [Profile](./profile) - your bio, your owned names, transfer history
 
 ## Getting in
 
@@ -23,7 +23,7 @@ If you've never registered, follow [Getting Started → Register a .lit Name](/g
 - **Global feed**: `Posts.postCount()` + `getPost(id)` for every post. Likes and comments are events.
 - **Market listings**: `Marketplace.getActiveListings()` returns all open listings + bids.
 
-Every action — sending a message, posting, listing — is a transaction. There are no draft saves or off-chain queues. If you sign, it lands on chain.
+Every action - sending a message, posting, listing - is a transaction. There are no draft saves or off-chain queues. If you sign, it lands on chain.
 
 ## Daily caps
 
@@ -31,6 +31,6 @@ The Hub's messaging rewards run on a daily counter. See [Messenger → Daily Cap
 
 ## Why on-chain everything?
 
-- Censorship resistance — a `.lit` name is yours forever, the registry can't take it back.
-- Verifiable history — every message and listing is reproducible from chain state.
-- Composability — third parties can build on top of the same data without API keys.
+- Censorship resistance - a `.lit` name is yours forever, the registry can't take it back.
+- Verifiable history - every message and listing is reproducible from chain state.
+- Composability - third parties can build on top of the same data without API keys.

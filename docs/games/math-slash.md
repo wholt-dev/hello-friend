@@ -38,15 +38,15 @@ The backend filters obvious bots:
 - < 20s game duration → reject
 - known bad-actor wallets blacklisted
 
-If you legitimately play very fast and get flagged, ping us in [Telegram](https://t.me/litdex_discussion) — bans can be appealed.
+If you legitimately play very fast and get flagged, ping us in [Telegram](https://t.me/litdex_discussion) - bans can be appealed.
 
 ## Manual claim flow
 
-Currently the game is in "points-only" mode — zkLTC conversion is paused but points still credit. Flow:
+Currently the game is in "points-only" mode - zkLTC conversion is paused but points still credit. Flow:
 
 1. Play games (each game's score logs to `game_rewards`).
 2. Click **Claim N pts** button on the games page.
-3. Sign once — `claim-points` endpoint reads all unclaimed scores, sums them, calls `recordQuestFor` for the total, and marks them claimed.
+3. Sign once - `claim-points` endpoint reads all unclaimed scores, sums them, calls `recordQuestFor` for the total, and marks them claimed.
 
 So you can play 5 games then claim all at once. The on-chain points balance updates immediately.
 

@@ -39,7 +39,7 @@ features:
     linkText: Enter the Hub
   - icon: 🏆
     title: Points & Quests
-    details: Earn for every action — swap, deploy, message, check in, complete socials. Convert to zkLTC.
+    details: Earn for every action - swap, deploy, message, check in, complete socials. Convert to zkLTC.
     link: /points/
     linkText: View dashboard
   - icon: 🎁
@@ -67,6 +67,6 @@ LitDEX is a community-built ecosystem on the LiteForge chain that combines:
 - NFT tiers that pay daily yield,
 - mini-games like Math Slash that mint points and zkLTC.
 
-Everything is on-chain — no custodial wallets, no off-chain ledgers. Connect a self-custody wallet, claim some zkLTC from the faucet, and start exploring.
+Everything is on-chain - no custodial wallets, no off-chain ledgers. Connect a self-custody wallet, claim some zkLTC from the faucet, and start exploring.
 
 > The LitDEX testnet is currently live. Mainnet timing will be announced on [@LitDeXApp](https://x.com/LitDeXApp) and the Telegram channel.

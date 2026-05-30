@@ -1,6 +1,6 @@
 # Remove Liquidity
 
-Withdraw your LP position whenever you want — no lockup.
+Withdraw your LP position whenever you want - no lockup.
 
 ## How to remove
 
@@ -27,6 +27,6 @@ If you want a clean exit, hit **100%** and remove. Your LP position is burned an
 
 ## Slippage on removal
 
-Like swaps, the remove tx has a slippage check — protects against sandwich bots. Default 0.5% is fine. Bump it for thin pools.
+Like swaps, the remove tx has a slippage check - protects against sandwich bots. Default 0.5% is fine. Bump it for thin pools.
 
 > If the remove fails with "INSUFFICIENT_TOKEN_AMOUNT", raise slippage by 1% and retry. The pool ratio likely shifted between preview and tx.

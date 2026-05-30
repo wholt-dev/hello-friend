@@ -2,8 +2,8 @@
 
 LitDEX routes swaps through two AMM routers and picks the best output automatically:
 
-- **LitDEX router** — the native LiteSwap V2 fork on LitVM
-- **OmniFun router** — a partner router with overlapping pairs
+- **LitDEX router** - the native LiteSwap V2 fork on LitVM
+- **OmniFun router** - a partner router with overlapping pairs
 
 When you punch in an amount, the dApp queries both routers' `getAmountsOut`, picks whichever pays out more, and shows the chosen path in the bottom-right of the swap card.
 

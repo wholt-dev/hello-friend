@@ -1,6 +1,6 @@
 # Deploy a Token
 
-Launch an ERC-20 in one transaction. The factory is `LITDEX_DEPLOYER` — audited, gasless of fee, points-earning.
+Launch an ERC-20 in one transaction. The factory is `LITDEX_DEPLOYER` - audited, gasless of fee, points-earning.
 
 ## Form fields
 
@@ -27,7 +27,7 @@ Your token is a fully standard ERC-20. You can:
 - list it on the [marketplace](/hub/market) if it's a `.lit` collectible token,
 - import the address into your wallet to see balances.
 
-> Deploys are uncapped per wallet. You can launch as many tokens as you want — the daily +5 pts cap stops earning more rewards but the contracts still deploy.
+> Deploys are uncapped per wallet. You can launch as many tokens as you want - the daily +5 pts cap stops earning more rewards but the contracts still deploy.
 
 ## Best practices
 

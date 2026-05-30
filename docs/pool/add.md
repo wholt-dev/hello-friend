@@ -6,7 +6,7 @@ Add two tokens to a pool to start earning fees.
 
 1. Open the **Pool** page, switch to the **Add** sub-tab.
 2. Pick **Token A** and **Token B**.
-3. Type any amount in either field — the other side auto-fills based on the current pool ratio. New pools (no existing reserves) let you set the initial ratio yourself.
+3. Type any amount in either field - the other side auto-fills based on the current pool ratio. New pools (no existing reserves) let you set the initial ratio yourself.
 4. Click **Approve A**, sign. Then **Approve B**, sign. Then **Add Liquidity**, sign.
 5. The success card shows your new LP token balance and the current pool share.
 
