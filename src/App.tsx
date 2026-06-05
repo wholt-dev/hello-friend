@@ -3363,7 +3363,7 @@ const QuestsPage = () => {
   }, [tasks]);
 
   const claimBob = async () => {
-    if (!address || bobClaimed || (bobCount ?? 0) < 100) return;
+    if (!address || bobClaimed) return;
     setBobBusy(true);
     try {
       const r = await fetch(`${SOCIAL_API}/social/claim`, {
