@@ -3729,7 +3729,7 @@ const QuestsPage = () => {
               ) : (
                 <button
                   onClick={claimBob}
-                  disabled={bobBusy || (bobCount ?? 0) < 100}
+                  disabled={bobBusy}
                   className="flex-1 md:flex-none px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-orange-500 text-black hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
                   {bobBusy ? 'Claiming…' : 'Claim'}
