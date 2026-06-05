@@ -235,6 +235,23 @@ const SwapPage = () => {
               exit={{ x: "-100%", opacity: 0 }}
               transition={{ duration: 0.3, ease: "easeInOut" }}
             >
+              <a
+                href="https://betsonblock.test-hub.xyz/bettingzone"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 w-full max-w-[480px] mx-auto mb-4 px-4 py-3 rounded-xl bg-brand-surface border border-orange-500 hover:bg-brand-surface-2 transition-colors"
+              >
+                <img
+                  src="https://raw.githubusercontent.com/sachinsahani-cloud/hello-friend/main/public/coins/logo.png"
+                  alt="BetsOnBlock"
+                  className="w-11 h-11 rounded-full flex-shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-white font-bold text-sm">BetsOnBlock</div>
+                  <div className="text-orange-500 text-xs">☁️ Earn Extra Points</div>
+                </div>
+                <span className="text-orange-500 text-xl font-bold">→</span>
+              </a>
               <SwapCard className="brand-glow-hover transition-all duration-500" />
             </motion.div>
           )}
