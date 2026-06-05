@@ -3336,6 +3336,55 @@ const QuestsPage = () => {
   const [videoLink, setVideoLink] = useState('');
   const [quoteInputs, setQuoteInputs] = useState<Record<string, string>>({});
   const [submitBusy, setSubmitBusy] = useState<string | null>(null);
+  const [bobCount, setBobCount] = useState<number | null>(null);
+  const [bobClaimed, setBobClaimed] = useState(false);
+  const [bobBusy, setBobBusy] = useState(false);
+
+  useEffect(() => {
+    if (!address) { setBobCount(null); return; }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await fetch(`https://betsonblock-api.test-hub.xyz/api/betcount/${address}`);
+        const d = await r.json().catch(() => ({}));
+        const c = Number(d?.count ?? d?.betCount ?? d ?? 0);
+        if (!cancelled) setBobCount(Number.isFinite(c) ? c : 0);
+      } catch { if (!cancelled) setBobCount(0); }
+    };
+    load();
+    const t = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [address]);
+
+  useEffect(() => {
+    const t = tasks.find(x => x.id === 'betsonblock_100');
+    if (t?.claimed) setBobClaimed(true);
+  }, [tasks]);
+
+  const claimBob = async () => {
+    if (!address || bobClaimed || (bobCount ?? 0) < 100) return;
+    setBobBusy(true);
+    try {
+      const r = await fetch(`${SOCIAL_API}/social/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: address, task_id: 'betsonblock_100' }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d?.success !== false) {
+        setBobClaimed(true);
+        showInfo('+4000 PTS earned!');
+      } else {
+        const msg = String(d?.error || d?.message || '').toLowerCase();
+        if (msg.includes('already')) setBobClaimed(true);
+        else showError(d?.error || d?.message || 'Failed to claim');
+      }
+    } catch (e: any) {
+      showError(e?.message || 'Failed to claim');
+    } finally {
+      setBobBusy(false);
+    }
+  };
 
   const loadTasks = async () => {
     if (!address) return;
