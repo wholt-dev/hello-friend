@@ -3685,6 +3685,74 @@ const QuestsPage = () => {
         );
       })}
 
+      {/* Partner Tasks */}
+      {isConnected && (
+        <div className="mb-10">
+          <h2 className="text-lg font-bold text-white tracking-tight mb-4">Partners</h2>
+          <Card className={cn(
+            "p-5 flex flex-col gap-4 transition-all",
+            bobClaimed ? "bg-white/[0.02] border-white/5 opacity-70" : "bg-black/20 border-orange-500/40"
+          )}>
+            <div className="flex items-center gap-4 min-w-0">
+              <img
+                src="https://raw.githubusercontent.com/sachinsahani-cloud/hello-friend/main/public/coins/logo.png"
+                alt="BetsOnBlock"
+                className="w-12 h-12 rounded-xl shrink-0 border border-orange-500/40"
+              />
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold text-white truncate">Bet 100 Times on BetsOnBlock</h3>
+                <p className="text-xs text-brand-text-muted mt-1">Place 100 bets on BetsOnBlock</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border border-orange-500/40 text-orange-400 bg-orange-500/10">
+                    +4000 PTS
+                  </span>
+                  <span className="text-[10px] text-brand-text-muted uppercase tracking-widest">Partner</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] uppercase tracking-widest text-brand-text-muted font-bold">Progress</span>
+                <span className="font-mono text-xs text-white font-bold">
+                  {bobCount === null ? '—' : Math.min(bobCount, 100)} / 100
+                </span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-white/5 overflow-hidden">
+                <div
+                  className="h-full bg-orange-500 transition-all"
+                  style={{ width: `${Math.min(100, ((bobCount ?? 0) / 100) * 100)}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row gap-2">
+              <a
+                href="https://betsonblock.test-hub.xyz/bettingzone"
+                target="_blank"
+                rel="noreferrer"
+                className="flex-1 inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 transition-all"
+              >
+                Open BetsOnBlock <ExternalLink size={11} />
+              </a>
+              {bobClaimed ? (
+                <span className="flex-1 md:flex-none inline-flex items-center justify-center px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-green-500/10 border border-green-500/30 text-green-400">
+                  ✅ Claimed
+                </span>
+              ) : (
+                <button
+                  onClick={claimBob}
+                  disabled={bobBusy || (bobCount ?? 0) < 100}
+                  className="flex-1 md:flex-none px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-orange-500 text-black hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  {bobBusy ? 'Claiming…' : 'Claim'}
+                </button>
+              )}
+            </div>
+          </Card>
+        </div>
+      )}
+
       {/* Content Rewards Section */}
       {isConnected && (
         <div className="mb-10">
