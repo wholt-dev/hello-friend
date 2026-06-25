@@ -775,7 +775,6 @@ const CheckinPage = () => {
   const nextDayInCycle = (streak % 7) + 1;
   const ldexRewards = [10, 15, 20, 25, 30, 35, 40];
   const nextRewardLdex = ldexRewards[nextDayInCycle - 1];
-  const nextRewardHasZkltc = nextDayInCycle === 1 || nextDayInCycle === 7;
 
   // Calendar logic
   const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
