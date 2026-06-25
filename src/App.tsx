@@ -2965,6 +2965,11 @@ contract ${label.replace(/\s+/g, '') || "TokenVesting"} is Ownable, ReentrancyGu
         deployFee={fee}
         actionLabel="Deploy"
         onPreviewSource={() => setShowSource(!showSource)}
+        disabled={
+          !isValidAddress(tokenAddress) ||
+          !isValidAddress(beneficiary) ||
+          !amount || !cliffDays || !vestingDays
+        }
       >
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -2973,6 +2978,7 @@ contract ${label.replace(/\s+/g, '') || "TokenVesting"} is Ownable, ReentrancyGu
               placeholder="0x... token to vest" 
               value={tokenAddress} 
               onChange={setTokenAddress} 
+              error={tokenAddress && !isValidAddress(tokenAddress) ? "Invalid address" : undefined}
             />
             <InputField 
               label="Vesting Label" 
@@ -2987,6 +2993,7 @@ contract ${label.replace(/\s+/g, '') || "TokenVesting"} is Ownable, ReentrancyGu
               placeholder="0x..." 
               value={beneficiary} 
               onChange={setBeneficiary} 
+              error={beneficiary && !isValidAddress(beneficiary) ? "Invalid address" : undefined}
             />
             <InputField 
               label="Total Amount (whole units) *" 
@@ -2994,6 +3001,7 @@ contract ${label.replace(/\s+/g, '') || "TokenVesting"} is Ownable, ReentrancyGu
               helper="Total supply to be vested"
               value={amount} 
               onChange={setAmount} 
+              sanitize={sanitizeInteger}
             />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -3003,12 +3011,14 @@ contract ${label.replace(/\s+/g, '') || "TokenVesting"} is Ownable, ReentrancyGu
               helper="No tokens released before cliff ends"
               value={cliffDays} 
               onChange={setCliffDays} 
+              sanitize={sanitizeInteger}
             />
             <InputField 
               label="Vesting Duration (days after cliff)" 
               placeholder="365" 
               value={vestingDays} 
               onChange={setVestingDays} 
+              sanitize={sanitizeInteger}
             />
           </div>
 
