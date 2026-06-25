@@ -709,23 +709,10 @@ const CheckinPage = () => {
       const newInfo = await readCheckinInfo(address);
       
       const ldexVal = formatEther(newInfo.nextLDEX);
-      
-      let zkLTCBonus = "";
-      const now = new Date();
-      const istDate = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
-      if (istDate.getUTCDay() === 0) {
-        const dayOfMonth = istDate.getUTCDate();
-        const week = Math.ceil(dayOfMonth / 7);
-        if (week === 1) zkLTCBonus = "0.001";
-        else if (week === 2) zkLTCBonus = "0.05";
-        else if (week === 3) zkLTCBonus = "0.01";
-        else if (week === 4) zkLTCBonus = "0.01";
-      }
 
       setSuccessMsg({ 
         ldex: ldexVal, 
         pts: 10,
-        zkLTC: zkLTCBonus || undefined,
         hash
       });
 
@@ -733,7 +720,6 @@ const CheckinPage = () => {
         { label: "BASE POINTS", value: "+10 PTS" },
         { label: "INCENTIVE YIELD", value: `+${Number(ldexVal).toLocaleString()} LDEX` },
       ];
-      if (zkLTCBonus) rows.push({ label: "STREAK BONUS", value: `+${zkLTCBonus} zkLTC 🎁` });
       rows.push({ label: "STREAK", value: `Day ${Number(newInfo.streak)}` });
       showSuccess({
         title: "MISSION SUCCESS",
