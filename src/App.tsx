@@ -668,7 +668,7 @@ const CheckinPage = () => {
   const [loading, setLoading] = useState(true);
   const [checkingIn, setCheckingIn] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const [successMsg, setSuccessMsg] = useState<{ ldex: string, pts: number, zkLTC?: string, hash?: string } | null>(null);
+  const [successMsg, setSuccessMsg] = useState<{ ldex: string, pts: number, hash?: string } | null>(null);
   const [checkinError, setCheckinError] = useState<string | null>(null);
 
   const fetchData = async () => {
