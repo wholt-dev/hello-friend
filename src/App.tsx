@@ -1793,6 +1793,8 @@ const ERC20Form = ({ onDeployed }: any) => {
                 helper="Max 50 characters — appears in wallets"
                 value={name} 
                 onChange={setName} 
+                sanitize={sanitizeAlphaNum}
+                maxLength={50}
               />
               <InputField 
                 label="Token Symbol" 
@@ -1800,6 +1802,8 @@ const ERC20Form = ({ onDeployed }: any) => {
                 helper="e.g. MAT — appears on DEXes"
                 value={symbol} 
                 onChange={setSymbol} 
+                sanitize={sanitizeAlphaNum}
+                maxLength={12}
               />
               <InputField 
                 label="Total Supply" 
@@ -1807,6 +1811,7 @@ const ERC20Form = ({ onDeployed }: any) => {
                 helper="1,000,000 tokens"
                 value={supply} 
                 onChange={setSupply} 
+                sanitize={sanitizeInteger}
               />
               <InputField 
                 label="Decimals" 
@@ -1814,12 +1819,15 @@ const ERC20Form = ({ onDeployed }: any) => {
                 helper="18 decimals is standard for most tokens"
                 value={decimals} 
                 onChange={setDecimals} 
+                sanitize={sanitizeInteger}
+                error={decimals !== '' && Number(decimals) > 18 ? "Must be between 0 and 18" : undefined}
               />
             </div>
             <div className="flex justify-end pt-4">
               <button 
                 onClick={() => setStep('features')}
-                className="flex items-center gap-2 px-8 py-4 bg-brand-surface-2 border border-white/5 rounded-xl text-white font-bold hover:bg-white/10 transition-all uppercase text-xs tracking-widest"
+                disabled={!name || !symbol || !supply || !decimals || Number(decimals) > 18}
+                className="flex items-center gap-2 px-8 py-4 bg-brand-surface-2 border border-white/5 rounded-xl text-white font-bold hover:bg-white/10 transition-all uppercase text-xs tracking-widest disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Next <ArrowLeftRight size={14} className="rotate-180" />
               </button>
