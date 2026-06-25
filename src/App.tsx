@@ -1579,7 +1579,7 @@ const DeployPage = () => {
 
 // --- Sub-Form Components ---
 
-const FormContainer = ({ title, subtitle, icon: Icon, children, deployFee = "0.05", actionLabel = "Deploy", onAction = () => {}, loading = false, onPreviewSource }: any) => (
+const FormContainer = ({ title, subtitle, icon: Icon, children, deployFee = "0.05", actionLabel = "Deploy", onAction = () => {}, loading = false, onPreviewSource, disabled = false }: any) => (
   <Card className="p-8 bg-black/40 border-white/5 backdrop-blur-3xl shadow-2xl overflow-hidden relative group">
     <div className="absolute top-0 right-0 w-64 h-64 bg-white/[0.02] rounded-full -mr-32 -mt-32 blur-3xl pointer-events-none" />
     <div className="flex items-start gap-5 mb-10">
@@ -1605,7 +1605,7 @@ const FormContainer = ({ title, subtitle, icon: Icon, children, deployFee = "0.0
        )}
        <button 
         onClick={onAction}
-        disabled={loading}
+        disabled={loading || disabled}
         className={cn(
           "flex items-center justify-center gap-2 py-4 bg-white text-black rounded-xl font-bold text-sm hover:opacity-90 transition-all uppercase tracking-widest shadow-[0_0_30px_rgba(255,255,255,0.1)] disabled:opacity-50",
           !onPreviewSource && "md:col-span-2"
@@ -1617,19 +1617,39 @@ const FormContainer = ({ title, subtitle, icon: Icon, children, deployFee = "0.0
   </Card>
 );
 
-const InputField = ({ label, placeholder, helper, type = "text", value = "", onChange = () => {} }: any) => (
+const sanitizeInteger = (v: string) => (v || '').replace(/[^0-9]/g, '');
+const sanitizeAlphaNum = (v: string) => (v || '').replace(/[^a-zA-Z0-9]/g, '');
+const sanitizeDecimal = (v: string) => {
+  let val = (v || '').replace(/[^0-9.]/g, '');
+  const parts = val.split('.');
+  if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+  return val;
+};
+const sanitizePrice1 = (v: string) => {
+  let val = (v || '').replace(/[^0-9.]/g, '');
+  const parts = val.split('.');
+  if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+  const [a, b] = val.split('.');
+  if (b !== undefined) val = a + '.' + b.slice(0, 1);
+  return val;
+};
+const isValidAddress = (a: string) => /^0x[a-fA-F0-9]{40}$/.test(a || '');
+const isValidUrl = (u: string) => /^(https?:\/\/|ipfs:\/\/)/i.test(u || '');
+
+const InputField = ({ label, placeholder, helper, type = "text", value = "", onChange = () => {}, sanitize, error, maxLength }: any) => (
   <div className="space-y-2">
     <label className="text-[10px] font-bold text-brand-text-muted uppercase tracking-[0.2em]">{label} <span className="text-red-500">*</span></label>
-    <div className="bg-black/30 border border-white/10 rounded-xl p-4 focus-within:border-white/30 transition-all">
+    <div className={cn("bg-black/30 border rounded-xl p-4 focus-within:border-white/30 transition-all", error ? "border-red-500/40" : "border-white/10")}>
       <input 
         type={type} 
         placeholder={placeholder} 
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        maxLength={maxLength}
+        onChange={(e) => onChange(sanitize ? sanitize(e.target.value) : e.target.value)}
         className="w-full bg-transparent outline-none text-white font-medium placeholder:text-white/20" 
       />
     </div>
-    {helper && <p className="text-[10px] text-brand-text-muted italic">{helper}</p>}
+    {error ? <p className="text-[10px] text-red-400 italic">{error}</p> : (helper && <p className="text-[10px] text-brand-text-muted italic">{helper}</p>)}
   </div>
 );
 
