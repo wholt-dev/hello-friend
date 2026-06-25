@@ -2364,7 +2364,7 @@ contract MNFT is ERC721, Ownable {
 
             <button 
               onClick={handleDeploy}
-              disabled={loading}
+              disabled={loading || !name || !symbol || !maxSupply || !mintPrice || !baseURI || !isValidUrl(baseURI) || !maxPerWallet}
               className="w-full py-5 bg-white text-black rounded-2xl font-bold text-base hover:bg-white/90 transition-all shadow-[0_0_40px_rgba(255,255,255,0.1)] flex items-center justify-center gap-3 disabled:opacity-50"
             >
               <Rocket size={20} /> {loading ? "Deploying..." : "Deploy Collection"}
