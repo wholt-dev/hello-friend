@@ -3265,15 +3265,18 @@ contract LitVMTokenFactory is Ownable {
         deployFee={fee}
         actionLabel="Deploy"
         onPreviewSource={() => setShowSource(!showSource)}
+        disabled={
+          !name || !symbol || !supply || !decimals || Number(decimals) > 18
+        }
       >
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <InputField label="Token Name *" placeholder="e.g. My Token" value={name} onChange={setName} />
-            <InputField label="Token Symbol *" placeholder="e.g. MTK" value={symbol} onChange={setSymbol} />
+            <InputField label="Token Name *" placeholder="e.g. My Token" value={name} onChange={setName} sanitize={sanitizeAlphaNum} maxLength={50} />
+            <InputField label="Token Symbol *" placeholder="e.g. MTK" value={symbol} onChange={setSymbol} sanitize={sanitizeAlphaNum} maxLength={12} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <InputField label="Decimals" placeholder="18" value={decimals} onChange={setDecimals} />
-            <InputField label="Total Supply *" placeholder="e.g. 1000000" value={supply} onChange={setSupply} />
+            <InputField label="Decimals" placeholder="18" value={decimals} onChange={setDecimals} sanitize={sanitizeInteger} error={decimals !== '' && Number(decimals) > 18 ? "Must be between 0 and 18" : undefined} />
+            <InputField label="Total Supply *" placeholder="e.g. 1000000" value={supply} onChange={setSupply} sanitize={sanitizeInteger} />
           </div>
           
           <div className="pt-4 border-t border-white/5 space-y-4">
