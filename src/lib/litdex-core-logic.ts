@@ -85,7 +85,7 @@ export const WZKLTC_ADDR      = "0x60A84eBC3483fEFB251B76Aea5B8458026Ef4bea";
 
 // ── Token Factories ─────────────────────────────────────────────────────
 /** Newer deployer used for points-earning token deploys (5 pts each). */
-export const LITDEX_DEPLOYER_ADDRESS = "0x80127A257fE80c7Fdc96FE909d67416356c06Ab2";
+export const LITDEX_DEPLOYER_ADDRESS = "0x60A132977c2aFfb39e66a061A30b212fA0823c10";
 /** Legacy/general token factory (full feature set: mintable/burnable/pausable). */
 export const TOKEN_FACTORY_ADDRESS   = "0xafb82a10118544E22596F5eF335B648ea1eBbE7a";
 /** Multi-type contract factory (ERC20 / NFT / Staking / Vesting). */
