@@ -2888,11 +2888,22 @@ contract ${label.replace(/\s+/g, '') || "TokenVesting"} is Ownable, ReentrancyGu
     setLoading(true);
     setTxInfo(null);
     try {
-      const { deployVesting } = await import('./lib/litdex-core-logic');
+      const { deployVesting, readProvider } = await import('./lib/litdex-core-logic');
+      const { Contract } = await import('ethers');
+      let tokenDecimals = 18;
+      try {
+        const tokenContract = new Contract(
+          tokenAddress,
+          ["function decimals() view returns (uint8)"],
+          readProvider
+        );
+        tokenDecimals = Number(await tokenContract.decimals());
+      } catch { /* fall back to 18 */ }
+      const totalAmount = parseUnits(String(amount), tokenDecimals);
       const res = await deployVesting(
         tokenAddress,
         beneficiary,
-        parseEther(amount),
+        totalAmount,
         BigInt(cliffDays),
         BigInt(vestingDays),
         revocable,
