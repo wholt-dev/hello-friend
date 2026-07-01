@@ -171,7 +171,7 @@ export const WZKLTC_ABI = [
 
 // ── LitDeX Deployer (points-earning, no fee) ────────────────────────────
 export const LITDEX_DEPLOYER_ABI = [
-  "function deployToken(string _name, string _symbol, uint256 _supply) returns (address)",
+  "function deployToken(string _name, string _symbol, uint256 _supply, uint8 _decimals) returns (address)",
   "function totalDeployed() view returns (uint256)",
   "event TokenDeployed(address indexed deployer, address indexed token, string symbol)",
 ] as const;
@@ -667,17 +667,21 @@ export type DeployedTokenResult = {
 export async function deployTokenLitDeX(opts: {
   name: string;
   symbol: string;
-  /** Whole units (contract multiplies by 1e18 internally). */
+  /** Whole units (will be scaled by `decimals`). */
   totalSupply: string | bigint;
+  /** Token decimals (defaults to 18). */
+  decimals?: number | string;
 }): Promise<DeployedTokenResult> {
   const deployer = await getSignerContract(LITDEX_DEPLOYER_ADDRESS, LITDEX_DEPLOYER_ABI);
+  const dec = Math.max(0, Math.min(18, parseInt(String(opts.decimals ?? 18), 10) || 18));
   const supplyBigInt = typeof opts.totalSupply === "bigint"
     ? opts.totalSupply
-    : parseUnits(String(opts.totalSupply), 18);
+    : parseUnits(String(opts.totalSupply), dec);
   const tx = await deployer.deployToken(
     opts.name.trim(),
     opts.symbol.trim(),
-    supplyBigInt
+    supplyBigInt,
+    dec
   );
   const receipt = await tx.wait();
   let tokenAddress: string | undefined;
