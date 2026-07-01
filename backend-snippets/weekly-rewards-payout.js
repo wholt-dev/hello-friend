@@ -40,7 +40,7 @@ const EXECUTE = process.argv.includes('--execute');
 const SERVER_DIR = process.cwd();
 
 const LDEX_ADDR   = process.env.LDEX_ADDR   || '0xBAaba603e6298fbb76325a6B0d47Cd57154ca641';
-const POINTS_ADDR = process.env.POINTS_ADDR || '0x18158eeF59Fcc7EE3dB4C7eB80f0B8B95Ec9E61c';
+const POINTS_ADDR = process.env.POINTS_ADDR || '0x526B0629C81d3314929dB8166372F792F3da3419';
 
 // Earliest date (IST) on which a real distribution may run, PER GAME.
 //   - Math Slash is an ongoing game → starts THIS week (Sun 31 May 2026).

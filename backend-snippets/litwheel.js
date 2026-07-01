@@ -23,7 +23,7 @@ const _provider = new ethers.JsonRpcProvider(
   { staticNetwork: true, polling: false, timeout: 20000 }
 );
 const _wallet = new ethers.Wallet(process.env.PRIVATE_KEY, _provider);
-const POINTS_ADDR = "0x18158eeF59Fcc7EE3dB4C7eB80f0B8B95Ec9E61c";
+const POINTS_ADDR = "0x526B0629C81d3314929dB8166372F792F3da3419";
 const POINTS_ABI = [
   "function recordQuestFor(address user, uint256 pts, string calldata questId) external",
   "function spendPoints(address user, uint256 amount) external",
