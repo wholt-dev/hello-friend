@@ -77,7 +77,7 @@ The result is something that looks and feels like a Web2 platform, but every byt
 - `litdex-bridge` : Cross-chain relayer (LiteForge ↔ Sepolia)
 
 **Smart Contracts** (on LiteForge `4441`)
-- `PointsSystem` : `0x18158eeF59Fcc7EE3dB4C7eB80f0B8B95Ec9E61c`
+- `PointsSystem` : `0x526B0629C81d3314929dB8166372F792F3da3419`
 - `LitDeXNFT` : `0xf1a2614DD63B111D04e79aDe9D89B9949c710cdF`
 - `DailyCheckin` : `0xDdE6F0ee964A9fdF71CDB2cBDF1e5E44263d3825`
 - `Messenger` : `0x9624FBBD6931b9D75961994E13604c1DC2c56225`

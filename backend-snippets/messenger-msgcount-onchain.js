@@ -33,7 +33,7 @@ function _getMsgPoints() {
   if (_msgPointsContract) return _msgPointsContract;
   try {
     _msgPointsContract = new ethers.Contract(
-      '0x18158eeF59Fcc7EE3dB4C7eB80f0B8B95Ec9E61c',
+      '0x526B0629C81d3314929dB8166372F792F3da3419',
       _MSG_POINTS_ABI3,
       provider,
     );
