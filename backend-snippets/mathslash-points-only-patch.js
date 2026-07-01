@@ -35,7 +35,7 @@ s = s.replace(/const DAILY_LIMIT = \d+;/, "const DAILY_LIMIT = 5;");
 // ── 3. Insert PointsSystem helper just before `const db = new Database(`
 const POINTS_HOOK = `
 // Points-only payout: replace zkLTC reward with PointsSystem credits.
-const POINTS_ADDR = "0x526B0629C81d3314929dB8166372F792F3da3419";
+const POINTS_ADDR = "0x18158eeF59Fcc7EE3dB4C7eB80f0B8B95Ec9E61c";
 const POINTS_ABI = [
   "function recordQuestFor(address user, uint256 pts, string calldata questId) external",
 ];

@@ -28,7 +28,7 @@ const before = s;
 //    use the existing `provider` instance defined later in the file.
 const helperBlock = `
 // ── Faucet eligibility helpers (NFT + .lit domain gate) ──────────────
-const FAUCET_NFT_ADDRESS = '0x59df2d661eb6F5fb97a694E1D2e4D17e2A7b7D15';
+const FAUCET_NFT_ADDRESS = '0xf1a2614DD63B111D04e79aDe9D89B9949c710cdF';
 const FAUCET_NFT_ABI = [
   'function getUserNFTs(address user) view returns (tuple(uint8 nftType, uint256 lastClaimDay)[])',
 ];

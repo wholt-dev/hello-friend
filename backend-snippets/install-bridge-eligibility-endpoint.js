@@ -44,7 +44,7 @@ const block = `
 // BRIDGE_ELIG_ENDPOINT_V1 — pre-flight eligibility for the cross-chain bridge.
 // Mirrors the 5 hard-gates the relayer (/root/litvm-dex/scripts/relayer.js)
 // enforces, so the UI can warn the user before they sign on Sepolia.
-const _BRIDGE_POINTS_ADDR_E = '0x526B0629C81d3314929dB8166372F792F3da3419';
+const _BRIDGE_POINTS_ADDR_E = '0x18158eeF59Fcc7EE3dB4C7eB80f0B8B95Ec9E61c';
 const _BRIDGE_POINTS_ABI_E = ['function getPoints(address) view returns (uint256, uint256, uint256)'];
 let _bridgePointsContractE = null;
 function _bridgePointsE() {

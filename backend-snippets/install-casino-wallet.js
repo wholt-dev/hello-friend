@@ -43,7 +43,7 @@ const mountSnippet = [
   "txq.init({",
   "  rpcs: (process.env.CASINO_RPCS || 'https://liteforge.rpc.caldera.xyz/http').split(',').map((u) => u.trim()).filter(Boolean),",
   "  privateKey: process.env.PRIVATE_KEY,",
-  "  contractAddr: '0x526B0629C81d3314929dB8166372F792F3da3419',",
+  "  contractAddr: '0x18158eeF59Fcc7EE3dB4C7eB80f0B8B95Ec9E61c',",
   "  contractAbi: [",
   "    'function recordQuestFor(address user, uint256 amount, string questId)',",
   "    'function spendPoints(address user, uint256 amount)',",

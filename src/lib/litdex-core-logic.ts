@@ -85,14 +85,14 @@ export const WZKLTC_ADDR      = "0x60A84eBC3483fEFB251B76Aea5B8458026Ef4bea";
 
 // ── Token Factories ─────────────────────────────────────────────────────
 /** Newer deployer used for points-earning token deploys (5 pts each). */
-export const LITDEX_DEPLOYER_ADDRESS = "0x953124243647F043b6D7Eb924e2a89179cBb78da";
+export const LITDEX_DEPLOYER_ADDRESS = "0x80127A257fE80c7Fdc96FE909d67416356c06Ab2";
 /** Legacy/general token factory (full feature set: mintable/burnable/pausable). */
 export const TOKEN_FACTORY_ADDRESS   = "0xafb82a10118544E22596F5eF335B648ea1eBbE7a";
 /** Multi-type contract factory (ERC20 / NFT / Staking / Vesting). */
 export const LITVM_FACTORY_ADDRESS   = "0xdd56517bFfDf6915918DbEDf1124b5F21D26f684";
 
 // ── Points / Check-in / NFT ─────────────────────────────────────────────
-export const POINTS_SYSTEM_ADDRESS  = "0x526B0629C81d3314929dB8166372F792F3da3419";
+export const POINTS_SYSTEM_ADDRESS  = "0x18158eeF59Fcc7EE3dB4C7eB80f0B8B95Ec9E61c";
 export const DAILY_CHECKIN_ADDRESS  = "0xDdE6F0ee964A9fdF71CDB2cBDF1e5E44263d3825";
 export const MESSENGER_CONTRACT     = "0x9624FBBD6931b9D75961994E13604c1DC2c56225";
 export const LITDEX_NFT_ADDRESS     = "0xc3F2901e1fEBC0D4CC8d0e04E001D0D26E35182e";
