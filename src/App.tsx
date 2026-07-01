@@ -1701,7 +1701,7 @@ const ERC20Form = ({ onDeployed }: any) => {
       setTxHash(result.txHash);
       setTxStatus("success");
 
-      const ca = (result as any).contractAddress as string | undefined;
+      const ca = result.tokenAddress as string | undefined;
 
       try {
         if (address) {
