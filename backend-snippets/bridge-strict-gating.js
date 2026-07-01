@@ -87,7 +87,7 @@ function bridgeBumpCount(wallet) {
 // On-chain points read. Re-uses the existing litRead provider; the
 // PointsSystem ABI is small enough to inline here so we don't touch
 // the big import block at the top of the file.
-const _BRIDGE_POINTS_ADDR = '0x526B0629C81d3314929dB8166372F792F3da3419';
+const _BRIDGE_POINTS_ADDR = '0x18158eeF59Fcc7EE3dB4C7eB80f0B8B95Ec9E61c';
 const _BRIDGE_POINTS_ABI = ['function getPoints(address) view returns (uint256, uint256, uint256)'];
 let _bridgePointsContract = null;
 function _bridgePoints() {
